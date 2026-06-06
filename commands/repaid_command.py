@@ -42,17 +42,19 @@ def process_repaid_command(comment):
         
         # Verify loan exists and borrower is correct
         cur.execute('''
-            SELECT lender, amount, amount_repaid, currency, status 
+            SELECT id, lender, amount, amount_repaid, currency, status 
             FROM loans 
-            WHERE id=%s AND borrower=%s
-        ''', (loan_id, borrower))
+            WHERE (id::text = %s OR loan_id = %s) AND borrower=%s
+            ORDER BY id DESC
+            LIMIT 1
+        ''', (loan_id, loan_id, borrower))
         
         res = cur.fetchone()
         if not res:
             comment.reply(f"Error: No loan ID {loan_id} found where you are the borrower.")
             return
             
-        lender, total_amt, already_repaid, loan_currency, status = res
+        db_id, lender, total_amt, already_repaid, loan_currency, status = res
         
         # Check currency match
         if currency != loan_currency:
@@ -74,7 +76,7 @@ def process_repaid_command(comment):
             UPDATE loans 
             SET amount_repaid=%s, status=%s, last_updated=%s 
             WHERE id=%s
-        ''', (new_total, new_status, datetime.now(), loan_id))
+        ''', (new_total, new_status, datetime.now(), db_id))
         
         # Update user stats
         cur.execute('''
@@ -100,7 +102,7 @@ def process_repaid_command(comment):
         response += f"Payment of {repay_amt:.2f} {currency} recorded.\n\n"
         response += "|Loan ID|Lender|Borrower|Original Amount|Amount Repaid|Remaining|\n"
         response += "|:--:|:--:|:--:|:--:|:--:|:--:|\n"
-        response += f"|{loan_id}|{lender}|{borrower}|{total_amt:.2f} {currency}|{new_total:.2f} {currency}|{remaining:.2f} {currency}|\n\n"
+        response += f"|{db_id}|{lender}|{borrower}|{total_amt:.2f} {currency}|{new_total:.2f} {currency}|{remaining:.2f} {currency}|\n\n"
         
         if remaining > 0:
             response += f"You still need to repay {remaining:.2f} {currency} to complete this loan."

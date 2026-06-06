@@ -32,7 +32,7 @@ Likely areas:
 - Loan created under unexpected lender/borrower.
 - Command using an ID from the wrong message.
 
-Status: Needs offline regression test before final fix.
+Status: Partially fixed in upgrade branch. `$paid_with_id`, `$repaid`, and `$unpaid` now support internal database IDs and stored public loan IDs.
 
 ### `$stats` uses deprecated UTC datetime helpers on Python 3.14
 

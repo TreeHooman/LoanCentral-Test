@@ -28,6 +28,19 @@ class RepaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("40"))
         self.assertIn("still need to repay 60.00 USD", comment.replies[0])
 
+    def test_borrower_can_record_repayment_by_public_loan_id(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=21, public_id="1700000021", amount="100.00")],
+            users={"borrower": {"amount_repaid": Decimal("0")}},
+        )
+
+        comment = self.run_repaid_command(fake_db, "$repaid 1700000021 100 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("100"))
+        self.assertEqual(fake_db.loans[0]["status"], "repaid")
+        self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("100"))
+        self.assertIn("fully repaid", comment.replies[0])
+
     def test_wrong_borrower_cannot_record_repayment(self):
         fake_db = FakeDb(loans=[loan_record(db_id=21, borrower="borrower")])
 
@@ -39,4 +52,3 @@ class RepaidCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

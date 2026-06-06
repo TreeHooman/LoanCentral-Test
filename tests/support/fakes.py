@@ -153,14 +153,21 @@ class FakeDb:
             return None
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
-    def find_loan_for_borrower(self, db_id, borrower):
-        loan = self.find_loan(db_id)
+    def find_loan_for_borrower(self, loan_lookup, borrower, allow_public_id=True):
+        loan = self.find_loan(loan_lookup) if allow_public_id else self.find_loan_by_db_id(loan_lookup)
         if not loan or loan["borrower"] != borrower:
             return None
         return loan
 
-    def find_loan_for_unpaid(self, db_id, lender, borrower):
-        loan = self.find_loan(db_id)
+    def find_loan_by_db_id(self, db_id):
+        db_id = str(db_id)
+        for loan in self.loans:
+            if str(loan.get("id")) == db_id:
+                return loan
+        return None
+
+    def find_loan_for_unpaid(self, loan_lookup, lender, borrower, allow_public_id=True):
+        loan = self.find_loan(loan_lookup) if allow_public_id else self.find_loan_by_db_id(loan_lookup)
         if not loan or loan["lender"] != lender or loan["borrower"] != borrower:
             return None
         return loan
@@ -250,7 +257,8 @@ class FakeCursor:
 
         if normalized.startswith("select lender, amount, amount_repaid"):
             db_id, borrower = params
-            loan = self.fake_db.find_loan_for_borrower(db_id, borrower)
+            allow_public_id = "loan_id" in normalized
+            loan = self.fake_db.find_loan_for_borrower(db_id, borrower, allow_public_id=allow_public_id)
             self.last_result = None if not loan else (
                 loan["lender"],
                 loan["amount"],
@@ -260,9 +268,27 @@ class FakeCursor:
             )
             return
 
+        if normalized.startswith("select id, lender, amount, amount_repaid"):
+            loan_lookup, _loan_lookup_again, borrower = params
+            loan = self.fake_db.find_loan_for_borrower(loan_lookup, borrower, allow_public_id=True)
+            self.last_result = None if not loan else (
+                loan["id"],
+                loan["lender"],
+                loan["amount"],
+                loan["amount_repaid"],
+                loan["currency"],
+                loan["status"],
+            )
+            return
+
         if normalized.startswith("select id, amount, currency, amount_repaid"):
-            db_id, lender, borrower = params
-            loan = self.fake_db.find_loan_for_unpaid(db_id, lender, borrower)
+            if len(params) == 4:
+                db_id, _db_id_again, lender, borrower = params
+                allow_public_id = True
+            else:
+                db_id, lender, borrower = params
+                allow_public_id = "loan_id" in normalized
+            loan = self.fake_db.find_loan_for_unpaid(db_id, lender, borrower, allow_public_id=allow_public_id)
             self.last_result = None if not loan else (
                 loan["id"],
                 loan["amount"],

@@ -28,6 +28,19 @@ class UnpaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("75.00"))
         self.assertIn("has marked their loan", comment.replies[0])
 
+    def test_lender_can_mark_unpaid_by_public_loan_id(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=31, public_id="1700000031", amount="100.00", amount_repaid="40.00")],
+            users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
+        )
+
+        comment = self.run_unpaid_command(fake_db, "$unpaid 1700000031 u/borrower")
+
+        self.assertEqual(fake_db.loans[0]["status"], "unpaid")
+        self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
+        self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("60.00"))
+        self.assertIn("has marked their loan", comment.replies[0])
+
     def test_wrong_lender_cannot_mark_unpaid(self):
         fake_db = FakeDb(loans=[loan_record(db_id=31, lender="real_lender")])
 

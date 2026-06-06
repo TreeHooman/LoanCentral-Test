@@ -35,8 +35,10 @@ def process_unpaid_command(comment):
         cur.execute('''
             SELECT id, amount, currency, amount_repaid, original_thread, status
             FROM loans
-            WHERE id = %s AND lender = %s AND borrower = %s
-        ''', (loan_id, lender, borrower))
+            WHERE (id::text = %s OR loan_id = %s) AND lender = %s AND borrower = %s
+            ORDER BY id DESC
+            LIMIT 1
+        ''', (loan_id, loan_id, lender, borrower))
         
         result = cur.fetchone()
         if not result:
@@ -57,7 +59,7 @@ def process_unpaid_command(comment):
             SET status = 'unpaid',
                 last_updated = %s
             WHERE id = %s
-        ''', (datetime.now(), loan_id))
+        ''', (datetime.now(), db_id))
         
         # Update user statistics - increment unpaid count for borrower
         remaining_unpaid = loan_amount - amount_repaid

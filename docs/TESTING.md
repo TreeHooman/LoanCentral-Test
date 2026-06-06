@@ -49,6 +49,7 @@ Additional offline command coverage:
 - `$mods` fake modmail capture, user reply, and non-command silence
 - `$repaid` borrower authorization and partial repayment
 - `$unpaid` lender authorization and remaining-balance unpaid tracking
+- `$repaid` and `$unpaid` support both internal database IDs and stored public loan IDs
 - `$refunded` lender authorization, refund status, stat reversal, and moderator notification capture
 - `$health` no-history and borrower total reporting
 - `$help` core command listing and non-command silence

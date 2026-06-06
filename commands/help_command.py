@@ -29,12 +29,14 @@ Example: `$loan 50 USD`
 $paid_with_id [loan_id] [amount] [currency]
 ```
 Example: `$paid_with_id 123 50 USD`
+Use the loan ID shown in the bot's confirmation message.
 
 **Marking a Loan as Unpaid**
 ```
 $unpaid [loan_id] [borrower_username]
 ```
 Example: `$unpaid 123 u/borrower`
+Use the loan ID shown in the bot's confirmation message.
 
 **Refunding a Loan**
 ```
@@ -73,6 +75,7 @@ Example: `$confirm /u/lender 50 USD`
 $repaid [loan_id] [amount] [currency]
 ```
 Example: `$repaid 123 50 USD`
+Use the loan ID shown in the bot's confirmation message.
 
 **Recording a Repayment (Alternative)**
 ```
