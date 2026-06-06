@@ -60,7 +60,23 @@ class RefundCommandTests(unittest.TestCase):
         self.assertIn("Only the lender", comment.replies[0])
         self.assertEqual(subreddit.messages, [])
 
+    def test_already_refunded_loan_does_not_reverse_stats_again(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=41, amount="100.00", status="refunded")],
+            users={
+                "lender": {"loans_as_lender": 0, "amount_lent": Decimal("0")},
+                "borrower": {"loans_as_borrower": 0, "amount_borrowed": Decimal("0")},
+            },
+        )
+
+        comment, subreddit = self.run_refund_command(fake_db)
+
+        self.assertEqual(fake_db.loans[0]["status"], "refunded")
+        self.assertEqual(fake_db.users["lender"]["loans_as_lender"], 0)
+        self.assertEqual(fake_db.users["borrower"]["loans_as_borrower"], 0)
+        self.assertIn("already been marked as refunded", comment.replies[0])
+        self.assertEqual(subreddit.messages, [])
+
 
 if __name__ == "__main__":
     unittest.main()
-

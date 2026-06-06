@@ -52,6 +52,14 @@ def process_unpaid_command(comment):
         if status == 'unpaid':
             comment.reply(f"This loan has already been marked as unpaid.")
             return
+
+        if status == 'repaid':
+            comment.reply("Error: This loan has already been fully repaid and cannot be marked unpaid.")
+            return
+
+        if status == 'refunded':
+            comment.reply("Error: This loan has been refunded and cannot be marked unpaid.")
+            return
         
         # Update the loan status to unpaid
         cur.execute('''

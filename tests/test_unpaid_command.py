@@ -50,6 +50,18 @@ class UnpaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertIn("Could not find a loan", comment.replies[0])
 
+    def test_lender_cannot_mark_repaid_loan_unpaid(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=31, amount="100.00", amount_repaid="100.00", status="repaid")],
+            users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
+        )
+
+        comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower")
+
+        self.assertEqual(fake_db.loans[0]["status"], "repaid")
+        self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 0)
+        self.assertIn("already been fully repaid", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

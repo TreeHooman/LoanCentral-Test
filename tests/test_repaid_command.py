@@ -49,6 +49,19 @@ class RepaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("where you are the borrower", comment.replies[0])
 
+    def test_borrower_cannot_record_more_than_remaining_balance(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=21, amount="100.00", amount_repaid="80.00")],
+            users={"borrower": {"amount_repaid": Decimal("80")}},
+        )
+
+        comment = self.run_repaid_command(fake_db, "$repaid 21 25 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("80.00"))
+        self.assertEqual(fake_db.loans[0]["status"], "confirmed")
+        self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("80"))
+        self.assertIn("exceeds the remaining balance", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

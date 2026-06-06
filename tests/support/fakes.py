@@ -312,6 +312,12 @@ class FakeCursor:
             self.last_result = None if not loan else (loan["id"],)
             return
 
+        if normalized.startswith("select id, status from loans where lender") and "amount = %s" in normalized:
+            lender, borrower, amount, currency = params
+            loan = self.fake_db.find_loan_for_refund(lender, borrower, amount, currency)
+            self.last_result = None if not loan else (loan["id"], loan["status"])
+            return
+
         if normalized.startswith("insert into loans"):
             self.last_result = (self.fake_db.insert_loan(*params),)
             return

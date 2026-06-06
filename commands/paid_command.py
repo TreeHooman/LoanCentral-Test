@@ -81,6 +81,14 @@ def process_paid_command(comment):
         if loan_currency != currency:
             comment.reply(f"Error: Currency mismatch. The loan was in {loan_currency}, but you specified {currency}.")
             return
+
+        remaining_before_payment = loan_amount - already_repaid
+        if amount_paid > remaining_before_payment:
+            comment.reply(
+                f"Error: Payment amount {amount_paid:.2f} {currency} exceeds the remaining balance "
+                f"of {remaining_before_payment:.2f} {currency}."
+            )
+            return
         
         # Get loan details before the update for the response
         cur.execute('''

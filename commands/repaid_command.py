@@ -65,6 +65,14 @@ def process_repaid_command(comment):
         if status == "repaid":
             comment.reply("Error: This loan has already been fully repaid.")
             return
+
+        remaining_before_payment = total_amt - already_repaid
+        if repay_amt > remaining_before_payment:
+            comment.reply(
+                f"Error: Payment amount {repay_amt:.2f} {currency} exceeds the remaining balance "
+                f"of {remaining_before_payment:.2f} {currency}."
+            )
+            return
             
         # Calculate new repayment amount and status
         new_total = already_repaid + repay_amt

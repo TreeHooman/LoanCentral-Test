@@ -57,3 +57,13 @@ Expected: A duplicate confirmation for the same loan should be blocked, but a ne
 Actual: The old logic blocked any second confirmed loan between the same lender and borrower.
 
 Status: Fixed in upgrade branch. Duplicate checks now include lender, borrower, amount, currency, original thread, and confirmed status.
+
+### Repayment and status commands can drift stats in edge cases
+
+Commands: `$paid_with_id`, `$repaid`, `$unpaid`, `$refunded`
+
+Expected: Commands should not overpay loans, mark repaid/refunded loans unpaid, or reverse refund statistics more than once.
+
+Actual: Old logic allowed over-recording repayment amounts, marking fully repaid loans unpaid, and processing an already refunded loan again.
+
+Status: Fixed in upgrade branch. Overpayments are rejected, repaid/refunded loans cannot be marked unpaid, and already refunded loans do not reverse stats again.

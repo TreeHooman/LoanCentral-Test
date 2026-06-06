@@ -49,7 +49,7 @@ def process_refund_command(comment):
         
         # Find the relevant loan
         cur.execute('''
-            SELECT id FROM loans
+            SELECT id, status FROM loans
             WHERE lender = %s AND borrower = %s AND amount = %s AND currency = %s
             ORDER BY date_created DESC
             LIMIT 1
@@ -61,7 +61,15 @@ def process_refund_command(comment):
             comment.reply(f"Error: Could not find a matching loan from you to u/{borrower} for {amount} {currency}.")
             return
         
-        loan_id = result[0]
+        loan_id, status = result
+
+        if status == 'refunded':
+            comment.reply("This loan has already been marked as refunded.")
+            return
+
+        if status == 'repaid':
+            comment.reply("Error: This loan has already been fully repaid and cannot be marked refunded.")
+            return
 
         # Update the loan status to refunded
         cur.execute('''
