@@ -1,7 +1,7 @@
 import importlib
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from tests.support.fakes import (
@@ -23,7 +23,7 @@ class StatsCommandTests(unittest.TestCase):
             return comment
 
     def test_stats_report_uses_fake_reddit_history(self):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         redditor = FakeRedditor(
             comments=[
                 FakeRedditComment((now - timedelta(days=2)).timestamp(), score=5, subreddit_name="Borrow"),
@@ -60,4 +60,3 @@ class StatsCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

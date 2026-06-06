@@ -31,7 +31,8 @@ class UnpaidCommandTests(unittest.TestCase):
     def test_wrong_lender_cannot_mark_unpaid(self):
         fake_db = FakeDb(loans=[loan_record(db_id=31, lender="real_lender")])
 
-        comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower", author_name="wrong_lender")
+        with self.assertLogs("LoanCentral", level="WARNING"):
+            comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower", author_name="wrong_lender")
 
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertIn("Could not find a loan", comment.replies[0])
@@ -39,4 +40,3 @@ class UnpaidCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

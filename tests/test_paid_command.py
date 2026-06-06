@@ -44,7 +44,8 @@ class PaidCommandTests(unittest.TestCase):
     def test_wrong_lender_gets_clear_auth_error(self):
         fake_db = FakeDb(loans=[loan_record(db_id=12, lender="real_lender")])
 
-        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", author_name="wrong_lender")
+        with self.assertLogs("LoanCentral", level="WARNING"):
+            comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", author_name="wrong_lender")
 
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("recorded under lender u/real_lender", comment.replies[0])
@@ -52,7 +53,8 @@ class PaidCommandTests(unittest.TestCase):
     def test_missing_loan_gets_clear_not_found_error(self):
         fake_db = FakeDb(loans=[])
 
-        comment = self.run_paid_command(fake_db, "$paid_with_id 999 25 USD")
+        with self.assertLogs("LoanCentral", level="WARNING"):
+            comment = self.run_paid_command(fake_db, "$paid_with_id 999 25 USD")
 
         self.assertIn("Could not find a loan with ID 999", comment.replies[0])
 
@@ -67,4 +69,3 @@ class PaidCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

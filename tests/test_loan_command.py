@@ -30,11 +30,11 @@ class LoanCommandTests(unittest.TestCase):
         self.assertIn("Only users with 'Verified Lender' flair", comment.replies[0])
 
     def test_self_loan_gets_no_reply(self):
-        comment = self.run_loan_command("$loan 75 USD", author_name="borrower", borrower_name="borrower")
+        with self.assertLogs("LoanCentral", level="WARNING"):
+            comment = self.run_loan_command("$loan 75 USD", author_name="borrower", borrower_name="borrower")
 
         self.assertEqual(comment.replies, [])
 
 
 if __name__ == "__main__":
     unittest.main()
-

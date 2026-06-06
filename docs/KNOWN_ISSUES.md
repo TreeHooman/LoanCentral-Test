@@ -46,4 +46,4 @@ Likely areas:
 
 - `commands/stats_command.py`
 
-Status: Needs cleanup during fix pass.
+Status: Fixed in upgrade branch.

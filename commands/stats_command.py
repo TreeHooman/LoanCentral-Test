@@ -1,6 +1,6 @@
 import re
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import traceback
 
 logger = logging.getLogger("LoanCentral")
@@ -25,18 +25,18 @@ def process_stats_command(comment):
         # Fetch comments (up to PRAW limit to avoid rate limits)
         comments = list(redditor.comments.new(limit=100))
         
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         # Total and recent comments
         total_comments = len(comments)
         cutoff = now - timedelta(days=180)
-        recent_comments = [c for c in comments if datetime.utcfromtimestamp(c.created_utc) >= cutoff]
+        recent_comments = [c for c in comments if datetime.fromtimestamp(c.created_utc, UTC) >= cutoff]
         
         if not comments:
             comment.reply(f"No comments found for u/{user}.")
             return
             
         # Oldest & newest
-        dates = [datetime.utcfromtimestamp(c.created_utc) for c in comments]
+        dates = [datetime.fromtimestamp(c.created_utc, UTC) for c in comments]
         newest = max(dates).date()
         eldest = min(dates).date()
         
@@ -63,7 +63,7 @@ def process_stats_command(comment):
         post_karma = redditor.link_karma
         comment_karma = redditor.comment_karma
         combined = post_karma + comment_karma
-        created = datetime.utcfromtimestamp(redditor.created_utc)
+        created = datetime.fromtimestamp(redditor.created_utc, UTC)
         age_days = (now - created).days
         age_years = age_days / 365
         verified = getattr(redditor, 'has_verified_email', False)
