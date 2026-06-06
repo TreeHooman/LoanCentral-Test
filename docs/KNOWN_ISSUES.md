@@ -67,3 +67,13 @@ Expected: Commands should not overpay loans, mark repaid/refunded loans unpaid, 
 Actual: Old logic allowed over-recording repayment amounts, marking fully repaid loans unpaid, and processing an already refunded loan again.
 
 Status: Fixed in upgrade branch. Overpayments are rejected, repaid/refunded loans cannot be marked unpaid, and already refunded loans do not reverse stats again.
+
+### Payments on unpaid loans leave borrower unpaid totals wrong
+
+Commands: `$paid_with_id`, `$repaid`
+
+Expected: Payments on an unpaid loan should reduce `unpaid_amount` by the payment amount. When the loan becomes fully repaid, exactly one unpaid loan should be cleared.
+
+Actual: Old logic did not reduce unpaid amount for partial payments and subtracted the original loan amount on full repayment, which could affect unrelated unpaid totals.
+
+Status: Fixed in upgrade branch.

@@ -35,6 +35,7 @@ The first tests cover `$paid_with_id`:
 - missing loan gets a clear not-found error
 - currency mismatch does not update the loan
 - payment larger than the remaining balance is rejected
+- payments on unpaid loans reduce unpaid amount correctly
 
 The `$confirm` tests cover:
 
@@ -53,6 +54,7 @@ Additional offline command coverage:
 - `$unpaid` lender authorization and remaining-balance unpaid tracking
 - `$repaid` and `$unpaid` support both internal database IDs and stored public loan IDs
 - `$repaid` rejects payments larger than the remaining balance
+- `$repaid` payments on unpaid loans reduce unpaid amount correctly
 - `$unpaid` rejects already repaid loans
 - `$refunded` lender authorization, refund status, stat reversal, and moderator notification capture
 - `$refunded` does not reverse stats again when a loan is already refunded

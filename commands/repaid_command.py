@@ -93,15 +93,23 @@ def process_repaid_command(comment):
             WHERE username=%s
         ''', (repay_amt, datetime.now(), borrower))
         
-        # If fully repaid, update unpaid counts
-        if new_status == "repaid":
-            cur.execute('''
-                UPDATE users 
-                SET unpaid_loans=GREATEST(unpaid_loans-1,0), 
-                    unpaid_amount=GREATEST(unpaid_amount-%s,0), 
-                    last_updated=%s 
-                WHERE username=%s
-            ''', (total_amt, datetime.now(), borrower))
+        # If this was marked unpaid, reduce only the remaining unpaid balance affected by this payment.
+        if status == "unpaid":
+            if new_status == "repaid":
+                cur.execute('''
+                    UPDATE users 
+                    SET unpaid_loans=GREATEST(unpaid_loans-1,0), 
+                        unpaid_amount=GREATEST(unpaid_amount-%s,0), 
+                        last_updated=%s 
+                    WHERE username=%s
+                ''', (repay_amt, datetime.now(), borrower))
+            else:
+                cur.execute('''
+                    UPDATE users 
+                    SET unpaid_amount=GREATEST(unpaid_amount-%s,0), 
+                        last_updated=%s 
+                    WHERE username=%s
+                ''', (repay_amt, datetime.now(), borrower))
         
         conn.commit()
         

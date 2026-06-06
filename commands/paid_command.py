@@ -118,15 +118,23 @@ def process_paid_command(comment):
             WHERE username = %s
         ''', (amount_paid, datetime.now(), borrower))
         
-        # Update unpaid loans count and amount if the loan is now fully paid
-        if new_status == 'repaid':
-            cur.execute('''
-                UPDATE users
-                SET unpaid_loans = GREATEST(unpaid_loans - 1, 0),
-                    unpaid_amount = GREATEST(unpaid_amount - %s, 0),
-                    last_updated = %s
-                WHERE username = %s
-            ''', (loan_amount, datetime.now(), borrower))
+        # If this was marked unpaid, reduce only the remaining unpaid balance affected by this payment.
+        if status == 'unpaid':
+            if new_status == 'repaid':
+                cur.execute('''
+                    UPDATE users
+                    SET unpaid_loans = GREATEST(unpaid_loans - 1, 0),
+                        unpaid_amount = GREATEST(unpaid_amount - %s, 0),
+                        last_updated = %s
+                    WHERE username = %s
+                ''', (amount_paid, datetime.now(), borrower))
+            else:
+                cur.execute('''
+                    UPDATE users
+                    SET unpaid_amount = GREATEST(unpaid_amount - %s, 0),
+                        last_updated = %s
+                    WHERE username = %s
+                ''', (amount_paid, datetime.now(), borrower))
         
         # Get loan details after the update
         cur.execute('''

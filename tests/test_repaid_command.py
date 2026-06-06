@@ -62,6 +62,36 @@ class RepaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("80"))
         self.assertIn("exceeds the remaining balance", comment.replies[0])
 
+    def test_partial_repayment_on_unpaid_loan_reduces_unpaid_amount_only(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=21, amount="100.00", amount_repaid="25.00", status="unpaid")],
+            users={"borrower": {"amount_repaid": Decimal("25"), "unpaid_loans": 1, "unpaid_amount": Decimal("75")}},
+        )
+
+        comment = self.run_repaid_command(fake_db, "$repaid 21 30 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("55.00"))
+        self.assertEqual(fake_db.loans[0]["status"], "partially_repaid")
+        self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("55"))
+        self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
+        self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("45"))
+        self.assertIn("still need to repay 45.00 USD", comment.replies[0])
+
+    def test_full_repayment_on_unpaid_loan_clears_one_unpaid_count_and_remaining_amount(self):
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=21, amount="100.00", amount_repaid="25.00", status="unpaid")],
+            users={"borrower": {"amount_repaid": Decimal("25"), "unpaid_loans": 2, "unpaid_amount": Decimal("125")}},
+        )
+
+        comment = self.run_repaid_command(fake_db, "$repaid 21 75 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("100.00"))
+        self.assertEqual(fake_db.loans[0]["status"], "repaid")
+        self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("100"))
+        self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
+        self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("50"))
+        self.assertIn("fully repaid", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

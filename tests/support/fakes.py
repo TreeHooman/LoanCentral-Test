@@ -390,6 +390,13 @@ class FakeCursor:
             self.last_result = None
             return
 
+        if normalized.startswith("update users set unpaid_amount"):
+            paid_amount, _last_updated, username = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["unpaid_amount"] = max(user.get("unpaid_amount", Decimal("0")) - paid_amount, Decimal("0"))
+            self.last_result = None
+            return
+
         if normalized.startswith("update users set loans_as_lender"):
             amount, _last_updated, username = params
             user = self.fake_db.users.setdefault(username, {})
