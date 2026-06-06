@@ -75,13 +75,17 @@ Status: Pending
 
 ### 6. Integrity Checks
 
-Status: Pending
+Status: Started
 
 - Detect mismatched user totals.
 - Detect overpaid loans.
 - Detect bad loan statuses.
 - Detect missing user records.
 - Detect duplicate or suspicious active loans.
+
+Current coverage:
+
+- Pure offline integrity checker can report invalid loan states and user aggregate mismatches.
 
 ### 7. Test Reddit Staging
 

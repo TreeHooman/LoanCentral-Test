@@ -63,3 +63,10 @@ Additional offline command coverage:
 - `$refunded` does not reverse stats again when a loan is already refunded
 - `$health` no-history and borrower total reporting
 - `$help` core command listing and non-command silence
+
+Integrity coverage:
+
+- loan statuses are validated
+- overpaid, zero-value, and contradictory loan states are reported
+- expected user totals can be recalculated from loan records
+- user aggregate mismatches are reported
