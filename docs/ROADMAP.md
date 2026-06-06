@@ -26,11 +26,15 @@ Status: Done
 
 ### 2. Offline Test Harness
 
-Status: Next
+Status: Started
 
 - Add fake Reddit comment, author, submission, subreddit, and reply objects.
 - Allow command handlers to be tested without Reddit API calls.
 - Capture bot replies in memory.
+
+Current coverage:
+
+- `$paid_with_id` lookup, authorization, currency mismatch, partial payment, and full payment.
 
 ### 3. Test Database Path
 
@@ -95,4 +99,3 @@ Status: Pending
 - Run one controlled live flow.
 - Monitor logs.
 - Keep rollback ready.
-
