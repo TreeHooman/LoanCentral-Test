@@ -481,6 +481,34 @@ def get_user_profile(username: str):
         conn.close()
 
 
+def calculate_health_score(profile: dict) -> tuple:
+    """
+    Calculate a borrower health score (0-100) from a user profile dict.
+    Returns (score: int, label: str)
+    """
+    total = profile.get("loans_as_borrower") or 0
+    if not total:
+        return 100, "No history"
+    unpaid = profile.get("unpaid_loans") or 0
+    paid = total - unpaid
+    loan_ratio = paid / total
+    borrowed = float(profile.get("amount_borrowed") or 0)
+    repaid = float(profile.get("amount_repaid") or 0)
+    pay_ratio = min(repaid / borrowed, 1.0) if borrowed > 0 else 1.0
+    score = round((loan_ratio * 0.7 + pay_ratio * 0.3) * 100)
+    if score >= 90:
+        label = "Excellent"
+    elif score >= 70:
+        label = "Good"
+    elif score >= 50:
+        label = "Fair"
+    elif score >= 25:
+        label = "Poor"
+    else:
+        label = "Very Poor"
+    return score, label
+
+
 def get_loan_history(username: str, role: str = "both", limit: int = 50):
     """
     Fetch recent loans for a user.

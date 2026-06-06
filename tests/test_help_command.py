@@ -15,6 +15,7 @@ class HelpCommandTests(unittest.TestCase):
         self.assertIn("$paid_with_id", comment.replies[0])
         self.assertIn("$unpaid", comment.replies[0])
         self.assertIn("$refunded", comment.replies[0])
+        self.assertIn("$check", comment.replies[0])
         # Retired commands should no longer appear
         self.assertNotIn("$confirm", comment.replies[0])
         self.assertNotIn("$repaid", comment.replies[0])

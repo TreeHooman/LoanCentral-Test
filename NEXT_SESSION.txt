@@ -1,21 +1,24 @@
-STATUS: All bot commands link to dashboard. 43/43 tests passing. Dashboards built and ready to test.
-LAST THING DONE: Added dashboard links to all 5 bot reply messages. Added search bar to lender
-                 dashboard. Deleted legacy dashboard.html. Wired through config.py (DASHBOARD_URL).
+STATUS: $check command added. 53/53 tests passing. Bot + dashboard fully wired.
+LAST THING DONE: Added $check command, server-side health score, fixed [REQ] post replies,
+                 fixed lender dashboard search (client-side filtering). 10 new tests added.
 
 NEXT STEPS (in order):
-1. Test all 3 dashboards - run server locally, go to /auth/dev-login, try each username:
-   - testmod      → mod dashboard (all loans, status tabs, search, role management tab)
-   - testlender   → lender dashboard (their loans, stats, search bar, action buttons)
-   - testborrower → borrower dashboard (what they owe, health score, full history)
-2. Fix anything broken or ugly in the UI
-3. Wire up real Reddit OAuth credentials:
-   a. Go to https://www.reddit.com/prefs/apps → Create App → type: "web app"
-   b. Set redirect URI: http://localhost:5000/auth/callback (or your deployed URL)
-   c. Copy into .env:
-      DASHBOARD_CLIENT_ID=<your_client_id>
-      DASHBOARD_CLIENT_SECRET=<your_client_secret>
-      DASHBOARD_REDIRECT_URI=http://localhost:5000/auth/callback
-      DASHBOARD_URL=http://localhost:5000   ← bot replies use this too
+1. Register Reddit app + fill in .env (see below) — needed for real OAuth login
+2. Test all 3 dashboards locally via dev login:
+   - testmod      → mod dashboard
+   - testlender   → lender dashboard
+   - testborrower → borrower dashboard
+3. Test $check in subreddit: $check u/testborrower
+4. Deploy to a server (Render / Railway / VPS) once tested
+
+TO WIRE UP REDDIT OAUTH:
+1. Go to https://www.reddit.com/prefs/apps → Create App → type: "web app"
+2. Set redirect URI: http://localhost:5000/auth/callback
+3. Add to .env:
+   DASHBOARD_CLIENT_ID=<your_client_id>
+   DASHBOARD_CLIENT_SECRET=<your_client_secret>
+   DASHBOARD_REDIRECT_URI=http://localhost:5000/auth/callback
+   DASHBOARD_URL=http://localhost:5000
 
 TO RUN THE SERVER:
 1. Open pgAdmin (keep it open so DB is available)
@@ -25,12 +28,13 @@ TO RUN THE SERVER:
 
 GITHUB: https://github.com/TreeHooman/LoanCentral-Test
 BRANCH: claude/current-status-PAl0w
-TESTS: 43/43 passing (run: python -m unittest discover -s tests -q)
+TESTS: 53/53 passing (run: python -m unittest discover -s tests -q)
 
-WHAT BOT REPLIES NOW INCLUDE:
-- $help         → dashboard link in body + footer line
-- $loan         → "View on LoanCentral Dashboard" after lender commands
-- $paid_with_id → "View full loan history" link
-- $unpaid       → "View loan details" link
-- $refunded     → "View updated stats" link
-URL comes from DASHBOARD_URL env var (defaults to http://localhost:5000)
+ALL BOT COMMANDS + WHAT THEY DO:
+- $help           → lists all commands with dashboard link
+- $loan           → records a loan, links to dashboard
+- $paid_with_id   → records repayment, links to dashboard
+- $unpaid         → marks loan unpaid, links to dashboard
+- $refunded       → cancels loan, links to dashboard
+- $check u/name   → shows borrower's health score + stats (NEW)
+Bot also auto-replies to [REQ]/[PRE] posts with borrower profile summary + health score.

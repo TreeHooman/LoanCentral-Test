@@ -93,6 +93,8 @@
         return;
       }
       tbody.innerHTML = loans.map(loan => {
+        const search = document.getElementById('searchInput').value.trim().toLowerCase();
+        if (search && !loan.borrower.includes(search)) return '';
         const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
         const id = loan.loan_id || loan.db_id;
         const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);

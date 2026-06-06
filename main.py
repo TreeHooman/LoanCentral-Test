@@ -278,33 +278,45 @@ def handle_new_post(post):
 
 # Generate loan history information for a user
 def generate_user_info(username):
-    """Generate loan history information for a user."""
-    from services import get_user_profile
+    """Generate loan history summary posted on [REQ]/[PRE] threads."""
+    from services import get_user_profile, calculate_health_score
+    from config import DASHBOARD_URL
 
     profile, error = get_user_profile(username)
     if error or not profile:
-        return f"Could not retrieve information for u/{username}"
-
-    response = [f"Here is my information on u/{username}:"]
+        return f"Could not retrieve information for u/{username}."
 
     if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
-        response.append(f"u/{username} has no loan history.")
-        return "\n\n".join(response)
+        return (
+            f"**LoanCentral record for u/{username}:**\n\n"
+            f"No loan history found in this system.\n\n"
+            f"[View on LoanCentral Dashboard]({DASHBOARD_URL})"
+        )
 
-    response.append(f"u/{username} has {profile['loans_as_borrower']} loans paid as a borrower, for a total of ${profile['amount_repaid']:.2f}")
-    response.append(f"u/{username} has {profile['loans_as_lender']} loans paid as a lender, for a total of ${profile['amount_lent']:.2f}")
+    score, label = calculate_health_score(profile)
+    borrowed = float(profile["amount_borrowed"])
+    repaid = float(profile["amount_repaid"])
+    repay_pct = round(repaid / borrowed * 100, 1) if borrowed > 0 else 100.0
+
+    lines = [
+        f"**LoanCentral record for u/{username}:**\n",
+        f"|Health Score|Loans as Borrower|Repaid|Unpaid|",
+        f"|:--:|:--:|:--:|:--:|",
+        f"|**{score}/100** ({label})|{profile['loans_as_borrower']}|"
+        f"{profile['loans_as_borrower'] - profile['unpaid_loans']}|{profile['unpaid_loans']}|\n",
+        f"|Total Borrowed|Total Repaid|Repayment Rate|Active Loans|",
+        f"|:--:|:--:|:--:|:--:|",
+        f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|{profile['active_loans']}|\n",
+    ]
 
     if profile["unpaid_loans"] > 0:
-        response.append(f"u/{username} has {profile['unpaid_loans']} loans currently marked unpaid, for a total of ${profile['unpaid_amount']:.2f}")
-    else:
-        response.append(f"u/{username} has not received any loans which are currently marked unpaid")
+        lines.append(
+            f"⚠️ u/{username} has **{profile['unpaid_loans']} unpaid loan(s)** "
+            f"totalling ${float(profile['unpaid_amount']):.2f}.\n"
+        )
 
-    if profile["active_loans"] > 0:
-        response.append(f"u/{username} has {profile['active_loans']} outstanding loans as a borrower, for a total of ${profile['active_amount']:.2f}")
-    else:
-        response.append(f"u/{username} does not have any outstanding loans as a borrower")
-
-    return "\n\n".join(response)
+    lines.append(f"[Full profile on LoanCentral Dashboard]({DASHBOARD_URL})")
+    return "\n".join(lines)
 
 # Function to keep the bot alive
 def keep_alive():

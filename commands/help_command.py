@@ -19,6 +19,17 @@ The bot tracks loans. Everything else (history, health scores, stats, mod tools)
 
 ---
 
+## Commands
+
+**Check a user's loan history**
+```
+$check u/[username]
+```
+Example: `$check u/borrower`
+*Shows borrower health score, repayment rate, and stats. Public — anyone can use it.*
+
+---
+
 ## Lender Commands
 
 **Record a new loan**
