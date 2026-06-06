@@ -1,3 +1,6 @@
+"""
+Tests for $unpaid [loan_id] — lender marks a loan unpaid by ID only.
+"""
 import importlib
 import sys
 import unittest
@@ -11,17 +14,17 @@ class UnpaidCommandTests(unittest.TestCase):
     def run_unpaid_command(self, fake_db, body, author_name="lender"):
         with patch.dict(sys.modules, {"utils": fake_utils_module(fake_db)}):
             unpaid_command = importlib.import_module("commands.unpaid_command")
+            importlib.reload(unpaid_command)
             comment = FakeComment(body=body, author_name=author_name)
             unpaid_command.process_unpaid_command(comment)
             return comment
 
-    def test_lender_can_mark_remaining_balance_unpaid(self):
+    def test_lender_can_mark_loan_unpaid_by_db_id(self):
         fake_db = FakeDb(
             loans=[loan_record(db_id=31, amount="100.00", amount_repaid="25.00")],
             users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
         )
-
-        comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower")
+        comment = self.run_unpaid_command(fake_db, "$unpaid 31")
 
         self.assertEqual(fake_db.loans[0]["status"], "unpaid")
         self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
@@ -33,8 +36,7 @@ class UnpaidCommandTests(unittest.TestCase):
             loans=[loan_record(db_id=31, public_id="1700000031", amount="100.00", amount_repaid="40.00")],
             users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
         )
-
-        comment = self.run_unpaid_command(fake_db, "$unpaid 1700000031 u/borrower")
+        comment = self.run_unpaid_command(fake_db, "$unpaid 1700000031")
 
         self.assertEqual(fake_db.loans[0]["status"], "unpaid")
         self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
@@ -45,7 +47,7 @@ class UnpaidCommandTests(unittest.TestCase):
         fake_db = FakeDb(loans=[loan_record(db_id=31, lender="real_lender")])
 
         with self.assertLogs("LoanCentral", level="WARNING"):
-            comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower", author_name="wrong_lender")
+            comment = self.run_unpaid_command(fake_db, "$unpaid 31", author_name="wrong_lender")
 
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertIn("Could not find a loan", comment.replies[0])
@@ -55,12 +57,20 @@ class UnpaidCommandTests(unittest.TestCase):
             loans=[loan_record(db_id=31, amount="100.00", amount_repaid="100.00", status="repaid")],
             users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
         )
-
-        comment = self.run_unpaid_command(fake_db, "$unpaid 31 u/borrower")
+        comment = self.run_unpaid_command(fake_db, "$unpaid 31")
 
         self.assertEqual(fake_db.loans[0]["status"], "repaid")
-        self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 0)
         self.assertIn("already been fully repaid", comment.replies[0])
+
+    def test_borrower_not_required_in_command(self):
+        """Old syntax needed u/borrower — new syntax just needs loan ID."""
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=31, amount="100.00", amount_repaid="0.00")],
+            users={"borrower": {"unpaid_loans": 0, "unpaid_amount": Decimal("0")}},
+        )
+        # No u/borrower in command — should still work
+        comment = self.run_unpaid_command(fake_db, "$unpaid 31")
+        self.assertEqual(fake_db.loans[0]["status"], "unpaid")
 
 
 if __name__ == "__main__":

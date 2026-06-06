@@ -12,10 +12,12 @@ class HelpCommandTests(unittest.TestCase):
         help_command.process_help_command(comment)
 
         self.assertIn("$loan", comment.replies[0])
-        self.assertIn("$confirm", comment.replies[0])
         self.assertIn("$paid_with_id", comment.replies[0])
         self.assertIn("$unpaid", comment.replies[0])
         self.assertIn("$refunded", comment.replies[0])
+        # Retired commands should no longer appear
+        self.assertNotIn("$confirm", comment.replies[0])
+        self.assertNotIn("$repaid", comment.replies[0])
 
     def test_non_help_comment_gets_no_reply(self):
         help_command = importlib.import_module("commands.help_command")

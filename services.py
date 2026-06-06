@@ -95,8 +95,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
         ''', (borrower, amount, datetime.now(), amount, datetime.now()))
 
         conn.commit()
-        logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id})")
-        return db_id, None
+        logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
+        return loan_id, None
 
     except Exception as e:
         conn.rollback()
@@ -213,9 +213,9 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         conn.close()
 
 
-def mark_unpaid(loan_id: str, borrower: str, lender: str):
+def mark_unpaid(loan_id: str, lender: str):
     """
-    Mark a loan as unpaid.
+    Mark a loan as unpaid. Lender only — borrower is looked up from the loan record.
     Returns (loan_dict, error_message)
     """
     conn = _get_db()
@@ -226,18 +226,18 @@ def mark_unpaid(loan_id: str, borrower: str, lender: str):
         cur = conn.cursor()
 
         cur.execute('''
-            SELECT id, amount, currency, amount_repaid, original_thread, status
+            SELECT id, amount, currency, amount_repaid, original_thread, status, borrower
             FROM loans
-            WHERE (id::text = %s OR loan_id = %s) AND lender = %s AND borrower = %s
+            WHERE (id::text = %s OR loan_id = %s) AND lender = %s
             ORDER BY id DESC LIMIT 1
-        ''', (loan_id, loan_id, lender, borrower))
+        ''', (loan_id, loan_id, lender))
 
         result = cur.fetchone()
         if not result:
-            logger.warning(f"No matching loan found for unpaid: ID {loan_id} by {lender} for borrower {borrower}")
-            return None, f"Could not find a loan with ID {loan_id} where you are the lender and u/{borrower} is the borrower."
+            logger.warning(f"No matching loan found for unpaid: ID {loan_id} by {lender}")
+            return None, f"Could not find a loan with ID {loan_id} where you are the lender."
 
-        db_id, loan_amount, loan_currency, amount_repaid, thread_url, status = result
+        db_id, loan_amount, loan_currency, amount_repaid, thread_url, status, borrower = result
 
         if status == "unpaid":
             return None, "This loan is already marked unpaid."
@@ -338,6 +338,71 @@ def mark_refunded(lender: str, borrower: str, amount: Decimal, currency: str):
     except Exception as e:
         conn.rollback()
         logger.error(f"mark_refunded error: {e}", exc_info=True)
+        return None, "Database error while marking loan refunded."
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_refunded_by_id(loan_id: str, lender: str):
+    """
+    Mark a loan as refunded by loan ID. Lender only.
+    Returns (loan_dict, error_message)
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+
+    try:
+        cur = conn.cursor()
+
+        cur.execute('''
+            SELECT id, borrower, amount, currency, status
+            FROM loans
+            WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+            ORDER BY id DESC LIMIT 1
+        ''', (loan_id, loan_id, lender))
+
+        result = cur.fetchone()
+        if not result:
+            return None, f"Could not find a loan with ID {loan_id} where you are the lender."
+
+        db_id, borrower, amount, currency, status = result
+        amount = Decimal(amount)
+
+        if status == "refunded":
+            return None, "This loan has already been marked as refunded."
+        if status == "repaid":
+            return None, "This loan has already been fully repaid and cannot be marked refunded."
+
+        cur.execute('''
+            UPDATE loans SET status = 'refunded', last_updated = %s WHERE id = %s
+        ''', (datetime.now(), db_id))
+
+        cur.execute('''
+            UPDATE users SET
+                loans_as_lender = GREATEST(loans_as_lender - 1, 0),
+                amount_lent = GREATEST(amount_lent - %s, 0),
+                last_updated = %s
+            WHERE username = %s
+        ''', (amount, datetime.now(), lender))
+
+        cur.execute('''
+            UPDATE users SET
+                loans_as_borrower = GREATEST(loans_as_borrower - 1, 0),
+                amount_borrowed = GREATEST(amount_borrowed - %s, 0),
+                last_updated = %s
+            WHERE username = %s
+        ''', (amount, datetime.now(), borrower))
+
+        conn.commit()
+        logger.info(f"Loan {db_id} refunded by ID: {lender} -> {borrower} {amount} {currency}")
+
+        return {"db_id": db_id, "lender": lender, "borrower": borrower, "amount": amount, "currency": currency}, None
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"mark_refunded_by_id error: {e}", exc_info=True)
         return None, "Database error while marking loan refunded."
     finally:
         cur.close()

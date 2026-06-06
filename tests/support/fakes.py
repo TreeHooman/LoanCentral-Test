@@ -290,19 +290,33 @@ class FakeCursor:
             return
 
         if normalized.startswith("select id, amount, currency, amount_repaid"):
-            if len(params) == 4:
-                db_id, _db_id_again, lender, borrower = params
-                allow_public_id = True
-            else:
-                db_id, lender, borrower = params
-                allow_public_id = "loan_id" in normalized
-            loan = self.fake_db.find_loan_for_unpaid(db_id, lender, borrower, allow_public_id=allow_public_id)
+            # mark_unpaid query: WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+            db_id, _db_id_again, lender = params
+            loan = self.fake_db.find_loan(db_id)
+            if loan and loan.get("lender") != lender:
+                loan = None
             self.last_result = None if not loan else (
                 loan["id"],
                 loan["amount"],
                 loan["currency"],
                 loan["amount_repaid"],
                 loan["original_thread"],
+                loan["status"],
+                loan["borrower"],
+            )
+            return
+
+        if normalized.startswith("select id, borrower, amount, currency, status"):
+            # mark_refunded_by_id query: WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+            db_id, _db_id_again, lender = params
+            loan = self.fake_db.find_loan(db_id)
+            if loan and loan.get("lender") != lender:
+                loan = None
+            self.last_result = None if not loan else (
+                loan["id"],
+                loan["borrower"],
+                loan["amount"],
+                loan["currency"],
                 loan["status"],
             )
             return

@@ -1,6 +1,5 @@
 import re
 import logging
-from decimal import Decimal
 
 logger = logging.getLogger("LoanCentral")
 
@@ -8,41 +7,28 @@ COMMAND_TRIGGER = "$refunded"
 
 
 def process_refund_command(comment):
-    """Process $refunded command - lender cancels a loan."""
-    import os
-    from services import mark_refunded
+    """
+    $refunded [loan_id]
+    Lender cancels a loan by ID. Reverses stats and notifies mods.
+    """
+    from services import mark_refunded_by_id
 
-    # Must be a reply to the bot's confirmation comment
-    parent = comment.parent()
-    if not parent.author or parent.author.name.lower() != os.getenv("REDDIT_USERNAME", "").lower():
-        return
-
-    if "refunded" not in comment.body.lower():
-        return
-
-    # Extract loan details from the bot's confirmation comment
-    match = re.search(
-        r'u\/([^\s]+) has confirmed receiving (\d+(?:\.\d+)?)\s+([A-Z]{3}) from u\/([^\s\.]+)',
-        parent.body
-    )
+    match = re.search(r'\$refunded\s+(\w+)', comment.body, re.IGNORECASE)
     if not match:
         return
 
-    borrower = match.group(1).lower()
-    amount = Decimal(match.group(2))
-    currency = match.group(3)
-    lender = match.group(4).lower()
+    loan_id = match.group(1)
+    lender = comment.author.name.lower()
 
-    # Only the lender can refund
-    if comment.author.name.lower() != lender:
-        comment.reply("Only the lender can mark a loan as refunded.")
-        return
-
-    result, error = mark_refunded(lender, borrower, amount, currency)
+    result, error = mark_refunded_by_id(loan_id, lender)
 
     if error:
         comment.reply(f"Error: {error}")
         return
+
+    borrower = result["borrower"]
+    amount = result["amount"]
+    currency = result["currency"]
 
     # Notify moderators
     try:
@@ -53,15 +39,17 @@ def process_refund_command(comment):
             message=(
                 f"A loan has been marked as refunded:\n\n"
                 f"Lender: u/{lender}\nBorrower: u/{borrower}\n"
-                f"Amount: {amount:.2f} {currency}\n\n"
+                f"Amount: {amount:.2f} {currency}\n"
+                f"Loan ID: {loan_id}\n\n"
                 f"Link: https://www.reddit.com{comment.permalink}"
-            )
+            ),
         )
     except Exception as e:
         logger.error(f"Failed to notify mods of refund: {e}")
 
     comment.reply(
-        f"Loan marked as refunded. The loan from u/{lender} to u/{borrower} "
-        f"for {amount:.2f} {currency} has been removed from both users' statistics."
+        f"Loan `{loan_id}` marked as refunded.\n\n"
+        f"The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} "
+        f"has been removed from both users' statistics."
     )
-    logger.info(f"Loan refunded: {lender} -> {borrower} {amount} {currency}")
+    logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")
