@@ -11,7 +11,7 @@ COMMAND_TRIGGER = "$stats"
 def process_stats_command(comment):
     """Process $stats command"""
     # Import here to avoid circular imports
-    from utils import get_db_connection, reddit
+    from utils import reddit
     
     # Updated regex to make /u/ optional by using (?:/u/|u/) pattern
     m = re.search(r"\$stats\s+(?:/u/|u/)([^\s]+)", comment.body, re.IGNORECASE)

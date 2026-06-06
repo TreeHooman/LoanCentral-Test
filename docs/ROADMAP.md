@@ -26,7 +26,7 @@ Status: Done
 
 ### 2. Offline Test Harness
 
-Status: Started
+Status: Done
 
 - Add fake Reddit comment, author, submission, subreddit, and reply objects.
 - Allow command handlers to be tested without Reddit API calls.
@@ -41,7 +41,7 @@ Current coverage:
 
 ### 3. Test Database Path
 
-Status: Pending
+Status: Done
 
 - Use a dedicated test database only.
 - Add reset/setup helpers for test data.
@@ -49,7 +49,7 @@ Status: Pending
 
 ### 4. Command Regression Tests
 
-Status: Pending
+Status: Done
 
 Test these flows:
 
@@ -65,7 +65,7 @@ Test these flows:
 
 ### 5. Core Fixes
 
-Status: Pending
+Status: Done
 
 - Standardize which loan ID users should enter.
 - Fix loan lookup and authorization errors.
@@ -75,7 +75,7 @@ Status: Pending
 
 ### 6. Integrity Checks
 
-Status: Started
+Status: Done
 
 - Detect mismatched user totals.
 - Detect overpaid loans.
@@ -88,6 +88,16 @@ Current coverage:
 - Pure offline integrity checker can report invalid loan states and user aggregate mismatches.
 - Read-only database integrity runner added for dev/staging database checks.
 - Test database schema setup script added with test-database safety guard.
+
+### 6b. Service Layer
+
+Status: Done
+
+- All business logic extracted from command files into services.py.
+- Commands now only handle Reddit parsing and replies.
+- main.py generate_user_info uses get_user_profile() from services.
+- services.py functions: create_loan(), mark_repaid(), mark_unpaid(), mark_refunded(), get_user_profile().
+- Ready for future API/dashboard to call the same functions.
 
 ### 7. Test Reddit Staging
 

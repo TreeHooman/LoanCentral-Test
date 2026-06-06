@@ -414,3 +414,107 @@ def get_user_profile(username: str):
     finally:
         cur.close()
         conn.close()
+
+
+def get_loan_history(username: str, role: str = "both", limit: int = 50):
+    """
+    Fetch recent loans for a user.
+    role: "borrower", "lender", or "both"
+    Returns (list_of_loan_dicts, error_message)
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+
+    try:
+        cur = conn.cursor()
+        username = username.lower()
+
+        if role == "borrower":
+            where = "WHERE borrower = %s"
+            params = (username, limit)
+        elif role == "lender":
+            where = "WHERE lender = %s"
+            params = (username, limit)
+        else:  # both
+            where = "WHERE borrower = %s OR lender = %s"
+            params = (username, username, limit)
+
+        cur.execute(f'''
+            SELECT id, loan_id, lender, borrower, amount, amount_repaid,
+                   currency, status, date_created, original_thread
+            FROM loans {where}
+            ORDER BY date_created DESC
+            LIMIT %s
+        ''', params)
+
+        rows = cur.fetchall()
+        loans = [
+            {
+                "db_id": r[0],
+                "loan_id": r[1],
+                "lender": r[2],
+                "borrower": r[3],
+                "amount": Decimal(r[4]),
+                "amount_repaid": Decimal(r[5]),
+                "currency": r[6],
+                "status": r[7],
+                "date_created": r[8],
+                "original_thread": r[9],
+            }
+            for r in rows
+        ]
+        return loans, None
+
+    except Exception as e:
+        logger.error(f"get_loan_history error: {e}", exc_info=True)
+        return None, "Database error fetching loan history."
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_active_loans(username: str):
+    """
+    Fetch all outstanding (confirmed or partially_repaid) loans for a borrower.
+    Returns (list_of_loan_dicts, error_message)
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+
+    try:
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, loan_id, lender, borrower, amount, amount_repaid,
+                   currency, status, date_created, original_thread
+            FROM loans
+            WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
+            ORDER BY date_created ASC
+        ''', (username.lower(),))
+
+        rows = cur.fetchall()
+        loans = [
+            {
+                "db_id": r[0],
+                "loan_id": r[1],
+                "lender": r[2],
+                "borrower": r[3],
+                "amount": Decimal(r[4]),
+                "amount_repaid": Decimal(r[5]),
+                "remaining": Decimal(r[4]) - Decimal(r[5]),
+                "currency": r[6],
+                "status": r[7],
+                "date_created": r[8],
+                "original_thread": r[9],
+            }
+            for r in rows
+        ]
+        return loans, None
+
+    except Exception as e:
+        logger.error(f"get_active_loans error: {e}", exc_info=True)
+        return None, "Database error fetching active loans."
+    finally:
+        cur.close()
+        conn.close()

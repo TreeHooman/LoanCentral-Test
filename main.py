@@ -8,7 +8,7 @@ import importlib
 import inspect
 from pathlib import Path
 from dotenv import load_dotenv
-from utils import get_db_connection, reddit  # Add this import
+from utils import reddit
 
 # Load environment variables
 load_dotenv()
@@ -83,6 +83,7 @@ def load_schema():
 # Initialize database tables if they don't exist
 def init_database():
     """Initialize database using schema.sql file"""
+    from utils import get_db_connection
     conn = get_db_connection()
     if not conn:
         return False
@@ -277,71 +278,33 @@ def handle_new_post(post):
 
 # Generate loan history information for a user
 def generate_user_info(username):
-    """Generate loan history information for a user"""
-    conn = get_db_connection()
-    if not conn:
+    """Generate loan history information for a user."""
+    from services import get_user_profile
+
+    profile, error = get_user_profile(username)
+    if error or not profile:
         return f"Could not retrieve information for u/{username}"
-    
-    try:
-        cur = conn.cursor()
-        
-        # Get user statistics
-        cur.execute('''
-            SELECT 
-                COALESCE(loans_as_borrower, 0) as loans_as_borrower,
-                COALESCE(loans_as_lender, 0) as loans_as_lender,
-                COALESCE(amount_borrowed, 0) as amount_borrowed,
-                COALESCE(amount_lent, 0) as amount_lent,
-                COALESCE(amount_repaid, 0) as amount_repaid,
-                COALESCE(unpaid_loans, 0) as unpaid_loans,
-                COALESCE(unpaid_amount, 0) as unpaid_amount
-            FROM users
-            WHERE username = %s
-        ''', (username.lower(),))
-        
-        user_stats = cur.fetchone()
-        
-        # Format the response
-        response = [f"Here is my information on u/{username}:"]
-        
-        if not user_stats or (user_stats[0] == 0 and user_stats[1] == 0):
-            response.append(f"u/{username} has no loan history.")
-            return "\n\n".join(response)
-        
-        loans_as_borrower, loans_as_lender, amount_borrowed, amount_lent, amount_repaid, unpaid_loans, unpaid_amount = user_stats
-        
-        response.append(f"u/{username} has {loans_as_borrower} loans paid as a borrower, for a total of ${amount_repaid:.2f}")
-        response.append(f"u/{username} has {loans_as_lender} loans paid as a lender, for a total of ${amount_lent:.2f}")
-        
-        if unpaid_loans > 0:
-            response.append(f"u/{username} has {unpaid_loans} loans currently marked unpaid, for a total of ${unpaid_amount:.2f}")
-        else:
-            response.append(f"u/{username} has not received any loans which are currently marked unpaid")
-        
-        # Check for active loans as borrower
-        cur.execute('''
-            SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
-            FROM loans
-            WHERE borrower = %s AND status = 'confirmed'
-        ''', (username.lower(),))
-        
-        active_loans = cur.fetchone()
-        active_count, active_amount = active_loans if active_loans else (0, 0)
-        
-        if active_count > 0:
-            response.append(f"u/{username} has {active_count} outstanding loans as a borrower, for a total of ${active_amount:.2f}")
-        else:
-            response.append(f"u/{username} does not have any outstanding loans as a borrower")
-        
+
+    response = [f"Here is my information on u/{username}:"]
+
+    if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
+        response.append(f"u/{username} has no loan history.")
         return "\n\n".join(response)
-        
-    except Exception as e:
-        logger.error(f"Error generating user info: {e}")
-        logger.error(traceback.format_exc())
-        return f"Error retrieving loan information for u/{username}"
-    finally:
-        cur.close()
-        conn.close()
+
+    response.append(f"u/{username} has {profile['loans_as_borrower']} loans paid as a borrower, for a total of ${profile['amount_repaid']:.2f}")
+    response.append(f"u/{username} has {profile['loans_as_lender']} loans paid as a lender, for a total of ${profile['amount_lent']:.2f}")
+
+    if profile["unpaid_loans"] > 0:
+        response.append(f"u/{username} has {profile['unpaid_loans']} loans currently marked unpaid, for a total of ${profile['unpaid_amount']:.2f}")
+    else:
+        response.append(f"u/{username} has not received any loans which are currently marked unpaid")
+
+    if profile["active_loans"] > 0:
+        response.append(f"u/{username} has {profile['active_loans']} outstanding loans as a borrower, for a total of ${profile['active_amount']:.2f}")
+    else:
+        response.append(f"u/{username} does not have any outstanding loans as a borrower")
+
+    return "\n\n".join(response)
 
 # Function to keep the bot alive
 def keep_alive():

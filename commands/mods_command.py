@@ -10,7 +10,7 @@ COMMAND_TRIGGER = "$mods"
 def process_mods_command(comment):
     """Process the $mods command to notify moderators"""
     # Import here to avoid circular imports
-    from utils import get_db_connection, reddit
+    from utils import reddit
     
     if not "$mods" in comment.body.lower():
         return

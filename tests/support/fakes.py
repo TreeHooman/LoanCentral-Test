@@ -238,7 +238,8 @@ class FakeCursor:
         normalized = " ".join(query.split()).lower()
         params = params or ()
 
-        if normalized.startswith("select id, loan_id, lender, borrower"):
+        if normalized.startswith("select id, loan_id, lender, borrower") and "id::text = %s" in normalized:
+            # Single-loan lookup (mark_repaid): WHERE id::text = %s OR loan_id = %s
             loan = self.fake_db.find_loan(params[0])
             self.last_result = None if not loan else (
                 loan["id"],
@@ -450,10 +451,80 @@ class FakeCursor:
             self.last_result = (count, total)
             return
 
+        # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
+        if normalized.startswith("select id, loan_id, lender, borrower, amount, amount_repaid") and "id::text" not in normalized and "limit %s" in normalized:
+            username = params[0]
+            if "borrower = %s or lender = %s" in normalized:
+                # "both" role: params are (username, username, limit)
+                username2 = params[1]
+                limit = params[2]
+                matches = [
+                    loan for loan in self.fake_db.loans
+                    if loan["borrower"] == username or loan["lender"] == username2
+                ]
+            elif "borrower = %s" in normalized:
+                limit = params[1]
+                matches = [loan for loan in self.fake_db.loans if loan["borrower"] == username]
+            else:
+                limit = params[1]
+                matches = [loan for loan in self.fake_db.loans if loan["lender"] == username]
+
+            matches = sorted(matches, key=lambda l: l.get("date_created", 0), reverse=True)[:limit]
+            self.last_result = [
+                (
+                    loan["id"],
+                    loan["loan_id"],
+                    loan["lender"],
+                    loan["borrower"],
+                    loan["amount"],
+                    loan["amount_repaid"],
+                    loan["currency"],
+                    loan["status"],
+                    loan.get("date_created"),
+                    loan.get("original_thread", ""),
+                )
+                for loan in matches
+            ]
+            return
+
+        # Active loans query (get_active_loans): fetchall path
+        if "status in ('confirmed', 'partially_repaid')" in normalized:
+            username = params[0]
+            matches = [
+                loan for loan in self.fake_db.loans
+                if loan["borrower"] == username and loan["status"] in ("confirmed", "partially_repaid")
+            ]
+            matches = sorted(matches, key=lambda l: l.get("date_created", 0))
+            self.last_result = [
+                (
+                    loan["id"],
+                    loan["loan_id"],
+                    loan["lender"],
+                    loan["borrower"],
+                    loan["amount"],
+                    loan["amount_repaid"],
+                    loan["currency"],
+                    loan["status"],
+                    loan.get("date_created"),
+                    loan.get("original_thread", ""),
+                )
+                for loan in matches
+            ]
+            return
+
         raise AssertionError(f"FakeCursor does not support query: {query}")
 
     def fetchone(self):
-        return self.last_result
+        result = self.last_result
+        if isinstance(result, list):
+            return result[0] if result else None
+        return result
+
+    def fetchall(self):
+        result = self.last_result
+        if isinstance(result, list):
+            return result
+        return []
 
     def close(self):
         self.closed = True

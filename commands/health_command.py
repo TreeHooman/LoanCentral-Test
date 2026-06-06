@@ -1,121 +1,77 @@
 import re
 import logging
 from decimal import Decimal
-import traceback
 
 logger = logging.getLogger("LoanCentral")
 
-# Command trigger - this will be used by the CommandManager
 COMMAND_TRIGGER = "$health"
 
+
+def _progress_bar(ratio, length=20):
+    if isinstance(ratio, Decimal):
+        ratio = float(ratio)
+    filled = int(ratio * length)
+    return "█" * filled + "░" * (length - filled)
+
+
+def _health_label(score):
+    if score >= 90:
+        return "Excellent", "This user has an exceptional repayment history."
+    elif score >= 75:
+        return "Good", "This user generally repays their loans."
+    elif score >= 50:
+        return "Fair", "This user has a mixed repayment history."
+    elif score >= 25:
+        return "Poor", "This user has missed several repayments."
+    else:
+        return "Very Poor", "This user rarely completes loan repayments."
+
+
 def process_health_command(comment):
-    """Process $health command"""
-    # Import here to avoid circular imports
-    from utils import get_db_connection, reddit
-    
-    # Check for $health command format
+    """Process $health command - shows a user's repayment health score."""
+    from services import get_user_profile
+
     m = re.search(r"\$health\s+(?:/u/|u/)([^\s]+)", comment.body, re.IGNORECASE)
     if not m:
         return
-    
+
     username = m.group(1).lower()
-    conn = get_db_connection()
-    if not conn:
+    profile, error = get_user_profile(username)
+
+    if error:
+        comment.reply(f"Error generating health report for u/{username}.")
         return
-    
-    try:
-        cur = conn.cursor()
-        
-        # Get user loan statistics
-        cur.execute('''
-            SELECT 
-                COALESCE(loans_as_borrower, 0) as loans_as_borrower,
-                COALESCE(amount_borrowed, 0) as amount_borrowed,
-                COALESCE(amount_repaid, 0) as amount_repaid,
-                COALESCE(unpaid_loans, 0) as unpaid_loans
-            FROM users
-            WHERE username = %s
-        ''', (username,))
-        
-        user_stats = cur.fetchone()
-        if not user_stats or user_stats[0] == 0:
-            comment.reply(f"# Health Report for u/{username}\n\nThis user has no loan history as a borrower.")
-            logger.info(f"Health report generated for user {username} (no history)")
-            return
-        
-        total_loans, total_borrowed, total_repaid, unpaid_loans = user_stats
-        paid_loans = total_loans - unpaid_loans
-        
-        # Calculate health metrics - make sure these are Decimal objects for consistency
-        # Convert to Decimal before division to avoid float precision issues
-        loan_ratio = Decimal(paid_loans) / Decimal(total_loans) if total_loans > 0 else Decimal('0')
-        payment_ratio = Decimal(total_repaid) / Decimal(total_borrowed) if total_borrowed > 0 else Decimal('0')
-        
-        # Now both are Decimal objects, so multiplication works properly
-        health_score = int((loan_ratio * Decimal('0.7') + payment_ratio * Decimal('0.3')) * 100)
-        
-        # Generate improved progress bars with shell outline
-        def generate_progress_bar(value, max_value=1.0, length=20):
-            # Convert Decimal to float for this calculation
-            if isinstance(value, Decimal):
-                value = float(value)
-            filled = int(value * length)
-            empty = length - filled
-            
-            # Return a bar with both filled and empty portions visible
-            # Using "█" for filled portions and "░" for empty portions
-            return "█" * filled + "░" * empty
-            
-        loan_bar = generate_progress_bar(loan_ratio)
-        payment_bar = generate_progress_bar(payment_ratio)
-        
-        # Determine health status
-        if health_score >= 90:
-            status = "Excellent"
-            description = "This user has an exceptional repayment history."
-        elif health_score >= 75:
-            status = "Good"
-            description = "This user generally repays their loans."
-        elif health_score >= 50:
-            status = "Fair"
-            description = "This user has a mixed repayment history."
-        elif health_score >= 25:
-            status = "Poor"
-            description = "This user has missed several repayments."
-        else:
-            status = "Very Poor"
-            description = "This user rarely completes loan repayments."
-        
-        # Construct response
-        response = f"""
-# Health Report for u/{username}
 
-## Overall Health: {status} ({health_score}/100)
-{description}
+    total_loans = profile["loans_as_borrower"]
+    total_borrowed = profile["amount_borrowed"]
+    total_repaid = profile["amount_repaid"]
+    unpaid_loans = profile["unpaid_loans"]
 
-## Loan Completion
-{loan_bar} {paid_loans}/{total_loans} loans completed ({int(loan_ratio*100)}%)
+    if total_loans == 0:
+        comment.reply(f"# Health Report for u/{username}\n\nThis user has no loan history as a borrower.")
+        logger.info(f"Health report: {username} has no history")
+        return
 
-## Payment Completion
-{payment_bar} ${total_repaid:.2f}/${total_borrowed:.2f} repaid ({int(payment_ratio*100)}%)
+    paid_loans = total_loans - unpaid_loans
+    loan_ratio = Decimal(paid_loans) / Decimal(total_loans)
+    payment_ratio = Decimal(total_repaid) / Decimal(total_borrowed) if total_borrowed > 0 else Decimal("0")
+    health_score = int((loan_ratio * Decimal("0.7") + payment_ratio * Decimal("0.3")) * 100)
+    status, description = _health_label(health_score)
 
-## Summary
-User has borrowed ${total_borrowed:.2f} across {total_loans} loans.
-User has repaid ${total_repaid:.2f} ({int(payment_ratio*100)}% of borrowed amount).
-User has {unpaid_loans} unpaid loans remaining.
+    response = (
+        f"# Health Report for u/{username}\n\n"
+        f"## Overall Health: {status} ({health_score}/100)\n"
+        f"{description}\n\n"
+        f"## Loan Completion\n"
+        f"{_progress_bar(loan_ratio)} {paid_loans}/{total_loans} loans completed ({int(loan_ratio*100)}%)\n\n"
+        f"## Payment Completion\n"
+        f"{_progress_bar(payment_ratio)} ${total_repaid:.2f}/${total_borrowed:.2f} repaid ({int(payment_ratio*100)}%)\n\n"
+        f"## Summary\n"
+        f"User has borrowed ${total_borrowed:.2f} across {total_loans} loans.\n"
+        f"User has repaid ${total_repaid:.2f} ({int(payment_ratio*100)}% of borrowed amount).\n"
+        f"User has {unpaid_loans} unpaid loans remaining.\n\n"
+        f"*This health report is generated automatically based on loan history and may not reflect all circumstances.*"
+    )
 
-*This health report is generated automatically based on loan history and may not reflect all circumstances.*
-"""
-        comment.reply(response)
-        logger.info(f"Health report generated for user {username} - Score: {health_score}/100 ({status})")
-        
-    except Exception as e:
-        logger.error(f"Error generating health report: {e}")
-        logger.error(traceback.format_exc())
-        try:
-            comment.reply(f"Error generating health report for u/{username}.")
-        except:
-            pass
-    finally:
-        cur.close()
-        conn.close()
+    comment.reply(response)
+    logger.info(f"Health report for {username}: {health_score}/100 ({status})")
