@@ -35,6 +35,7 @@ Status: Started
 Current coverage:
 
 - `$paid_with_id` lookup, authorization, currency mismatch, partial payment, and full payment.
+- `$confirm` loan creation, requester authorization, duplicate prevention, and lender format parsing.
 
 ### 3. Test Database Path
 

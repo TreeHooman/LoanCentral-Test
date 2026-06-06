@@ -35,3 +35,9 @@ The first tests cover `$paid_with_id`:
 - missing loan gets a clear not-found error
 - currency mismatch does not update the loan
 
+The `$confirm` tests cover:
+
+- original requester can confirm a loan
+- `/u/name` and `u/name` lender formats work
+- non-original requester cannot confirm
+- duplicate confirmed lender/borrower pair is blocked

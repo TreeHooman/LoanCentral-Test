@@ -70,6 +70,7 @@ class FakeDb:
     def __init__(self, loans=None, users=None):
         self.loans = deepcopy(loans or [])
         self.users = deepcopy(users or {})
+        self.next_id = max([loan["id"] for loan in self.loans], default=0) + 1
 
     def connection(self):
         return FakeConnection(self)
@@ -97,6 +98,37 @@ class FakeDb:
             loan["currency"],
             loan["original_thread"],
         )
+
+    def find_confirmed_loan(self, lender, borrower):
+        matches = [
+            loan
+            for loan in self.loans
+            if loan["lender"] == lender
+            and loan["borrower"] == borrower
+            and loan["status"] == "confirmed"
+        ]
+        if not matches:
+            return None
+        return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
+
+    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status):
+        db_id = self.next_id
+        self.next_id += 1
+        self.loans.append(
+            {
+                "id": db_id,
+                "loan_id": loan_id,
+                "lender": lender,
+                "borrower": borrower,
+                "amount": amount,
+                "amount_repaid": Decimal("0"),
+                "currency": currency,
+                "date_created": date_created,
+                "original_thread": original_thread,
+                "status": status,
+            }
+        )
+        return db_id
 
 
 class FakeConnection:
@@ -141,6 +173,32 @@ class FakeCursor:
                 loan["currency"],
                 loan["status"],
             )
+            return
+
+        if normalized.startswith("select id from loans where lender"):
+            lender, borrower = params
+            loan = self.fake_db.find_confirmed_loan(lender, borrower)
+            self.last_result = None if not loan else (loan["id"],)
+            return
+
+        if normalized.startswith("insert into loans"):
+            self.last_result = (self.fake_db.insert_loan(*params),)
+            return
+
+        if normalized.startswith("insert into users") and "loans_as_lender" in normalized:
+            username, amount, _created, update_amount, _updated = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["loans_as_lender"] = user.get("loans_as_lender", 0) + 1
+            user["amount_lent"] = user.get("amount_lent", Decimal("0")) + update_amount
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into users") and "loans_as_borrower" in normalized:
+            username, amount, _created, update_amount, _updated = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["loans_as_borrower"] = user.get("loans_as_borrower", 0) + 1
+            user["amount_borrowed"] = user.get("amount_borrowed", Decimal("0")) + update_amount
+            self.last_result = None
             return
 
         if normalized.startswith("select lender, borrower, amount, amount_repaid"):
@@ -208,4 +266,3 @@ def fake_utils_module(fake_db):
         reddit=FakeReddit(),
         get_db_connection=lambda: fake_db.connection(),
     )
-
