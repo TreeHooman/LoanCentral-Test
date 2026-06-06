@@ -416,12 +416,38 @@ class FakeCursor:
         if normalized.startswith("select coalesce(loans_as_borrower"):
             username = params[0]
             user = self.fake_db.users.get(username)
-            self.last_result = None if not user else (
-                user.get("loans_as_borrower", 0),
-                user.get("amount_borrowed", Decimal("0")),
-                user.get("amount_repaid", Decimal("0")),
-                user.get("unpaid_loans", 0),
-            )
+            # Full profile query (7 fields) used by get_user_profile in services.py
+            if user is None:
+                self.last_result = None
+            elif "amount_lent" in normalized:
+                self.last_result = (
+                    user.get("loans_as_borrower", 0),
+                    user.get("loans_as_lender", 0),
+                    user.get("amount_borrowed", Decimal("0")),
+                    user.get("amount_lent", Decimal("0")),
+                    user.get("amount_repaid", Decimal("0")),
+                    user.get("unpaid_loans", 0),
+                    user.get("unpaid_amount", Decimal("0")),
+                )
+            else:
+                # 4-field health query (legacy)
+                self.last_result = (
+                    user.get("loans_as_borrower", 0),
+                    user.get("amount_borrowed", Decimal("0")),
+                    user.get("amount_repaid", Decimal("0")),
+                    user.get("unpaid_loans", 0),
+                )
+            return
+
+        if normalized.startswith("select count(*), coalesce(sum(amount - amount_repaid)"):
+            borrower = params[0]
+            active = [
+                loan for loan in self.fake_db.loans
+                if loan["borrower"] == borrower and loan["status"] == "confirmed"
+            ]
+            count = len(active)
+            total = sum(loan["amount"] - loan["amount_repaid"] for loan in active)
+            self.last_result = (count, total)
             return
 
         raise AssertionError(f"FakeCursor does not support query: {query}")
