@@ -47,9 +47,12 @@ def process_refund_command(comment):
     except Exception as e:
         logger.error(f"Failed to notify mods of refund: {e}")
 
+    from config import DASHBOARD_URL
+
     comment.reply(
         f"Loan `{loan_id}` marked as refunded.\n\n"
         f"The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} "
-        f"has been removed from both users' statistics."
+        f"has been removed from both users' statistics.\n\n"
+        f"**[View updated stats on LoanCentral Dashboard]({DASHBOARD_URL})**"
     )
     logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")

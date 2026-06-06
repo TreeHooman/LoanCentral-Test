@@ -1,21 +1,36 @@
-STATUS: Dashboard fully built, test data seeded, server runs via run_dev.py
-LAST THING DONE: Login page confirmed working in browser at http://127.0.0.1:5000
+STATUS: All bot commands link to dashboard. 43/43 tests passing. Dashboards built and ready to test.
+LAST THING DONE: Added dashboard links to all 5 bot reply messages. Added search bar to lender
+                 dashboard. Deleted legacy dashboard.html. Wired through config.py (DASHBOARD_URL).
 
 NEXT STEPS (in order):
-1. Test all 3 dashboards - open browser, go to /auth/dev-login, try each username:
-   - testmod    → mod dashboard (all loans, role management)
-   - testlender → lender dashboard (their loans, stats, action buttons)
-   - testborrower → borrower dashboard (what they owe, health score)
-2. Fix anything that looks broken or ugly in the UI
-3. Add dashboard link to every bot reply (funnel users to the site)
-4. Wire up real Reddit OAuth credentials from the test app
+1. Test all 3 dashboards - run server locally, go to /auth/dev-login, try each username:
+   - testmod      → mod dashboard (all loans, status tabs, search, role management tab)
+   - testlender   → lender dashboard (their loans, stats, search bar, action buttons)
+   - testborrower → borrower dashboard (what they owe, health score, full history)
+2. Fix anything broken or ugly in the UI
+3. Wire up real Reddit OAuth credentials:
+   a. Go to https://www.reddit.com/prefs/apps → Create App → type: "web app"
+   b. Set redirect URI: http://localhost:5000/auth/callback (or your deployed URL)
+   c. Copy into .env:
+      DASHBOARD_CLIENT_ID=<your_client_id>
+      DASHBOARD_CLIENT_SECRET=<your_client_secret>
+      DASHBOARD_REDIRECT_URI=http://localhost:5000/auth/callback
+      DASHBOARD_URL=http://localhost:5000   ← bot replies use this too
 
 TO RUN THE SERVER:
-1. Open pgAdmin (keep it open)
+1. Open pgAdmin (keep it open so DB is available)
 2. Open PowerShell in C:\LB drive
 3. Run: python run_dev.py
 4. Go to: http://127.0.0.1:5000
 
 GITHUB: https://github.com/TreeHooman/LoanCentral-Test
-BRANCH: upgrade/tested-bot-core
+BRANCH: claude/current-status-PAl0w
 TESTS: 43/43 passing (run: python -m unittest discover -s tests -q)
+
+WHAT BOT REPLIES NOW INCLUDE:
+- $help         → dashboard link in body + footer line
+- $loan         → "View on LoanCentral Dashboard" after lender commands
+- $paid_with_id → "View full loan history" link
+- $unpaid       → "View loan details" link
+- $refunded     → "View updated stats" link
+URL comes from DASHBOARD_URL env var (defaults to http://localhost:5000)

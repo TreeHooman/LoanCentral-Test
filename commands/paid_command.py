@@ -37,6 +37,8 @@ def process_paid_command(comment):
         comment.reply(f"Error: {error}")
         return
 
+    from config import DASHBOARD_URL
+
     remaining = result["remaining"]
     response = (
         f"u/{result['borrower']} has now repaid u/{result['lender']} {amount_paid:.2f} {result['currency']}.\n\n"
@@ -44,7 +46,8 @@ def process_paid_command(comment):
         f"|:--:|:--:|:--:|:--:|:--:|\n"
         f"|{result['lender']}|{result['borrower']}|{result['loan_amount']:.2f} {result['currency']}"
         f"|{result['new_repaid']:.2f} {result['currency']}|{remaining:.2f} {result['currency']}|\n\n"
-        f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}"
+        f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}\n\n"
+        f"**[View full loan history on LoanCentral Dashboard]({DASHBOARD_URL})**"
     )
 
     comment.reply(response)

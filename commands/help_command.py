@@ -7,13 +7,15 @@ COMMAND_TRIGGER = "$help"
 
 def process_help_command(comment):
     """Process $help command — lists all bot commands."""
+    from config import DASHBOARD_URL
+
     if "$help" not in comment.body.lower():
         return
 
-    help_text = """
+    help_text = f"""
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the dashboard.
+The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[LoanCentral Dashboard]({DASHBOARD_URL})**.
 
 ---
 
@@ -46,7 +48,9 @@ Example: `$refunded 123`
 
 ---
 
-**Need help?** Contact the moderators or visit the dashboard.
+**View your loan history, health score, and stats:** {DASHBOARD_URL}
+
+**Need help?** Contact the moderators.
 """
 
     comment.reply(help_text)

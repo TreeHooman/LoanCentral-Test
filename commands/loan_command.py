@@ -60,6 +60,8 @@ def process_loan_command(comment):
         comment.reply(f"Error: {error}")
         return
 
+    from config import DASHBOARD_URL
+
     comment.reply(
         f"Loan recorded!\n\n"
         f"|Loan ID|Lender|Borrower|Amount|Currency|\n"
@@ -70,6 +72,7 @@ def process_loan_command(comment):
         f"**Lender commands:**\n"
         f"- Record repayment: `$paid_with_id {db_id} [amount] {currency}`\n"
         f"- Mark unpaid: `$unpaid {db_id}`\n"
-        f"- Cancel loan: `$refunded {db_id}`"
+        f"- Cancel loan: `$refunded {db_id}`\n\n"
+        f"**[View on LoanCentral Dashboard]({DASHBOARD_URL})** — loan history, health scores, stats."
     )
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")

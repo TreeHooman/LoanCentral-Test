@@ -29,6 +29,8 @@ def process_unpaid_command(comment):
     borrower = result["borrower"]
     current_subreddit = comment.subreddit.display_name
 
+    from config import DASHBOARD_URL
+
     response = (
         f"u/{lender} has marked their loan to u/{borrower} as unpaid.\n\n"
         f"|Lender|Borrower|Amount|Amount Repaid|\n"
@@ -37,6 +39,7 @@ def process_unpaid_command(comment):
         f"|{result['amount_repaid']:.2f} {result['currency']}|\n\n"
         f"[Submit unpaid post](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true"
         f"&title=UNPAID:%20/u/{borrower}%20{result['loan_amount']}%20{result['currency']})\n\n"
+        f"**[View loan details on LoanCentral Dashboard]({DASHBOARD_URL})**\n\n"
         f"If this is in error, please contact the moderators."
     )
 

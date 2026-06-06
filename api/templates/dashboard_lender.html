@@ -29,6 +29,9 @@
     <button class="tab" data-status="repaid">Repaid</button>
     <button class="tab" data-status="refunded">Refunded</button>
   </div>
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Search by borrower..." />
+  </div>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
 </div>
 
@@ -44,6 +47,7 @@
 <script>
   const ME = '{{ username }}';
   let currentStatus = '';
+  let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
@@ -54,6 +58,10 @@
         currentStatus = tab.dataset.status;
         loadLoans();
       });
+    });
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadLoans, 400);
     });
   });
 
@@ -73,8 +81,10 @@
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '↻ Loading...';
+    const search = document.getElementById('searchInput').value.trim();
     let url = `/api/loans?lender=${ME}&limit=200`;
     if (currentStatus) url += `&status=${currentStatus}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
