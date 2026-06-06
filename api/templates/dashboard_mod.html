@@ -28,11 +28,27 @@
     </div>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
   </div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Role requests tab -->
+<div id="tab-requests" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Pending Lender Role Requests</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Requested</th><th>Reason</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody id="requestsBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -68,7 +84,7 @@
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans();
+    loadStats(); loadLoans(); loadRequestsBadge();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -82,6 +98,14 @@
       searchTimer = setTimeout(loadLoans, 400);
     });
   });
+
+  async function loadRequestsBadge() {
+    try {
+      const reqs = await apiFetch('/api/role-requests');
+      const badge = document.getElementById('requestsBadge');
+      if (reqs.length) { badge.textContent = reqs.length; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
 
   async function loadStats() {
     try {
@@ -117,7 +141,38 @@
   function showTab(name) {
     document.getElementById('tab-loans').style.display = name === 'loans' ? '' : 'none';
     document.getElementById('tab-roles').style.display = name === 'roles' ? '' : 'none';
+    document.getElementById('tab-requests').style.display = name === 'requests' ? '' : 'none';
     if (name === 'roles') loadRoles();
+    if (name === 'requests') loadRequests();
+  }
+
+  async function loadRequests() {
+    try {
+      const reqs = await apiFetch('/api/role-requests');
+      const badge = document.getElementById('requestsBadge');
+      if (reqs.length) { badge.textContent = reqs.length; badge.style.display = 'inline'; }
+      else { badge.style.display = 'none'; }
+      const tbody = document.getElementById('requestsBody');
+      tbody.innerHTML = reqs.length ? reqs.map(r => `
+        <tr>
+          <td class="username">u/${r.username}</td>
+          <td><span class="badge" style="background:rgba(91,110,245,0.2);color:var(--accent-h)">${r.requested_role}</span></td>
+          <td style="color:var(--text2);max-width:300px">${r.reason || '<span style="color:var(--muted)">No reason given</span>'}</td>
+          <td class="date-cell">${r.created_at ? r.created_at.split('T')[0] : '—'}</td>
+          <td><div class="actions">
+            <button class="btn-action btn-paid" onclick="resolveRequest('${r.username}','approve')">Approve</button>
+            <button class="btn-action btn-unpaid" onclick="resolveRequest('${r.username}','deny')">Deny</button>
+          </div></td>
+        </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No pending requests.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function resolveRequest(username, action) {
+    try {
+      await apiFetch(`/api/role-requests/${username}`, { method: 'POST', body: JSON.stringify({ action }) });
+      toast(`u/${username} ${action === 'approve' ? 'approved as lender' : 'denied'}.`, 'success');
+      loadRequests();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function loadRoles() {

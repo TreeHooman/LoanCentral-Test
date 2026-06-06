@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
 
+-- Role requests table (borrowers requesting lender access)
+CREATE TABLE IF NOT EXISTS role_requests (
+    username TEXT PRIMARY KEY,
+    requested_role TEXT NOT NULL DEFAULT 'lender',
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 'approved', 'denied'
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_requests_status ON role_requests(status);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

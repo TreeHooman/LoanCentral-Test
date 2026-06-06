@@ -509,6 +509,161 @@ def get_lender_stats(lender):
     return _json(stats)
 
 
+# ---------------------------------------------------------------------------
+# Public profile page
+# ---------------------------------------------------------------------------
+
+@app.route("/u/<username>")
+@login_required
+def user_profile(username):
+    from services import get_user_profile, get_loan_history, calculate_health_score
+    username = username.lower()
+    profile, error = get_user_profile(username)
+    if error or profile is None:
+        flash(f"Could not load profile for u/{username}.", "error")
+        return redirect(url_for("home"))
+    score, label = calculate_health_score(profile)
+    loans, _ = get_loan_history(username, role="both", limit=50)
+    return render_template(
+        "profile.html",
+        target=username,
+        profile=profile,
+        score=score,
+        score_label=label,
+        loans=loans or [],
+        viewer=session["username"],
+        role=session["role"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# CSV export (mod only)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loans/export.csv")
+@require_mod_api
+def export_loans_csv():
+    import csv
+    import io
+    loans, error = _get_all_loans_from_db(limit=10000)
+    if error:
+        return _json({"error": error}, 500)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["loan_id", "lender", "borrower", "amount", "amount_repaid",
+                     "remaining", "currency", "status", "date_created", "original_thread"])
+    for loan in loans:
+        writer.writerow([
+            loan["loan_id"], loan["lender"], loan["borrower"],
+            float(loan["amount"]), float(loan["amount_repaid"]),
+            float(loan["remaining"]), loan["currency"], loan["status"],
+            loan["date_created"].isoformat() if loan["date_created"] else "",
+            loan["original_thread"] or "",
+        ])
+    output = buf.getvalue()
+    return app.response_class(
+        response=output,
+        status=200,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=loancentral_export.csv"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Role requests
+# ---------------------------------------------------------------------------
+
+@app.route("/api/role-requests", methods=["POST"])
+@login_required
+def submit_role_request():
+    from services import _get_db
+    username = session["username"]
+    data = request.get_json() or {}
+    requested_role = data.get("role", "lender").strip().lower()
+    reason = (data.get("reason") or "").strip()[:500]
+    if requested_role not in ("lender",):
+        return _json({"error": "Only lender role requests are supported."}, 400)
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed."}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO role_requests (username, requested_role, reason, status, created_at)
+            VALUES (%s, %s, %s, 'pending', NOW())
+            ON CONFLICT (username) DO UPDATE
+              SET requested_role = %s, reason = %s, status = 'pending', created_at = NOW()
+        """, (username, requested_role, reason, requested_role, reason))
+        conn.commit()
+        return _json({"ok": True, "message": "Request submitted. A mod will review it shortly."})
+    except Exception as e:
+        conn.rollback()
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/role-requests", methods=["GET"])
+@require_mod_api
+def list_role_requests():
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed."}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT username, requested_role, reason, status, created_at
+            FROM role_requests WHERE status = 'pending'
+            ORDER BY created_at ASC
+        """)
+        rows = cur.fetchall()
+        return _json([
+            {"username": r[0], "requested_role": r[1], "reason": r[2],
+             "status": r[3], "created_at": r[4]}
+            for r in rows
+        ])
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/role-requests/<username>", methods=["POST"])
+@require_mod_api
+def resolve_role_request(username):
+    from services import _get_db, set_user_role
+    data = request.get_json() or {}
+    action = data.get("action", "").lower()
+    if action not in ("approve", "deny"):
+        return _json({"error": "action must be 'approve' or 'deny'"}, 400)
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed."}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT requested_role FROM role_requests WHERE username = %s AND status = 'pending'",
+                    (username,))
+        row = cur.fetchone()
+        if not row:
+            return _json({"error": "No pending request found."}, 404)
+        requested_role = row[0]
+        cur.execute("UPDATE role_requests SET status = %s WHERE username = %s",
+                    (action + "d", username))
+        conn.commit()
+        if action == "approve":
+            set_user_role(username, requested_role)
+        return _json({"ok": True, "action": action, "username": username})
+    except Exception as e:
+        conn.rollback()
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
 if __name__ == "__main__":
     port  = int(os.getenv("API_PORT", 5000))
     debug = IS_DEV

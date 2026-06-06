@@ -7,6 +7,22 @@
     <div class="section-title" style="font-size:20px">My Loan Overview</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
+  <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="openRoleRequestModal()">Request Lender Access</button>
+</div>
+
+<!-- Role request modal -->
+<div class="modal-overlay" id="roleRequestModal">
+  <div class="modal">
+    <h3>Request Lender Access</h3>
+    <div class="modal-error" id="roleReqError"></div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">Tell the mods why you'd like Verified Lender status. Include any relevant history.</p>
+    <label>Reason (optional)</label>
+    <textarea id="roleReqReason" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="e.g. I've been lending on this sub for 6 months..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('roleRequestModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitRoleRequest()">Submit Request</button>
+    </div>
+  </div>
 </div>
 
 <!-- Stats -->
@@ -141,6 +157,22 @@
     } catch(e) {
       document.getElementById('historyBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
+  }
+
+  function openRoleRequestModal() {
+    document.getElementById('roleReqError').style.display = 'none';
+    document.getElementById('roleReqReason').value = '';
+    document.getElementById('roleRequestModal').classList.add('open');
+  }
+
+  async function submitRoleRequest() {
+    const reason = document.getElementById('roleReqReason').value.trim();
+    const errEl = document.getElementById('roleReqError');
+    try {
+      const data = await apiFetch('/api/role-requests', { method: 'POST', body: JSON.stringify({ role: 'lender', reason }) });
+      closeModal('roleRequestModal');
+      toast(data.message || 'Request submitted!', 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }
 
   function calcHealth(p) {

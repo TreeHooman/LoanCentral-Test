@@ -44,4 +44,26 @@ def process_unpaid_command(comment):
     )
 
     comment.reply(response)
+
+    # DM the borrower so they know immediately
+    try:
+        from utils import reddit
+        reddit.redditor(borrower).message(
+            subject=f"Your loan from u/{lender} has been marked unpaid",
+            message=(
+                f"Hi u/{borrower},\n\n"
+                f"u/{lender} has marked their loan to you as **unpaid**.\n\n"
+                f"|Amount|Repaid|Remaining|\n"
+                f"|:--:|:--:|:--:|\n"
+                f"|{result['loan_amount']:.2f} {result['currency']}"
+                f"|{result['amount_repaid']:.2f} {result['currency']}"
+                f"|{result['loan_amount'] - result['amount_repaid']:.2f} {result['currency']}|\n\n"
+                f"If this is incorrect, please contact the moderators or reply to the original thread.\n\n"
+                f"[View your loans on LoanCentral Dashboard]({DASHBOARD_URL})"
+            ),
+        )
+        logger.info(f"DM sent to u/{borrower} for unpaid loan {loan_id}")
+    except Exception as e:
+        logger.error(f"Failed to DM u/{borrower} for unpaid loan {loan_id}: {e}")
+
     logger.info(f"Loan {loan_id} marked unpaid by {lender}")

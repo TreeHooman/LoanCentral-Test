@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: loancentral-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api.app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_CLIENT_ID
+        sync: false
+      - key: DASHBOARD_CLIENT_SECRET
+        sync: false
+      - key: DASHBOARD_REDIRECT_URI
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: LOANCENTRAL_ENV
+        value: prod
+
+  - type: worker
+    name: loancentral-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_USER_AGENT
+        sync: false
+      - key: SUBREDDITS
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
