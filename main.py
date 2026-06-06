@@ -1,0 +1,409 @@
+import logging
+import os
+import threading
+import sys
+import time
+import traceback
+import importlib
+import inspect
+from pathlib import Path
+from dotenv import load_dotenv
+from utils import get_db_connection, reddit  # Add this import
+
+# Load environment variables
+load_dotenv()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("LoanCentral.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger("LoanCentral")
+
+# Multi-subreddit support
+SUBREDDITS = os.getenv("SUBREDDITS", os.getenv("SUBREDDIT", "")).replace(" ", "").split(",")
+SUBREDDITS = [s for s in SUBREDDITS if s]
+if SUBREDDITS:
+    subreddit_str = "+".join(SUBREDDITS)
+else:
+    logger.warning("No subreddits specified. Falling back to single SUBREDDIT env var.")
+    subreddit_str = os.getenv("SUBREDDIT", "")
+
+def load_schema():
+    """Load and parse SQL schema from schema.sql file"""
+    schema_file = Path("schema.sql")
+    
+    if not schema_file.exists():
+        logger.error("schema.sql file not found")
+        return None
+    
+    try:
+        with open(schema_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Extract SQL statements - look for statements ending with semicolon
+        sql_statements = []
+        
+        # Split by semicolons and clean up each statement
+        raw_statements = content.split(';')
+        
+        for statement in raw_statements:
+            # Clean up the statement
+            cleaned = statement.strip()
+            
+            # Skip empty statements and comments
+            if not cleaned or cleaned.startswith('--') or cleaned.startswith('#'):
+                continue
+            
+            # Remove comment lines from the statement
+            lines = []
+            for line in cleaned.split('\n'):
+                line = line.strip()
+                if line and not line.startswith('--') and not line.startswith('#'):
+                    lines.append(line)
+            
+            if lines:
+                final_statement = ' '.join(lines)
+                if final_statement:
+                    sql_statements.append(final_statement + ';')
+        
+        logger.info(f"Loaded {len(sql_statements)} SQL statements from schema.sql")
+        return sql_statements
+        
+    except Exception as e:
+        logger.error(f"Error loading schema.sql: {e}")
+        logger.error(traceback.format_exc())
+        return None
+
+# Initialize database tables if they don't exist
+def init_database():
+    """Initialize database using schema.sql file"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    # Load schema from file
+    sql_statements = load_schema()
+    if not sql_statements:
+        logger.error("Failed to load schema, falling back to hardcoded schema")
+        return init_database_fallback(conn)
+    
+    cur = conn.cursor()
+    try:
+        # Execute each SQL statement from schema
+        for statement in sql_statements:
+            if statement.strip():
+                logger.debug(f"Executing: {statement[:100]}...")
+                cur.execute(statement)
+        
+        conn.commit()
+        logger.info("Database initialized successfully using schema.sql")
+        return True
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Database initialization error: {e}")
+        logger.error(traceback.format_exc())
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+def init_database_fallback(conn):
+    """Fallback database initialization with hardcoded schema"""
+    logger.warning("Using fallback hardcoded schema")
+    
+    cur = conn.cursor()
+    try:
+        # Create loans table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS loans (
+                id SERIAL PRIMARY KEY,
+                loan_id TEXT UNIQUE,
+                lender TEXT NOT NULL,
+                borrower TEXT NOT NULL,
+                amount NUMERIC NOT NULL,
+                currency TEXT NOT NULL,
+                date_created TIMESTAMP NOT NULL,
+                original_thread TEXT NOT NULL,
+                status TEXT DEFAULT 'active',
+                amount_repaid NUMERIC DEFAULT 0,
+                last_updated TIMESTAMP
+            )
+        ''')
+        
+        # Create users table to track user statistics
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                loans_as_borrower INTEGER DEFAULT 0,
+                loans_as_lender INTEGER DEFAULT 0,
+                amount_borrowed NUMERIC DEFAULT 0,
+                amount_lent NUMERIC DEFAULT 0,
+                amount_repaid NUMERIC DEFAULT 0,
+                unpaid_loans INTEGER DEFAULT 0,
+                unpaid_amount NUMERIC DEFAULT 0,
+                last_updated TIMESTAMP
+            )
+        ''')
+
+        # Create indexes for better performance
+        cur.execute('''
+            CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
+        ''')
+        cur.execute('''
+            CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);
+        ''')
+        cur.execute('''
+            CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
+        ''')
+        cur.execute('''
+            CREATE INDEX IF NOT EXISTS idx_loans_date_created ON loans(date_created);
+        ''')
+        
+        conn.commit()
+        logger.info("Database initialized successfully using fallback schema")
+        return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Database initialization error: {e}")
+        logger.error(traceback.format_exc())
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+# Dynamic command loading system
+class CommandManager:
+    def __init__(self):
+        self.commands = {}
+        self.load_commands()
+    
+    def load_commands(self):
+        """Load all command modules from the commands directory"""
+        commands_dir = Path("commands")
+        if not commands_dir.exists():
+            # Fallback to current directory
+            commands_dir = Path(".")
+        
+        command_files = list(commands_dir.glob("*_command.py"))
+        
+        if not command_files:
+            logger.warning("No command files found")
+            return
+        
+        for command_file in command_files:
+            try:
+                # Import the module
+                module_name = command_file.stem
+                if commands_dir.name == "commands":
+                    spec = importlib.util.spec_from_file_location(f"commands.{module_name}", command_file)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                else:
+                    spec = importlib.util.spec_from_file_location(module_name, command_file)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                
+                # Look for the standard process function names
+                possible_func_names = [
+                    f"process_{module_name}",  # process_confirm_command
+                    f"process_{module_name.replace('_command', '')}_command",  # process_confirm_command
+                    "process_command",  # Generic name
+                ]
+                
+                process_func = None
+                for func_name in possible_func_names:
+                    if hasattr(module, func_name):
+                        process_func = getattr(module, func_name)
+                        break
+                
+                if process_func:
+                    # Get command trigger from module
+                    trigger = getattr(module, 'COMMAND_TRIGGER', f"$unknown")
+                    
+                    self.commands[trigger.lower()] = process_func
+                    logger.info(f"Loaded command: {trigger} from {module_name} using function {process_func.__name__}")
+                else:
+                    logger.warning(f"No suitable process function found in {module_name}. Tried: {possible_func_names}")
+                        
+            except Exception as e:
+                logger.error(f"Error loading command from {command_file}: {e}")
+                logger.error(traceback.format_exc())
+    
+    def process_comment(self, comment):
+        """Process a comment and check if it matches any commands"""
+        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME").lower():
+            return
+        
+        body_lower = comment.body.lower()
+        
+        # Check each command trigger
+        for trigger, command_func in self.commands.items():
+            if trigger in body_lower:
+                try:
+                    logger.info(f"Processing command {trigger} from user {comment.author.name}")
+                    command_func(comment)
+                except Exception as e:
+                    logger.error(f"Error processing command {trigger}: {e}")
+                    logger.error(traceback.format_exc())
+                break  # Only process one command per comment
+
+# Create global command manager
+command_manager = CommandManager()
+
+# Handle new posts
+def handle_new_post(post):
+    """Process a new [REQ] or [PRE] post"""
+    try:
+        logger.info(f"Processing new post: {post.id} - {post.title}")
+        
+        # Generate loan history information for the poster
+        username = post.author.name
+        user_info = generate_user_info(username)
+        
+        # Reply to the post with the user's loan information
+        post.reply(user_info)
+        logger.info(f"Successfully commented on post {post.id} for user {username}")
+        
+    except Exception as e:
+        logger.error(f"Error handling new post {post.id}: {e}")
+        logger.error(traceback.format_exc())
+
+# Generate loan history information for a user
+def generate_user_info(username):
+    """Generate loan history information for a user"""
+    conn = get_db_connection()
+    if not conn:
+        return f"Could not retrieve information for u/{username}"
+    
+    try:
+        cur = conn.cursor()
+        
+        # Get user statistics
+        cur.execute('''
+            SELECT 
+                COALESCE(loans_as_borrower, 0) as loans_as_borrower,
+                COALESCE(loans_as_lender, 0) as loans_as_lender,
+                COALESCE(amount_borrowed, 0) as amount_borrowed,
+                COALESCE(amount_lent, 0) as amount_lent,
+                COALESCE(amount_repaid, 0) as amount_repaid,
+                COALESCE(unpaid_loans, 0) as unpaid_loans,
+                COALESCE(unpaid_amount, 0) as unpaid_amount
+            FROM users
+            WHERE username = %s
+        ''', (username.lower(),))
+        
+        user_stats = cur.fetchone()
+        
+        # Format the response
+        response = [f"Here is my information on u/{username}:"]
+        
+        if not user_stats or (user_stats[0] == 0 and user_stats[1] == 0):
+            response.append(f"u/{username} has no loan history.")
+            return "\n\n".join(response)
+        
+        loans_as_borrower, loans_as_lender, amount_borrowed, amount_lent, amount_repaid, unpaid_loans, unpaid_amount = user_stats
+        
+        response.append(f"u/{username} has {loans_as_borrower} loans paid as a borrower, for a total of ${amount_repaid:.2f}")
+        response.append(f"u/{username} has {loans_as_lender} loans paid as a lender, for a total of ${amount_lent:.2f}")
+        
+        if unpaid_loans > 0:
+            response.append(f"u/{username} has {unpaid_loans} loans currently marked unpaid, for a total of ${unpaid_amount:.2f}")
+        else:
+            response.append(f"u/{username} has not received any loans which are currently marked unpaid")
+        
+        # Check for active loans as borrower
+        cur.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
+            FROM loans
+            WHERE borrower = %s AND status = 'confirmed'
+        ''', (username.lower(),))
+        
+        active_loans = cur.fetchone()
+        active_count, active_amount = active_loans if active_loans else (0, 0)
+        
+        if active_count > 0:
+            response.append(f"u/{username} has {active_count} outstanding loans as a borrower, for a total of ${active_amount:.2f}")
+        else:
+            response.append(f"u/{username} does not have any outstanding loans as a borrower")
+        
+        return "\n\n".join(response)
+        
+    except Exception as e:
+        logger.error(f"Error generating user info: {e}")
+        logger.error(traceback.format_exc())
+        return f"Error retrieving loan information for u/{username}"
+    finally:
+        cur.close()
+        conn.close()
+
+# Function to keep the bot alive
+def keep_alive():
+    while True:
+        try:
+            logger.info("Keep-alive heartbeat")
+            time.sleep(300)  # 5-minute heartbeat
+        except Exception as e:
+            logger.error(f"Error in keep_alive: {e}")
+            logger.error(traceback.format_exc())
+
+# Main bot loop with error handling and reconnection
+def comment_monitor():
+    while True:
+        try:
+            subreddit = reddit.subreddit(subreddit_str)
+            
+            logger.info(f"Starting comment stream for subreddits: {subreddit_str}")
+            for comment in subreddit.stream.comments(skip_existing=True):
+                command_manager.process_comment(comment)
+                    
+        except Exception as e:
+            logger.error(f"Error in comment stream: {e}")
+            logger.error(traceback.format_exc())
+            logger.info("Reconnecting in 60 seconds...")
+            time.sleep(60)
+
+# Create a set to track posts that have already been processed
+processed_posts = set()
+
+# Post monitor with error handling and reconnection
+def post_monitor():
+    while True:
+        try:
+            subreddit = reddit.subreddit(subreddit_str)
+            
+            logger.info(f"Starting post stream for subreddits: {subreddit_str}")
+            for post in subreddit.stream.submissions(skip_existing=True):
+                if post.id in processed_posts:
+                    logger.info(f"Skipping already processed post: {post.id}")
+                    continue
+                    
+                if "[req]" in post.title.lower() or "[pre]" in post.title.lower():
+                    handle_new_post(post)
+                    processed_posts.add(post.id)
+                    
+                    if len(processed_posts) > 1000:
+                        to_remove = list(processed_posts)[:100]
+                        for post_id in to_remove:
+                            processed_posts.remove(post_id)
+                    
+        except Exception as e:
+            logger.error(f"Error in post stream: {e}")
+            logger.error(traceback.format_exc())
+            logger.info("Reconnecting in 60 seconds...")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    if not init_database():
+        sys.exit("Failed to initialize database, exiting")
+
+    # Start all threads
+    threading.Thread(target=post_monitor, daemon=False).start()
+    threading.Thread(target=keep_alive, daemon=False).start()
+    comment_monitor()
