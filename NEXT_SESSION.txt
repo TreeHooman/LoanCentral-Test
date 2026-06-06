@@ -1,62 +1,83 @@
-STATUS: Major session. 57/57 tests. Deployment config ready. 6 new features built.
-LAST THING DONE: $mystats, Render deployment, public profiles, CSV export,
-                 role request system, $unpaid DM notification.
+STATUS: Full feature build complete. 64/64 tests passing. Ready to deploy.
+LAST THING DONE: $leaderboard, pagination, $loan DM, rate limiting, error pages,
+                 mod DM on role request, offset API support.
 
-=== WHAT'S BEEN BUILT (full feature list) ===
+=== ALL FEATURES (complete list) ===
 
-BOT COMMANDS:
+BOT COMMANDS (7 total):
 - $help           lists all commands + dashboard link
-- $loan           records loan, links to dashboard
+- $loan           records loan, DMs borrower confirmation, links to dashboard
 - $paid_with_id   records repayment, links to dashboard
-- $unpaid         marks unpaid, DMs borrower, links to dashboard
+- $unpaid         marks unpaid, DMs borrower warning, links to dashboard
 - $refunded       cancels loan, links to dashboard
 - $check u/name   shows any user's health score + stats (public)
 - $mystats        shows your OWN stats privately
-Bot also auto-replies to [REQ]/[PRE] posts with borrower profile table.
+- $leaderboard    top 5 lenders by volume + top 5 borrowers by repayment rate
+Bot auto-replies to [REQ]/[PRE] posts with borrower profile table + health score.
+Bot rate limits: max 5 commands per user per 60 seconds.
 
-DASHBOARD:
+DASHBOARD PAGES:
 - Login page (Reddit OAuth or dev bypass)
-- Mod dashboard: all loans, status tabs, search, role management, role requests tab, CSV export
-- Lender dashboard: own loans, stats, search by borrower, action buttons
-- Borrower dashboard: what I owe, health score, history, Request Lender Access button
-- Public profile page: /u/<username> — shareable, shows health score + loan history
+- Mod dashboard: loans, status tabs, search, role management,
+                 role requests (approve/deny), CSV export, Load More pagination
+- Lender dashboard: loans, stats, search by borrower, action buttons, Load More
+- Borrower dashboard: what I owe, health score, history with Load More,
+                      Request Lender Access button
+- Public profile page: /u/<username> — shareable, health score + loan history
+- Error pages: clean 404/403/500
+
+API:
+- All loan endpoints support limit + offset (pagination)
+- CSV export at /api/loans/export.csv (mod only)
+- Role request endpoints (submit/list/approve/deny)
+
+NOTIFICATIONS:
+- $loan → DM borrower when loan recorded
+- $unpaid → DM borrower when marked unpaid
+- Role request → DM subreddit mods via Reddit
 
 DEPLOYMENT:
-- render.yaml ready (web service + bot worker)
-- Procfile ready
-- DATABASE_URL support in utils.py (Render-compatible)
-- requirements.txt includes gunicorn
-- runtime.txt: python-3.11.0
+- render.yaml: web service + bot worker
+- Procfile, runtime.txt
+- DATABASE_URL support in utils.py
 
 === NEXT STEPS ===
 
-1. Register Reddit app (5 min):
-   reddit.com/prefs/apps → Create App → web app
+1. Register Reddit app (reddit.com/prefs/apps → Create App → web app)
    Redirect URI: http://localhost:5000/auth/callback
 
 2. Fill in .env:
-   DASHBOARD_CLIENT_ID=
+   REDDIT_CLIENT_ID=        ← bot API creds
+   REDDIT_CLIENT_SECRET=
+   REDDIT_USERNAME=
+   REDDIT_PASSWORD=
+   REDDIT_USER_AGENT=LoanCentral/1.0 by your_username
+   SUBREDDITS=YourSubredditName
+   DASHBOARD_CLIENT_ID=     ← Reddit OAuth for dashboard login
    DASHBOARD_CLIENT_SECRET=
    DASHBOARD_REDIRECT_URI=http://localhost:5000/auth/callback
    DASHBOARD_URL=http://localhost:5000
-   SECRET_KEY=<any random string>
+   SECRET_KEY=<any random string, e.g. python -c "import secrets; print(secrets.token_hex(32))">
    API_KEY=<any random string>
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=loancentral
+   DB_USER=
+   DB_PASSWORD=
 
-3. Test locally:
+3. Run schema migration (one time):
+   Open pgAdmin → run schema.sql (adds role_requests table, safe to re-run)
+
+4. Test locally:
    python run_dev.py → http://127.0.0.1:5000/auth/dev-login
-   Test: testmod, testlender, testborrower
-   Test $check and $mystats in bot
+   Test all 3 dashboards, $check, $mystats, $leaderboard
 
-4. Deploy to Render:
-   - Push branch to GitHub
-   - Connect repo in Render
-   - render.yaml auto-configures services
-   - Set env vars in Render dashboard
-   - Update DASHBOARD_URL + DASHBOARD_REDIRECT_URI to live URL
-
-5. Run schema migration for role_requests table:
-   In pgAdmin or psql: run schema.sql (CREATE TABLE IF NOT EXISTS is safe to re-run)
+5. Deploy to Render:
+   - Push this branch to main
+   - Connect repo in Render → render.yaml auto-configures everything
+   - Fill in env vars in Render dashboard
+   - Update DASHBOARD_URL + DASHBOARD_REDIRECT_URI to live Render URL
 
 GITHUB: https://github.com/TreeHooman/LoanCentral-Test
 BRANCH: claude/current-status-PAl0w
-TESTS: 57/57 passing
+TESTS: 64/64 passing

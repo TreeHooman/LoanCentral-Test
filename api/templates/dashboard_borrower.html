@@ -64,12 +64,14 @@
     <tbody id="historyBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
+<button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
 {% endblock %}
 
 {% block scripts %}
 <script>
   const ME = '{{ username }}';
   let historyStatus = '';
+  let offset = 0;
 
   document.addEventListener('DOMContentLoaded', () => {
     loadAll();
@@ -78,6 +80,7 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         historyStatus = tab.dataset.status;
+        offset = 0;
         loadHistory();
       });
     });
@@ -131,32 +134,53 @@
     }
   }
 
+  function buildHistoryRow(loan) {
+    const id = loan.loan_id || loan.db_id;
+    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+    return `<tr>
+      <td><span class="loan-id">${id}</span></td>
+      <td class="username">u/${loan.lender}</td>
+      <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="date-cell">${fmtDate(loan.date_created)}</td>
+      <td>${thread}</td>
+    </tr>`;
+  }
+
   async function loadHistory() {
-    let url = `/api/loans?borrower=${ME}&limit=100`;
+    let url = `/api/loans?borrower=${ME}&limit=50&offset=${offset}`;
     if (historyStatus) url += `&status=${historyStatus}`;
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('historyBody');
       if (!loans.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="table-placeholder">No loan history found.</td></tr>';
+        document.getElementById('loadMoreBtn').style.display = 'none';
         return;
       }
-      tbody.innerHTML = loans.map(loan => {
-        const id = loan.loan_id || loan.db_id;
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
-        return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-          <td class="date-cell">${fmtDate(loan.date_created)}</td>
-          <td>${thread}</td>
-        </tr>`;
-      }).join('');
+      tbody.innerHTML = loans.map(buildHistoryRow).join('');
+      document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
       document.getElementById('historyBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
+  }
+
+  async function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.disabled = true; btn.textContent = 'Loading...';
+    offset += 50;
+    let url = `/api/loans?borrower=${ME}&limit=50&offset=${offset}`;
+    if (historyStatus) url += `&status=${historyStatus}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('historyBody');
+      if (loans.length) tbody.insertAdjacentHTML('beforeend', loans.map(buildHistoryRow).join(''));
+      btn.style.display = loans.length === 50 ? '' : 'none';
+    } catch(e) {
+      offset -= 50;
+      btn.style.display = '';
+    } finally { btn.disabled = false; btn.textContent = 'Load More'; }
   }
 
   function openRoleRequestModal() {

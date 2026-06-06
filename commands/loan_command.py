@@ -75,4 +75,26 @@ def process_loan_command(comment):
         f"- Cancel loan: `$refunded {db_id}`\n\n"
         f"**[View on LoanCentral Dashboard]({DASHBOARD_URL})** — loan history, health scores, stats."
     )
+
+    # DM the borrower so they know a loan has been recorded against them
+    try:
+        from utils import reddit
+        reddit.redditor(borrower).message(
+            subject=f"Loan recorded: u/{lender} has lent you {amount:.2f} {currency}",
+            message=(
+                f"Hi u/{borrower},\n\n"
+                f"u/{lender} has recorded a loan to you:\n\n"
+                f"|Loan ID|Amount|Currency|\n"
+                f"|:--:|:--:|:--:|\n"
+                f"|`{db_id}`|{amount:.2f}|{currency}|\n\n"
+                f"Use loan ID `{db_id}` for all future references to this loan.\n\n"
+                f"If you did not receive this loan or this is incorrect, "
+                f"please contact the moderators.\n\n"
+                f"[View your loans on LoanCentral Dashboard]({DASHBOARD_URL})"
+            ),
+        )
+        logger.info(f"DM sent to u/{borrower} for new loan {db_id}")
+    except Exception as e:
+        logger.error(f"Failed to DM u/{borrower} for loan {db_id}: {e}")
+
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")

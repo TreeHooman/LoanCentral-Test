@@ -509,7 +509,7 @@ def calculate_health_score(profile: dict) -> tuple:
     return score, label
 
 
-def get_loan_history(username: str, role: str = "both", limit: int = 50):
+def get_loan_history(username: str, role: str = "both", limit: int = 50, offset: int = 0):
     """
     Fetch recent loans for a user.
     role: "borrower", "lender", or "both"
@@ -525,20 +525,20 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
 
         if role == "borrower":
             where = "WHERE borrower = %s"
-            params = (username, limit)
+            params = (username, limit, offset)
         elif role == "lender":
             where = "WHERE lender = %s"
-            params = (username, limit)
+            params = (username, limit, offset)
         else:  # both
             where = "WHERE borrower = %s OR lender = %s"
-            params = (username, username, limit)
+            params = (username, username, limit, offset)
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
                    currency, status, date_created, original_thread
             FROM loans {where}
             ORDER BY date_created DESC
-            LIMIT %s
+            LIMIT %s OFFSET %s
         ''', params)
 
         rows = cur.fetchall()

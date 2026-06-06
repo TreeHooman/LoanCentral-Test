@@ -526,6 +526,45 @@ class FakeCursor:
             ]
             return
 
+        if normalized.startswith("select username, loans_as_lender"):
+            # Top lenders leaderboard query
+            candidates = [
+                (uname, udata)
+                for uname, udata in self.fake_db.users.items()
+                if udata.get("loans_as_lender", 0) > 0
+            ]
+            candidates.sort(key=lambda x: x[1].get("amount_lent", Decimal("0")), reverse=True)
+            self.last_result = [
+                (uname, udata.get("loans_as_lender", 0), udata.get("amount_lent", Decimal("0")))
+                for uname, udata in candidates[:5]
+            ]
+            return
+
+        if normalized.startswith("select username, loans_as_borrower, amount_borrowed, amount_repaid"):
+            # Top borrowers by repayment rate leaderboard query
+            candidates = [
+                (uname, udata)
+                for uname, udata in self.fake_db.users.items()
+                if udata.get("loans_as_borrower", 0) >= 2 and udata.get("amount_borrowed", Decimal("0")) > 0
+            ]
+            candidates.sort(
+                key=lambda x: (
+                    float(x[1].get("amount_repaid", Decimal("0"))) /
+                    float(x[1].get("amount_borrowed", Decimal("1")))
+                ),
+                reverse=True,
+            )
+            self.last_result = [
+                (
+                    uname,
+                    udata.get("loans_as_borrower", 0),
+                    udata.get("amount_borrowed", Decimal("0")),
+                    udata.get("amount_repaid", Decimal("0")),
+                )
+                for uname, udata in candidates[:5]
+            ]
+            return
+
         raise AssertionError(f"FakeCursor does not support query: {query}")
 
     def fetchone(self):

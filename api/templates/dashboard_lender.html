@@ -41,12 +41,14 @@
     <tbody id="loansBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
+<button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
 {% endblock %}
 
 {% block scripts %}
 <script>
   const ME = '{{ username }}';
   let currentStatus = '';
+  let offset = 0;
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -56,11 +58,13 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        offset = 0;
         loadLoans();
       });
     });
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
+      offset = 0;
       searchTimer = setTimeout(loadLoans, 400);
     });
   });
@@ -78,11 +82,34 @@
     } catch(e) { console.error(e); }
   }
 
+  function buildLoanRow(loan) {
+    const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+    const id = loan.loan_id || loan.db_id;
+    const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+    const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
+    const canRefund = !['repaid','refunded'].includes(loan.status);
+    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    return `<tr>
+      <td><span class="loan-id">${id}</span></td>
+      <td class="username">u/${loan.borrower}</td>
+      <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td><div class="actions">
+        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
+        ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
+        ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
+      </div></td>
+    </tr>`;
+  }
+
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '↻ Loading...';
     const search = document.getElementById('searchInput').value.trim();
-    let url = `/api/loans?lender=${ME}&limit=200`;
+    let url = `/api/loans?lender=${ME}&limit=50&offset=${offset}`;
     if (currentStatus) url += `&status=${currentStatus}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
@@ -90,35 +117,33 @@
       const tbody = document.getElementById('loansBody');
       if (!loans.length) {
         tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
+        document.getElementById('loadMoreBtn').style.display = 'none';
         return;
       }
-      tbody.innerHTML = loans.map(loan => {
-        const search = document.getElementById('searchInput').value.trim().toLowerCase();
-        if (search && !loan.borrower.includes(search)) return '';
-        const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
-        const id = loan.loan_id || loan.db_id;
-        const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
-        const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
-        const canRefund = !['repaid','refunded'].includes(loan.status);
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
-        return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.borrower}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-          <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-          <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
-          <td><div class="actions">
-            ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
-            ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
-            ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
-          </div></td>
-        </tr>`;
-      }).join('');
+      tbody.innerHTML = loans.map(buildLoanRow).join('');
+      document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  async function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.disabled = true; btn.textContent = 'Loading...';
+    offset += 50;
+    const search = document.getElementById('searchInput').value.trim();
+    let url = `/api/loans?lender=${ME}&limit=50&offset=${offset}`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('loansBody');
+      if (loans.length) tbody.insertAdjacentHTML('beforeend', loans.map(buildLoanRow).join(''));
+      btn.style.display = loans.length === 50 ? '' : 'none';
+    } catch(e) {
+      offset -= 50;
+      btn.style.display = '';
+    } finally { btn.disabled = false; btn.textContent = 'Load More'; }
   }
 
   function loadData() { loadLoans(); loadStats(); }

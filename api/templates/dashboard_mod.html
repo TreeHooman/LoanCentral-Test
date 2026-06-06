@@ -37,6 +37,7 @@
       <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
+  <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
 </div>
 
 <!-- Role requests tab -->
@@ -81,6 +82,7 @@
 {% block scripts %}
 <script>
   let currentStatus = '';
+  let offset = 0;
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -90,11 +92,13 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        offset = 0;
         loadLoans();
       });
     });
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
+      offset = 0;
       searchTimer = setTimeout(loadLoans, 400);
     });
   });
@@ -124,16 +128,36 @@
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '↻ Loading...';
     const search = document.getElementById('searchInput').value.trim();
-    let url = `/api/loans?limit=200`;
+    let url = `/api/loans?limit=50&offset=${offset}`;
     if (currentStatus) url += `&status=${currentStatus}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
       tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  async function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.disabled = true; btn.textContent = 'Loading...';
+    offset += 50;
+    const search = document.getElementById('searchInput').value.trim();
+    let url = `/api/loans?limit=50&offset=${offset}`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('loansBody');
+      if (loans.length) tbody.insertAdjacentHTML('beforeend', loans.map(loanRow).join(''));
+      btn.style.display = loans.length === 50 ? '' : 'none';
+    } catch(e) {
+      offset -= 50;
+      btn.style.display = '';
+    } finally { btn.disabled = false; btn.textContent = 'Load More'; }
   }
 
   function loadData() { loadLoans(); loadStats(); }

@@ -51,7 +51,7 @@ def _json(data, status=200):
     )
 
 
-def _get_all_loans_from_db(status=None, search=None, limit=200):
+def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
     from services import _get_db
     conn = _get_db()
     if not conn:
@@ -66,12 +66,12 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
             conditions.append("(lender ILIKE %s OR borrower ILIKE %s)")
             params += [f"%{search}%", f"%{search}%"]
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        params.append(limit)
+        params += [limit, offset]
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
                    currency, status, date_created, original_thread
             FROM loans {where}
-            ORDER BY date_created DESC LIMIT %s
+            ORDER BY date_created DESC LIMIT %s OFFSET %s
         """, params)
         rows = cur.fetchall()
         return [
@@ -319,7 +319,8 @@ def get_loans():
     borrower = request.args.get("borrower")
     status   = request.args.get("status")
     search   = request.args.get("search")
-    limit    = int(request.args.get("limit", 200))
+    limit    = min(int(request.args.get("limit", 50)), 200)
+    offset   = max(int(request.args.get("offset", 0)), 0)
 
     # Non-mods can only see their own data
     if session.get("username") and session.get("role") != "mod":
@@ -330,15 +331,15 @@ def get_loans():
             return _json({"error": "You can only view your own loans."}, 403)
 
     if lender:
-        loans, error = get_loan_history(lender, role="lender", limit=limit)
+        loans, error = get_loan_history(lender, role="lender", limit=limit, offset=offset)
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
     elif borrower:
-        loans, error = get_loan_history(borrower, role="borrower", limit=limit)
+        loans, error = get_loan_history(borrower, role="borrower", limit=limit, offset=offset)
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
     else:
-        loans, error = _get_all_loans_from_db(status=status, search=search, limit=limit)
+        loans, error = _get_all_loans_from_db(status=status, search=search, limit=limit, offset=offset)
 
     if error:
         return _json({"error": error}, 500)
@@ -573,6 +574,70 @@ def export_loans_csv():
 # Role requests
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def not_found(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Not found."}, 404)
+    return render_template("error.html", code=404,
+                           message="Page not found.",
+                           role=session.get("role", ""),
+                           username=session.get("username", "")), 404
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Forbidden."}, 403)
+    return render_template("error.html", code=403,
+                           message="You don't have permission to access this page.",
+                           role=session.get("role", ""),
+                           username=session.get("username", "")), 403
+
+
+@app.errorhandler(500)
+def server_error(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Internal server error."}, 500)
+    return render_template("error.html", code=500,
+                           message="Something went wrong on our end.",
+                           role=session.get("role", ""),
+                           username=session.get("username", "")), 500
+
+
+def _notify_mods_of_role_request(username, requested_role, reason):
+    """DM the subreddit mods when a new role request comes in."""
+    import os
+    try:
+        import praw
+        reddit = praw.Reddit(
+            client_id=os.getenv("REDDIT_CLIENT_ID"),
+            client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+            username=os.getenv("REDDIT_USERNAME"),
+            password=os.getenv("REDDIT_PASSWORD"),
+            user_agent=os.getenv("REDDIT_USER_AGENT", "LoanCentral/1.0"),
+        )
+        for sub in [s.strip() for s in os.getenv("SUBREDDITS", "").split(",") if s.strip()]:
+            reddit.subreddit(sub).message(
+                subject=f"[LoanCentral] New {requested_role} role request from u/{username}",
+                message=(
+                    f"u/{username} has requested **{requested_role}** access on the dashboard.\n\n"
+                    f"**Reason:** {reason or 'No reason provided.'}\n\n"
+                    f"Review it in the mod dashboard under the Requests tab."
+                ),
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger("LoanCentral").error(f"Failed to notify mods of role request: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Role requests
+# ---------------------------------------------------------------------------
+
 @app.route("/api/role-requests", methods=["POST"])
 @login_required
 def submit_role_request():
@@ -595,6 +660,7 @@ def submit_role_request():
               SET requested_role = %s, reason = %s, status = 'pending', created_at = NOW()
         """, (username, requested_role, reason, requested_role, reason))
         conn.commit()
+        _notify_mods_of_role_request(username, requested_role, reason)
         return _json({"ok": True, "message": "Request submitted. A mod will review it shortly."})
     except Exception as e:
         conn.rollback()

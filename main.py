@@ -179,6 +179,22 @@ def init_database_fallback(conn):
         cur.close()
         conn.close()
 
+# Simple in-memory rate limiter: max 5 commands per user per 60 seconds
+_rate_limit_window = 60
+_rate_limit_max = 5
+_user_command_times: dict = {}
+
+def _is_rate_limited(username: str) -> bool:
+    now = time.time()
+    times = _user_command_times.get(username, [])
+    times = [t for t in times if now - t < _rate_limit_window]
+    if len(times) >= _rate_limit_max:
+        return True
+    times.append(now)
+    _user_command_times[username] = times
+    return False
+
+
 # Dynamic command loading system
 class CommandManager:
     def __init__(self):
@@ -247,6 +263,10 @@ class CommandManager:
         # Check each command trigger
         for trigger, command_func in self.commands.items():
             if trigger in body_lower:
+                username = comment.author.name.lower()
+                if _is_rate_limited(username):
+                    logger.warning(f"Rate limit hit for u/{username} on {trigger} — skipping")
+                    return
                 try:
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
                     command_func(comment)
