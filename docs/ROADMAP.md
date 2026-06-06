@@ -37,6 +37,7 @@ Current coverage:
 - `$paid_with_id` lookup, authorization, currency mismatch, partial payment, and full payment.
 - `$confirm` loan creation, requester authorization, duplicate prevention, and lender format parsing.
 - `$repaid`, `$unpaid`, `$refunded`, `$health`, and `$help` starter offline regression coverage.
+- `$loan`, `$stats`, and `$mods` starter offline regression coverage.
 
 ### 3. Test Database Path
 

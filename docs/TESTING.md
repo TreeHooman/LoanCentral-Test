@@ -44,6 +44,9 @@ The `$confirm` tests cover:
 
 Additional offline command coverage:
 
+- `$loan` verified lender flow, unverified lender block, and self-loan silence
+- `$stats` fake Reddit history reporting, empty history reply, and missing-username silence
+- `$mods` fake modmail capture, user reply, and non-command silence
 - `$repaid` borrower authorization and partial repayment
 - `$unpaid` lender authorization and remaining-balance unpaid tracking
 - `$refunded` lender authorization, refund status, stat reversal, and moderator notification capture

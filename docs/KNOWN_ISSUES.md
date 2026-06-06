@@ -34,3 +34,16 @@ Likely areas:
 
 Status: Needs offline regression test before final fix.
 
+### `$stats` uses deprecated UTC datetime helpers on Python 3.14
+
+Command: `$stats`
+
+Expected: Tests and runtime should not emit datetime deprecation warnings.
+
+Actual: Offline tests pass, but Python 3.14 warns about `datetime.utcnow()` and `datetime.utcfromtimestamp()`.
+
+Likely areas:
+
+- `commands/stats_command.py`
+
+Status: Needs cleanup during fix pass.

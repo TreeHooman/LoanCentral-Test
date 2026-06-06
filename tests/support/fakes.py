@@ -22,10 +22,17 @@ class FakeSubreddit:
 
 
 class FakeSubmission:
-    def __init__(self, author_name="borrower", subreddit=None, permalink="/r/LoanCentralTest/comments/abc/test/"):
+    def __init__(
+        self,
+        author_name="borrower",
+        subreddit=None,
+        permalink="/r/LoanCentralTest/comments/abc/test/",
+        title="Test loan request",
+    ):
         self.author = FakeAuthor(author_name)
         self.subreddit = subreddit or FakeSubreddit()
         self.permalink = permalink
+        self.title = title
 
 
 class FakeComment:
@@ -57,13 +64,48 @@ class FakeComment:
 
 
 class FakeReddit:
-    def __init__(self):
+    def __init__(self, redditors=None):
         self.subreddits = {}
+        self.redditors = redditors or {}
 
     def subreddit(self, display_name):
         if display_name not in self.subreddits:
             self.subreddits[display_name] = FakeSubreddit(display_name)
         return self.subreddits[display_name]
+
+    def redditor(self, username):
+        return self.redditors[username]
+
+
+class FakeRedditComment:
+    def __init__(self, created_utc, score=1, subreddit_name="LoanCentralTest"):
+        self.created_utc = created_utc
+        self.score = score
+        self.subreddit = FakeSubreddit(subreddit_name)
+
+
+class FakeCommentListing:
+    def __init__(self, comments):
+        self._comments = comments
+
+    def new(self, limit=100):
+        return self._comments[:limit]
+
+
+class FakeRedditor:
+    def __init__(
+        self,
+        comments=None,
+        link_karma=10,
+        comment_karma=20,
+        created_utc=0,
+        has_verified_email=True,
+    ):
+        self.comments = FakeCommentListing(comments or [])
+        self.link_karma = link_karma
+        self.comment_karma = comment_karma
+        self.created_utc = created_utc
+        self.has_verified_email = has_verified_email
 
 
 class FakeDb:
