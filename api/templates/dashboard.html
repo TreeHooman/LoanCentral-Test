@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoanCentral — Mod Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d26;
+      --surface2: #22263a;
+      --border: #2e3248;
+      --accent: #5b6ef5;
+      --accent-h: #7b8cff;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --orange: #f39c12;
+      --yellow: #f1c40f;
+      --muted: #8891aa;
+      --text: #e2e6f0;
+      --text2: #b0b8cc;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-brand { font-size: 18px; font-weight: 700; color: var(--accent-h); letter-spacing: -0.5px; }
+    .nav-brand span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .api-key-status { font-size: 12px; color: var(--muted); }
+    .api-key-status.ok { color: var(--green); }
+    .btn-sm {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+    .btn-sm:hover { background: var(--border); color: var(--text); }
+
+    /* ---- MAIN ---- */
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* ---- STATS ---- */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .stat-value.accent  { color: var(--accent-h); }
+    .stat-value.green   { color: var(--green); }
+    .stat-value.red     { color: var(--red); }
+    .stat-value.orange  { color: var(--orange); }
+    .stat-value.yellow  { color: var(--yellow); }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ---- TOOLBAR ---- */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .tabs { display: flex; gap: 4px; }
+    .tab {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .tab:hover { border-color: var(--accent); color: var(--text); }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+    .search-wrap { flex: 1; min-width: 200px; }
+    .search-wrap input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      transition: border 0.15s;
+    }
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap input::placeholder { color: var(--muted); }
+
+    .btn-refresh {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-refresh:hover { background: var(--accent-h); }
+    .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ---- TABLE ---- */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: var(--surface2); }
+    th {
+      padding: 11px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text2);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(91,110,245,0.05); }
+
+    .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
+    .username { color: var(--text); font-weight: 500; }
+    .username a { color: inherit; text-decoration: none; }
+    .username a:hover { color: var(--accent-h); text-decoration: underline; }
+    .amount { font-weight: 600; color: var(--text); }
+    .remaining { color: var(--orange); }
+
+    /* Status badges */
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge-confirmed    { background: rgba(91,110,245,0.2); color: var(--accent-h); }
+    .badge-partially_repaid { background: rgba(241,196,15,0.15); color: var(--yellow); }
+    .badge-repaid       { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-unpaid       { background: rgba(231,76,60,0.15);  color: var(--red); }
+    .badge-refunded     { background: rgba(136,145,170,0.15); color: var(--muted); }
+
+    /* Action buttons */
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn-action {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+    .btn-action:hover { opacity: 0.8; }
+    .btn-unpaid   { background: rgba(231,76,60,0.2);  color: var(--red); }
+    .btn-refund   { background: rgba(136,145,170,0.2); color: var(--muted); }
+    .btn-paid     { background: rgba(46,204,113,0.2); color: var(--green); }
+    .btn-view     { background: rgba(91,110,245,0.2); color: var(--accent-h); }
+
+    /* ---- EMPTY / LOADING ---- */
+    .table-placeholder {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted);
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- MODAL ---- */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 400px;
+      max-width: 90vw;
+    }
+    .modal h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+    .modal label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+    .modal input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 12px;
+      outline: none;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .btn-cancel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn-confirm {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-confirm:hover { background: var(--accent-h); }
+
+    /* ---- TOAST ---- */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      z-index: 300;
+      max-width: 320px;
+    }
+    #toast.show { display: block; }
+    #toast.success { border-color: var(--green); color: var(--green); }
+    #toast.error   { border-color: var(--red);   color: var(--red); }
+
+    .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .thread-link { font-size: 11px; color: var(--accent-h); text-decoration: none; }
+    .thread-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">LoanCentral <span>Mod Dashboard</span></div>
+  <div class="nav-right">
+    <span class="api-key-status" id="keyStatus">● No API key</span>
+    <button class="btn-sm" onclick="promptApiKey()">Set API Key</button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+  <!-- STATS -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value accent" id="s-total">—</div></div>
+    <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value accent" id="s-active">—</div></div>
+    <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value red" id="s-unpaid">—</div></div>
+    <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value green" id="s-repaid">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Volume</div><div class="stat-value yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
+    <div class="stat-card"><div class="stat-label">Total Repaid</div><div class="stat-value green" id="s-trepaid">—</div></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-status="">All</button>
+      <button class="tab" data-status="confirmed">Active</button>
+      <button class="tab" data-status="partially_repaid">Partial</button>
+      <button class="tab" data-status="unpaid">Unpaid</button>
+      <button class="tab" data-status="repaid">Repaid</button>
+      <button class="tab" data-status="refunded">Refunded</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search lender or borrower..." />
+    </div>
+    <button class="btn-refresh" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Loan ID</th>
+          <th>Lender</th>
+          <th>Borrower</th>
+          <th>Amount</th>
+          <th>Repaid</th>
+          <th>Remaining</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="loansBody">
+        <tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading loans...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<!-- PAYMENT MODAL -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal">
+    <h3>Record Payment</h3>
+    <input type="hidden" id="payLoanId" />
+    <label>Loan ID</label>
+    <input type="text" id="payLoanIdDisplay" readonly style="opacity:0.6" />
+    <label>Lender Username</label>
+    <input type="text" id="payLender" placeholder="e.g. lender123" />
+    <label>Amount Paid</label>
+    <input type="number" id="payAmount" placeholder="e.g. 50" step="0.01" min="0.01" />
+    <label>Currency</label>
+    <input type="text" id="payCurrency" placeholder="e.g. USD" maxlength="3" style="text-transform:uppercase" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('payModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitPayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- UNPAID MODAL -->
+<div class="modal-overlay" id="unpaidModal">
+  <div class="modal">
+    <h3>Mark as Unpaid</h3>
+    <input type="hidden" id="unpaidLoanId" />
+    <label>Loan ID</label>
+    <input type="text" id="unpaidLoanIdDisplay" readonly style="opacity:0.6" />
+    <label>Lender Username</label>
+    <input type="text" id="unpaidLender" placeholder="e.g. lender123" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('unpaidModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitUnpaid()">Mark Unpaid</button>
+    </div>
+  </div>
+</div>
+
+<!-- REFUND MODAL -->
+<div class="modal-overlay" id="refundModal">
+  <div class="modal">
+    <h3>Mark as Refunded</h3>
+    <input type="hidden" id="refundLoanId" />
+    <label>Loan ID</label>
+    <input type="text" id="refundLoanIdDisplay" readonly style="opacity:0.6" />
+    <label>Lender Username</label>
+    <input type="text" id="refundLender" placeholder="e.g. lender123" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('refundModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--muted)" onclick="submitRefund()">Mark Refunded</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+  // ---- State ----
+  let apiKey = localStorage.getItem('lc_api_key') || '';
+  let currentStatus = '';
+  let searchTimer = null;
+
+  // ---- Init ----
+  document.addEventListener('DOMContentLoaded', () => {
+    updateKeyStatus();
+    if (apiKey) {
+      loadStats();
+      loadLoans();
+    } else {
+      promptApiKey();
+    }
+
+    // Tab clicks
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentStatus = tab.dataset.status;
+        loadLoans();
+      });
+    });
+
+    // Search debounce
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadLoans, 400);
+    });
+  });
+
+  // ---- API Key ----
+  function promptApiKey() {
+    const key = prompt('Enter your API key:');
+    if (key) {
+      apiKey = key.trim();
+      localStorage.setItem('lc_api_key', apiKey);
+      updateKeyStatus();
+      loadStats();
+      loadLoans();
+    }
+  }
+
+  function updateKeyStatus() {
+    const el = document.getElementById('keyStatus');
+    if (apiKey) {
+      el.textContent = '● API key set';
+      el.className = 'api-key-status ok';
+    } else {
+      el.textContent = '● No API key';
+      el.className = 'api-key-status';
+    }
+  }
+
+  // ---- Fetch helpers ----
+  async function apiFetch(path, options = {}) {
+    const res = await fetch(path, {
+      ...options,
+      headers: {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // ---- Stats ----
+  async function loadStats() {
+    try {
+      const s = await apiFetch('/api/stats');
+      document.getElementById('s-total').textContent   = s.total_loans;
+      document.getElementById('s-active').textContent  = s.active_loans + s.partial_loans;
+      document.getElementById('s-unpaid').textContent  = s.unpaid_loans;
+      document.getElementById('s-repaid').textContent  = s.repaid_loans;
+      document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
+      document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+    } catch (e) {
+      console.error('Stats error:', e);
+    }
+  }
+
+  // ---- Loans table ----
+  async function loadLoans() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    btn.textContent = '↻ Loading...';
+
+    const search = document.getElementById('searchInput').value.trim();
+    let url = `/api/loans?limit=200`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+
+    const tbody = document.getElementById('loansBody');
+
+    try {
+      const loans = await apiFetch(url);
+      renderLoans(loans);
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↻ Refresh';
+    }
+  }
+
+  function renderLoans(loans) {
+    const tbody = document.getElementById('loansBody');
+    if (!loans.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = loans.map(loan => {
+      const remaining = (parseFloat(loan.amount) - parseFloat(loan.amount_repaid)).toFixed(2);
+      const date = loan.date_created ? loan.date_created.split('T')[0] : '—';
+      const threadLink = loan.original_thread
+        ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗ Thread</a>`
+        : '—';
+
+      const canActOnLoan = !['repaid','refunded'].includes(loan.status);
+      const canMarkUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
+      const canRecordPay  = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+
+      const actions = `
+        <div class="actions">
+          ${canRecordPay  ? `<button class="btn-action btn-paid"   onclick="openPayModal('${loan.loan_id||loan.db_id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
+          ${canMarkUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${loan.loan_id||loan.db_id}','${loan.lender}')">Unpaid</button>` : ''}
+          ${canActOnLoan  ? `<button class="btn-action btn-refund" onclick="openRefundModal('${loan.loan_id||loan.db_id}','${loan.lender}')">Refund</button>` : ''}
+          ${threadLink !== '—' ? threadLink : ''}
+        </div>`;
+
+      return `
+        <tr>
+          <td><span class="loan-id">${loan.loan_id || loan.db_id}</span></td>
+          <td><span class="username"><a href="/api/users/${loan.lender}" target="_blank">u/${loan.lender}</a></span></td>
+          <td><span class="username"><a href="/api/users/${loan.borrower}" target="_blank">u/${loan.borrower}</a></span></td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td>${parseFloat(loan.amount_repaid).toFixed(2)}</td>
+          <td class="${parseFloat(remaining) > 0 ? 'remaining' : ''}">${remaining}</td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell">${date}</td>
+          <td>${actions}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ---- Modals ----
+  function openPayModal(loanId, lender, currency) {
+    document.getElementById('payLoanId').value = loanId;
+    document.getElementById('payLoanIdDisplay').value = loanId;
+    document.getElementById('payLender').value = lender;
+    document.getElementById('payCurrency').value = currency;
+    document.getElementById('payAmount').value = '';
+    document.getElementById('payModal').classList.add('open');
+  }
+
+  function openUnpaidModal(loanId, lender) {
+    document.getElementById('unpaidLoanId').value = loanId;
+    document.getElementById('unpaidLoanIdDisplay').value = loanId;
+    document.getElementById('unpaidLender').value = lender;
+    document.getElementById('unpaidModal').classList.add('open');
+  }
+
+  function openRefundModal(loanId, lender) {
+    document.getElementById('refundLoanId').value = loanId;
+    document.getElementById('refundLoanIdDisplay').value = loanId;
+    document.getElementById('refundLender').value = lender;
+    document.getElementById('refundModal').classList.add('open');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+
+  // Close on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  });
+
+  // ---- Actions ----
+  async function submitPayment() {
+    const loanId   = document.getElementById('payLoanId').value;
+    const lender   = document.getElementById('payLender').value.trim().toLowerCase();
+    const amount   = parseFloat(document.getElementById('payAmount').value);
+    const currency = document.getElementById('payCurrency').value.trim().toUpperCase();
+    if (!lender || !amount || !currency) return toast('Fill in all fields.', 'error');
+    try {
+      await apiFetch(`/api/loans/${loanId}/paid`, {
+        method: 'POST',
+        body: JSON.stringify({ lender, amount, currency }),
+      });
+      closeModal('payModal');
+      toast('Payment recorded!', 'success');
+      loadLoans(); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function submitUnpaid() {
+    const loanId = document.getElementById('unpaidLoanId').value;
+    const lender = document.getElementById('unpaidLender').value.trim().toLowerCase();
+    if (!lender) return toast('Lender required.', 'error');
+    try {
+      await apiFetch(`/api/loans/${loanId}/unpaid`, {
+        method: 'POST',
+        body: JSON.stringify({ lender }),
+      });
+      closeModal('unpaidModal');
+      toast('Loan marked unpaid.', 'success');
+      loadLoans(); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function submitRefund() {
+    const loanId = document.getElementById('refundLoanId').value;
+    const lender = document.getElementById('refundLender').value.trim().toLowerCase();
+    if (!lender) return toast('Lender required.', 'error');
+    try {
+      await apiFetch(`/api/loans/${loanId}/refunded`, {
+        method: 'POST',
+        body: JSON.stringify({ lender }),
+      });
+      closeModal('refundModal');
+      toast('Loan marked refunded.', 'success');
+      loadLoans(); loadStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ---- Helpers ----
+  function statusLabel(s) {
+    return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded' }[s] || s;
+  }
+
+  function fmt(n) {
+    return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function toast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    setTimeout(() => el.className = '', 3500);
+  }
+</script>
+</body>
+</html>
