@@ -29,6 +29,17 @@ CREATE TABLE IF NOT EXISTS users (
     last_updated TIMESTAMP
 );
 
+-- User roles table for dashboard access control
+CREATE TABLE IF NOT EXISTS user_roles (
+    username TEXT PRIMARY KEY,
+    role TEXT NOT NULL DEFAULT 'borrower',       -- 'mod', 'lender', 'borrower'
+    subscription_status TEXT NOT NULL DEFAULT 'free',  -- 'free', 'paid'
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

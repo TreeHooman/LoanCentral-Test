@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}LoanCentral{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
+      --accent: #5b6ef5; --accent-h: #7b8cff;
+      --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --yellow: #f1c40f;
+      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
+
+    /* NAV */
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { font-size: 18px; font-weight: 700; color: var(--accent-h); letter-spacing: -0.5px; text-decoration: none; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-link { color: var(--text2); text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: all 0.15s; }
+    .nav-link:hover { background: var(--surface2); color: var(--text); }
+    .nav-link.active { background: var(--surface2); color: var(--text); }
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+    .role-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .role-mod      { background: rgba(241,196,15,0.15); color: var(--yellow); }
+    .role-lender   { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
+    .role-borrower { background: rgba(46,204,113,0.15); color: var(--green); }
+    .nav-user { font-size: 13px; color: var(--text2); }
+    .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; text-decoration: none; transition: all 0.15s; }
+    .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+    /* FLASH MESSAGES */
+    .flashes { padding: 0 24px; margin-top: 12px; }
+    .flash { padding: 10px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
+    .flash.error   { background: rgba(231,76,60,0.1);  border: 1px solid rgba(231,76,60,0.3);  color: var(--red); }
+    .flash.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); color: var(--green); }
+    .flash.info    { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.3); color: var(--accent-h); }
+
+    /* MAIN */
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* STATS GRID */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .c-accent { color: var(--accent-h); } .c-green { color: var(--green); } .c-red { color: var(--red); } .c-orange { color: var(--orange); } .c-yellow { color: var(--yellow); } .c-muted { color: var(--muted); }
+
+    /* TOOLBAR */
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tabs { display: flex; gap: 4px; }
+    .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .tab:hover { border-color: var(--accent); color: var(--text); }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .search-wrap { flex: 1; min-width: 200px; }
+    .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: border 0.15s; }
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+    .btn-primary:hover { background: var(--accent-h); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* TABLE */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: var(--surface2); }
+    th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+    td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(91,110,245,0.05); }
+    .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
+    .username a { color: var(--text); text-decoration: none; font-weight: 500; }
+    .username a:hover { color: var(--accent-h); }
+    .amount { font-weight: 600; color: var(--text); }
+    .c-remaining { color: var(--orange); }
+    .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .thread-link { font-size: 11px; color: var(--accent-h); text-decoration: none; }
+    .thread-link:hover { text-decoration: underline; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge-confirmed        { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
+    .badge-partially_repaid { background: rgba(241,196,15,0.15); color: var(--yellow); }
+    .badge-repaid           { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-unpaid           { background: rgba(231,76,60,0.15);  color: var(--red); }
+    .badge-refunded         { background: rgba(136,145,170,0.15); color: var(--muted); }
+    .table-placeholder { text-align: center; padding: 48px; color: var(--muted); }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ACTIONS */
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn-action { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .btn-action:hover { opacity: 0.8; }
+    .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
+    .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
+    .btn-paid    { background: rgba(46,204,113,0.2); color: var(--green); }
+
+    /* MODAL */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; }
+    .modal h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+    .modal label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+    .modal input, .modal select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 12px; outline: none; }
+    .modal input:focus, .modal select:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .btn-confirm { background: var(--accent); border: none; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-confirm:hover { background: var(--accent-h); }
+    .modal-error { color: var(--red); font-size: 12px; margin-bottom: 8px; display: none; }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 300; max-width: 320px; }
+    #toast.show { display: block; }
+    #toast.success { border-color: var(--green); color: var(--green); }
+    #toast.error   { border-color: var(--red);   color: var(--red); }
+
+    /* SECTION HEADER */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .section-title { font-size: 16px; font-weight: 600; color: var(--text); }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 60px 24px; color: var(--muted); }
+    .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text2); }
+
+    /* ADMIN TABLE */
+    .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="/">LoanCentral</a>
+  <div class="nav-links">
+    {% if role == 'mod' %}
+      <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
+    {% endif %}
+  </div>
+  <div class="nav-right">
+    <span class="role-badge role-{{ role }}">{{ role }}</span>
+    <span class="nav-user">u/{{ username }}</span>
+    <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
+  </div>
+</nav>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flashes">
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main>{% block content %}{% endblock %}</main>
+
+<!-- Shared modals -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal">
+    <h3>Record Payment</h3>
+    <div class="modal-error" id="payError"></div>
+    <input type="hidden" id="payLoanId" />
+    <label>Loan ID</label><input type="text" id="payLoanIdDisplay" readonly style="opacity:.6" />
+    <label>Lender Username</label><input type="text" id="payLender" placeholder="lender username" />
+    <label>Amount Paid</label><input type="number" id="payAmount" placeholder="e.g. 50.00" step="0.01" min="0.01" />
+    <label>Currency</label><input type="text" id="payCurrency" placeholder="USD" maxlength="3" style="text-transform:uppercase" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('payModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitPayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="unpaidModal">
+  <div class="modal">
+    <h3>Mark as Unpaid</h3>
+    <div class="modal-error" id="unpaidError"></div>
+    <input type="hidden" id="unpaidLoanId" />
+    <label>Loan ID</label><input type="text" id="unpaidLoanIdDisplay" readonly style="opacity:.6" />
+    <label>Lender Username</label><input type="text" id="unpaidLender" placeholder="lender username" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('unpaidModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitUnpaid()">Mark Unpaid</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="refundModal">
+  <div class="modal">
+    <h3>Mark as Refunded</h3>
+    <div class="modal-error" id="refundError"></div>
+    <input type="hidden" id="refundLoanId" />
+    <label>Loan ID</label><input type="text" id="refundLoanIdDisplay" readonly style="opacity:.6" />
+    <label>Lender Username</label><input type="text" id="refundLender" placeholder="lender username" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('refundModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--muted);color:var(--bg)" onclick="submitRefund()">Mark Refunded</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ---- Shared modal helpers ----
+  function openPayModal(loanId, lender, currency) {
+    document.getElementById('payLoanId').value = loanId;
+    document.getElementById('payLoanIdDisplay').value = loanId;
+    document.getElementById('payLender').value = lender;
+    document.getElementById('payCurrency').value = currency || 'USD';
+    document.getElementById('payAmount').value = '';
+    document.getElementById('payError').style.display = 'none';
+    document.getElementById('payModal').classList.add('open');
+  }
+  function openUnpaidModal(loanId, lender) {
+    document.getElementById('unpaidLoanId').value = loanId;
+    document.getElementById('unpaidLoanIdDisplay').value = loanId;
+    document.getElementById('unpaidLender').value = lender;
+    document.getElementById('unpaidError').style.display = 'none';
+    document.getElementById('unpaidModal').classList.add('open');
+  }
+  function openRefundModal(loanId, lender) {
+    document.getElementById('refundLoanId').value = loanId;
+    document.getElementById('refundLoanIdDisplay').value = loanId;
+    document.getElementById('refundLender').value = lender;
+    document.getElementById('refundError').style.display = 'none';
+    document.getElementById('refundModal').classList.add('open');
+  }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+  async function apiFetch(path, options = {}) {
+    const res = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  async function submitPayment() {
+    const loanId = document.getElementById('payLoanId').value;
+    const lender = document.getElementById('payLender').value.trim().toLowerCase();
+    const amount = parseFloat(document.getElementById('payAmount').value);
+    const currency = document.getElementById('payCurrency').value.trim().toUpperCase();
+    const errEl = document.getElementById('payError');
+    if (!lender || !amount || !currency) { errEl.textContent = 'All fields required.'; errEl.style.display='block'; return; }
+    try {
+      await apiFetch(`/api/loans/${loanId}/paid`, { method: 'POST', body: JSON.stringify({ lender, amount, currency }) });
+      closeModal('payModal'); toast('Payment recorded!', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  async function submitUnpaid() {
+    const loanId = document.getElementById('unpaidLoanId').value;
+    const lender = document.getElementById('unpaidLender').value.trim().toLowerCase();
+    const errEl = document.getElementById('unpaidError');
+    if (!lender) { errEl.textContent = 'Lender required.'; errEl.style.display='block'; return; }
+    try {
+      await apiFetch(`/api/loans/${loanId}/unpaid`, { method: 'POST', body: JSON.stringify({ lender }) });
+      closeModal('unpaidModal'); toast('Loan marked unpaid.', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  async function submitRefund() {
+    const loanId = document.getElementById('refundLoanId').value;
+    const lender = document.getElementById('refundLender').value.trim().toLowerCase();
+    const errEl = document.getElementById('refundError');
+    if (!lender) { errEl.textContent = 'Lender required.'; errEl.style.display='block'; return; }
+    try {
+      await apiFetch(`/api/loans/${loanId}/refunded`, { method: 'POST', body: JSON.stringify({ lender }) });
+      closeModal('refundModal'); toast('Loan marked refunded.', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  function statusLabel(s) {
+    return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded' }[s] || s;
+  }
+  function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
+  function toast(msg, type='') {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.className = 'show ' + type;
+    setTimeout(() => el.className = '', 3500);
+  }
+  function loanRow(loan) {
+    const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+    const id = loan.loan_id || loan.db_id;
+    const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+    const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
+    const canRefund = !['repaid','refunded'].includes(loan.status);
+    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    return `<tr>
+      <td><span class="loan-id">${id}</span></td>
+      <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
+      <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
+      <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td><div class="actions">
+        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
+        ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
+        ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+      </div></td>
+    </tr>`;
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

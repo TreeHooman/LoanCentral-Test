@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Lender Dashboard — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:20px">My Lending Dashboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div></div>
+  <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div><div class="stat-sub" id="s-recovered"></div></div>
+</div>
+
+<!-- Loans -->
+<div class="toolbar">
+  <div class="tabs">
+    <button class="tab active" data-status="">All My Loans</button>
+    <button class="tab" data-status="confirmed">Active</button>
+    <button class="tab" data-status="partially_repaid">Partial</button>
+    <button class="tab" data-status="unpaid">Unpaid</button>
+    <button class="tab" data-status="repaid">Repaid</button>
+    <button class="tab" data-status="refunded">Refunded</button>
+  </div>
+  <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody id="loansBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ME = '{{ username }}';
+  let currentStatus = '';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadStats(); loadLoans();
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentStatus = tab.dataset.status;
+        loadLoans();
+      });
+    });
+  });
+
+  async function loadStats() {
+    try {
+      const s = await apiFetch(`/api/stats/lender/${ME}`);
+      document.getElementById('s-total').textContent      = s.total_loans;
+      document.getElementById('s-active').textContent     = s.active_loans;
+      document.getElementById('s-unpaid').textContent     = s.unpaid_loans;
+      document.getElementById('s-repaid').textContent     = s.repaid_loans;
+      document.getElementById('s-lent').textContent       = '$' + fmt(s.total_lent);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
+      document.getElementById('s-recovered').textContent  = '$' + fmt(s.total_recovered) + ' recovered';
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadLoans() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true; btn.textContent = '↻ Loading...';
+    let url = `/api/loans?lender=${ME}&limit=200`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('loansBody');
+      if (!loans.length) {
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+        const id = loan.loan_id || loan.db_id;
+        const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+        const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
+        const canRefund = !['repaid','refunded'].includes(loan.status);
+        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username">u/${loan.borrower}</td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+          <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+          <td><div class="actions">
+            ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
+            ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
+            ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  function loadData() { loadLoans(); loadStats(); }
+</script>
+{% endblock %}

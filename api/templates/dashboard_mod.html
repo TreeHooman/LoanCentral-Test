@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Mod Dashboard — LoanCentral{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
+  <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
+</div>
+
+<!-- Loans tab -->
+<div id="tab-loans">
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-status="">All</button>
+      <button class="tab" data-status="confirmed">Active</button>
+      <button class="tab" data-status="partially_repaid">Partial</button>
+      <button class="tab" data-status="unpaid">Unpaid</button>
+      <button class="tab" data-status="repaid">Repaid</button>
+      <button class="tab" data-status="refunded">Refunded</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
+    </div>
+    <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Role management tab -->
+<div id="tab-roles" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Role Management</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="toolbar">
+    <div class="search-wrap"><input type="text" id="roleSearch" placeholder="Add user by Reddit username..." /></div>
+    <select id="roleSelect" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:13px">
+      <option value="borrower">Borrower</option>
+      <option value="lender">Lender</option>
+      <option value="mod">Mod</option>
+    </select>
+    <button class="btn-primary" onclick="assignRole()">Assign Role</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Role</th><th>Subscription</th><th>Last Login</th><th>Actions</th></tr></thead>
+      <tbody id="rolesBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let currentStatus = '';
+  let searchTimer = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadStats(); loadLoans();
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentStatus = tab.dataset.status;
+        loadLoans();
+      });
+    });
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadLoans, 400);
+    });
+  });
+
+  async function loadStats() {
+    try {
+      const s = await apiFetch('/api/stats');
+      document.getElementById('s-total').textContent   = s.total_loans;
+      document.getElementById('s-active').textContent  = s.active_loans + s.partial_loans;
+      document.getElementById('s-unpaid').textContent  = s.unpaid_loans;
+      document.getElementById('s-repaid').textContent  = s.repaid_loans;
+      document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
+      document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadLoans() {
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true; btn.textContent = '↻ Loading...';
+    const search = document.getElementById('searchInput').value.trim();
+    let url = `/api/loans?limit=200`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('loansBody');
+      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+    } catch(e) {
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  function loadData() { loadLoans(); loadStats(); }
+
+  function showTab(name) {
+    document.getElementById('tab-loans').style.display = name === 'loans' ? '' : 'none';
+    document.getElementById('tab-roles').style.display = name === 'roles' ? '' : 'none';
+    if (name === 'roles') loadRoles();
+  }
+
+  async function loadRoles() {
+    try {
+      const roles = await apiFetch('/api/admin/roles');
+      const tbody = document.getElementById('rolesBody');
+      tbody.innerHTML = roles.length ? roles.map(r => `
+        <tr>
+          <td class="username">u/${r.username}</td>
+          <td><span class="badge badge-${r.role === 'confirmed' ? 'confirmed' : ''}" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
+          <td style="color:var(--muted)">${r.subscription_status}</td>
+          <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
+          <td><div class="actions">
+            <button class="btn-action btn-paid" onclick="quickRole('${r.username}','lender')">→ Lender</button>
+            <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">→ Borrower</button>
+            <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">→ Mod</button>
+          </div></td>
+        </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No roles configured.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function assignRole() {
+    const username = document.getElementById('roleSearch').value.trim().toLowerCase();
+    const role = document.getElementById('roleSelect').value;
+    if (!username) return toast('Enter a username.', 'error');
+    await quickRole(username, role);
+    document.getElementById('roleSearch').value = '';
+  }
+
+  async function quickRole(username, role) {
+    try {
+      await apiFetch(`/api/admin/roles/${username}`, { method: 'POST', body: JSON.stringify({ role }) });
+      toast(`u/${username} → ${role}`, 'success');
+      loadRoles();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
+  function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+</script>
+{% endblock %}

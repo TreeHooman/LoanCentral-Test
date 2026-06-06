@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}My Loans — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:20px">My Loan Overview</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label">Total Borrowed</div><div class="stat-value c-accent" id="s-borrowed">—</div></div>
+  <div class="stat-card"><div class="stat-label">Total Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid Loans</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Health Score</div><div class="stat-value" id="s-health" style="font-size:22px">—</div><div class="stat-sub" id="s-health-label"></div></div>
+</div>
+
+<!-- What I owe -->
+<div class="section-header" style="margin-top:8px">
+  <span class="section-title">What I Currently Owe</span>
+  <button class="btn-primary" id="refreshBtn" onclick="loadAll()">↻ Refresh</button>
+</div>
+
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th></tr></thead>
+    <tbody id="owingBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Full history -->
+<div class="section-header">
+  <span class="section-title">Full Loan History</span>
+  <div class="tabs">
+    <button class="tab active" data-status="">All</button>
+    <button class="tab" data-status="repaid">Repaid</button>
+    <button class="tab" data-status="unpaid">Unpaid</button>
+    <button class="tab" data-status="refunded">Refunded</button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th><th>Thread</th></tr></thead>
+    <tbody id="historyBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ME = '{{ username }}';
+  let historyStatus = '';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadAll();
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        historyStatus = tab.dataset.status;
+        loadHistory();
+      });
+    });
+  });
+
+  async function loadAll() {
+    await Promise.all([loadProfile(), loadOwing(), loadHistory()]);
+  }
+
+  async function loadProfile() {
+    try {
+      const p = await apiFetch(`/api/users/${ME}`);
+      document.getElementById('s-borrowed').textContent    = '$' + fmt(p.amount_borrowed);
+      document.getElementById('s-repaid').textContent      = '$' + fmt(p.amount_repaid);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(p.active_amount || 0);
+      document.getElementById('s-unpaid').textContent      = p.unpaid_loans;
+      const score = calcHealth(p);
+      const el = document.getElementById('s-health');
+      el.textContent = score + '/100';
+      el.className = 'stat-value ' + healthColor(score);
+      document.getElementById('s-health-label').textContent = healthLabel(score);
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadOwing() {
+    try {
+      const loans = await apiFetch(`/api/loans?borrower=${ME}&status=confirmed&limit=50`);
+      const partial = await apiFetch(`/api/loans?borrower=${ME}&status=partially_repaid&limit=50`);
+      const unpaid  = await apiFetch(`/api/loans?borrower=${ME}&status=unpaid&limit=50`);
+      const all = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
+      const tbody = document.getElementById('owingBody');
+      if (!all.length) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = all.map(loan => {
+        const owe = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+        const id = loan.loan_id || loan.db_id;
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username">u/${loan.lender}</td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+          <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell">${fmtDate(loan.date_created)}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('owingBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function loadHistory() {
+    let url = `/api/loans?borrower=${ME}&limit=100`;
+    if (historyStatus) url += `&status=${historyStatus}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('historyBody');
+      if (!loans.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="table-placeholder">No loan history found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const id = loan.loan_id || loan.db_id;
+        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username">u/${loan.lender}</td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td>${thread}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('historyBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  function calcHealth(p) {
+    const total = p.loans_as_borrower || 0;
+    if (!total) return 100;
+    const unpaid = p.unpaid_loans || 0;
+    const paid = total - unpaid;
+    const loanRatio = paid / total;
+    const borrowed = parseFloat(p.amount_borrowed || 0);
+    const repaid = parseFloat(p.amount_repaid || 0);
+    const payRatio = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
+    return Math.round((loanRatio * 0.7 + payRatio * 0.3) * 100);
+  }
+
+  function healthColor(s) {
+    if (s >= 90) return 'c-green';
+    if (s >= 70) return 'c-accent';
+    if (s >= 50) return 'c-yellow';
+    if (s >= 25) return 'c-orange';
+    return 'c-red';
+  }
+
+  function healthLabel(s) {
+    if (s >= 90) return 'Excellent';
+    if (s >= 70) return 'Good';
+    if (s >= 50) return 'Fair';
+    if (s >= 25) return 'Poor';
+    return 'Very Poor';
+  }
+</script>
+{% endblock %}

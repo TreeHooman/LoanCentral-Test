@@ -583,3 +583,119 @@ def get_active_loans(username: str):
     finally:
         cur.close()
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Role / Auth Services
+# ---------------------------------------------------------------------------
+
+def get_user_role(username: str):
+    """
+    Get dashboard role for a user.
+    Returns ('borrower'|'lender'|'mod', error_message).
+    Defaults to 'borrower' if user not in user_roles table.
+    """
+    conn = _get_db()
+    if not conn:
+        return "borrower", "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT role FROM user_roles WHERE username = %s", (username.lower(),))
+        row = cur.fetchone()
+        return (row[0] if row else "borrower"), None
+    except Exception as e:
+        logger.error(f"get_user_role error: {e}", exc_info=True)
+        return "borrower", str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def set_user_role(username: str, role: str):
+    """
+    Set or update a user's dashboard role.
+    role must be 'mod', 'lender', or 'borrower'.
+    Returns (True, None) on success or (None, error_message).
+    """
+    if role not in ("mod", "lender", "borrower"):
+        return None, "Role must be 'mod', 'lender', or 'borrower'."
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role)
+            VALUES (%s, %s)
+            ON CONFLICT (username) DO UPDATE SET role = %s
+        """, (username.lower(), role, role))
+        conn.commit()
+        logger.info(f"Role set: {username} -> {role}")
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"set_user_role error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_last_login(username: str):
+    """Upsert user_roles on login — creates borrower record if first time."""
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role, last_login)
+            VALUES (%s, 'borrower', NOW())
+            ON CONFLICT (username) DO UPDATE SET last_login = NOW()
+        """, (username.lower(),))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"update_last_login error: {e}", exc_info=True)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_lender_stats(lender: str):
+    """
+    Get lending stats for a specific lender.
+    Returns (stats_dict, error_message).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*)                                                    AS total,
+                COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active,
+                COUNT(*) FILTER (WHERE status = 'unpaid')                  AS unpaid,
+                COUNT(*) FILTER (WHERE status = 'repaid')                  AS repaid,
+                COALESCE(SUM(amount), 0)                                   AS total_lent,
+                COALESCE(SUM(amount_repaid), 0)                            AS total_recovered,
+                COALESCE(SUM(amount) FILTER (WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding
+            FROM loans WHERE lender = %s
+        """, (lender.lower(),))
+        row = cur.fetchone()
+        return {
+            "total_loans":      row[0],
+            "active_loans":     row[1],
+            "unpaid_loans":     row[2],
+            "repaid_loans":     row[3],
+            "total_lent":       row[4],
+            "total_recovered":  row[5],
+            "outstanding":      row[6],
+        }, None
+    except Exception as e:
+        logger.error(f"get_lender_stats error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
