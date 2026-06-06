@@ -92,6 +92,22 @@ class RepaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("50"))
         self.assertIn("fully repaid", comment.replies[0])
 
+    def test_zero_repayment_is_rejected(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=21)])
+
+        comment = self.run_repaid_command(fake_db, "$repaid 21 0 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("greater than zero", comment.replies[0])
+
+    def test_refunded_loan_cannot_be_repaid(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=21, status="refunded")])
+
+        comment = self.run_repaid_command(fake_db, "$repaid 21 25 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("has been refunded", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

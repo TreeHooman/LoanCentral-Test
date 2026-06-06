@@ -112,6 +112,14 @@ class ConfirmCommandTests(unittest.TestCase):
         self.assertEqual(len(fake_db.loans), 2)
         self.assertIn("Confirmed: u/borrower", comment.replies[0])
 
+    def test_zero_confirm_amount_is_rejected(self):
+        fake_db = FakeDb()
+
+        comment = self.run_confirm_command(fake_db, "$confirm /u/lender 0 USD")
+
+        self.assertEqual(fake_db.loans, [])
+        self.assertIn("greater than zero", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

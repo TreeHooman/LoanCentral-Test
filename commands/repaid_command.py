@@ -32,6 +32,10 @@ def process_repaid_command(comment):
     loan_id = match.group(1)
     repay_amt = Decimal(match.group(2))
     currency = match.group(3).upper()
+
+    if repay_amt <= 0:
+        comment.reply("Error: Payment amount must be greater than zero.")
+        return
     
     conn = get_db_connection()
     if not conn:
@@ -64,6 +68,10 @@ def process_repaid_command(comment):
         # Check if already fully repaid
         if status == "repaid":
             comment.reply("Error: This loan has already been fully repaid.")
+            return
+
+        if status == "refunded":
+            comment.reply("Error: This loan has been refunded and cannot be marked repaid.")
             return
 
         remaining_before_payment = total_amt - already_repaid

@@ -109,6 +109,22 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("50"))
         self.assertIn("remaining: 0.00 USD", comment.replies[0])
 
+    def test_zero_payment_is_rejected(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=12)])
+
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 0 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("greater than zero", comment.replies[0])
+
+    def test_refunded_loan_cannot_be_paid(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=12, status="refunded")])
+
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("has been refunded", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

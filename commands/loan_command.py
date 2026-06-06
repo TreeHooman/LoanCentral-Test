@@ -53,6 +53,10 @@ def process_loan_command(comment):
     borrower = post.author.name.lower()
     amount = Decimal(match.group(1))
     currency = match.group(2).upper()
+
+    if amount <= 0:
+        comment.reply("Error: Loan amount must be greater than zero.")
+        return
     
     if borrower == lender:
         logger.warning(f"User {lender} attempted to lend to themselves")

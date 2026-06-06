@@ -36,10 +36,12 @@ The first tests cover `$paid_with_id`:
 - currency mismatch does not update the loan
 - payment larger than the remaining balance is rejected
 - payments on unpaid loans reduce unpaid amount correctly
+- zero-value payments and payments on refunded loans are rejected
 
 The `$confirm` tests cover:
 
 - original requester can confirm a loan
+- zero-value confirmations are rejected
 - `/u/name` and `u/name` lender formats work
 - non-original requester cannot confirm
 - exact duplicate confirmation is blocked
@@ -47,7 +49,7 @@ The `$confirm` tests cover:
 
 Additional offline command coverage:
 
-- `$loan` verified lender flow, unverified lender block, and self-loan silence
+- `$loan` verified lender flow, unverified lender block, self-loan silence, and zero-value rejection
 - `$stats` fake Reddit history reporting, empty history reply, and missing-username silence
 - `$mods` fake modmail capture, user reply, and non-command silence
 - `$repaid` borrower authorization and partial repayment
@@ -55,6 +57,7 @@ Additional offline command coverage:
 - `$repaid` and `$unpaid` support both internal database IDs and stored public loan IDs
 - `$repaid` rejects payments larger than the remaining balance
 - `$repaid` payments on unpaid loans reduce unpaid amount correctly
+- `$repaid` rejects zero-value payments and refunded loans
 - `$unpaid` rejects already repaid loans
 - `$refunded` lender authorization, refund status, stat reversal, and moderator notification capture
 - `$refunded` does not reverse stats again when a loan is already refunded

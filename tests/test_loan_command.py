@@ -35,6 +35,11 @@ class LoanCommandTests(unittest.TestCase):
 
         self.assertEqual(comment.replies, [])
 
+    def test_zero_loan_amount_is_rejected(self):
+        comment = self.run_loan_command("$loan 0 USD")
+
+        self.assertIn("greater than zero", comment.replies[0])
+
 
 if __name__ == "__main__":
     unittest.main()

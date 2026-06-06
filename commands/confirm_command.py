@@ -40,6 +40,8 @@ def confirm_restriction(func):
             lender = match.group(1).lower()
             amount = Decimal(match.group(2))
             currency = match.group(3).upper()
+            if amount <= 0:
+                return func(comment, *args, **kwargs)
             post = comment.submission
             thread_url = f"https://www.reddit.com{post.permalink}"
             
@@ -117,6 +119,10 @@ def process_confirm_command(comment):
     lender = match.group(1).lower()
     amount = Decimal(match.group(2))
     currency = match.group(3).upper()
+
+    if amount <= 0:
+        comment.reply("Error: Loan amount must be greater than zero.")
+        return
     
     # This is where we'll actually create the loan
     loan_id = generate_loan_id()

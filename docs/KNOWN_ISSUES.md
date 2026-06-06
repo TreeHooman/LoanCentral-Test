@@ -48,6 +48,16 @@ Likely areas:
 
 Status: Fixed in upgrade branch.
 
+### Commands accept zero-value amounts or payments on refunded loans
+
+Commands: `$loan`, `$confirm`, `$paid_with_id`, `$repaid`
+
+Expected: Loan and payment amounts must be greater than zero. Refunded loans should not accept repayment updates.
+
+Actual: Old logic accepted zero-value loans/payments and allowed refunded loans to be paid again.
+
+Status: Fixed in upgrade branch.
+
 ### `$confirm` blocks legitimate second loans between the same lender and borrower
 
 Command: `$confirm`

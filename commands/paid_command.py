@@ -34,6 +34,10 @@ def process_paid_command(comment):
     loan_id = match.group(1)
     amount_paid = Decimal(match.group(2))
     currency = match.group(3).upper()
+
+    if amount_paid <= 0:
+        comment.reply("Error: Payment amount must be greater than zero.")
+        return
     
     conn = get_db_connection()
     if not conn:
@@ -72,6 +76,10 @@ def process_paid_command(comment):
         # Check if this loan has already been fully repaid
         if status == 'repaid':
             comment.reply(f"Error: This loan (ID {loan_id}) has already been fully repaid.")
+            return
+
+        if status == 'refunded':
+            comment.reply(f"Error: This loan (ID {loan_id}) has been refunded and cannot be marked paid.")
             return
         
         # Ensure all values are Decimal for calculations
