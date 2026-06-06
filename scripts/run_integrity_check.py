@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 from pathlib import Path
 
 import psycopg2
@@ -11,8 +12,36 @@ sys.path.insert(0, str(ROOT))
 from integrity import find_integrity_issues  # noqa: E402
 
 
-def get_connection():
-    load_dotenv(ROOT / ".env")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run a read-only LoanCentral database integrity check.")
+    parser.add_argument(
+        "--env-file",
+        default=str(ROOT / ".env.test"),
+        help="Path to env file. Defaults to .env.test.",
+    )
+    parser.add_argument(
+        "--allow-non-test",
+        action="store_true",
+        help="Allow running against a database whose name does not look like test/dev/staging.",
+    )
+    return parser.parse_args()
+
+
+def assert_safe_database(allow_non_test=False):
+    db_name = os.getenv("DB_NAME", "")
+    env_name = os.getenv("LOANCENTRAL_ENV", "")
+    safe_name = any(part in db_name.lower() for part in ("test", "dev", "stage", "staging"))
+    if allow_non_test or env_name.lower() == "test" or safe_name:
+        return
+
+    raise RuntimeError(
+        "Refusing to run integrity check because DB_NAME does not look like a test/dev/staging database. "
+        "Use --allow-non-test only after confirming this is not production."
+    )
+
+
+def get_connection(allow_non_test=False):
+    assert_safe_database(allow_non_test=allow_non_test)
     host = os.getenv("DB_HOST", "localhost")
     ssl_mode = "require" if any(name in host for name in ("render.com", "amazonaws.com", "heroku.com")) else "prefer"
     return psycopg2.connect(
@@ -25,8 +54,8 @@ def get_connection():
     )
 
 
-def fetch_rows():
-    conn = get_connection()
+def fetch_rows(allow_non_test=False):
+    conn = get_connection(allow_non_test=allow_non_test)
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -78,7 +107,9 @@ def fetch_rows():
 
 
 def main():
-    loans, users = fetch_rows()
+    args = parse_args()
+    load_dotenv(args.env_file)
+    loans, users = fetch_rows(allow_non_test=args.allow_non_test)
     issues = find_integrity_issues(loans, users)
 
     print(f"Checked {len(loans)} loans and {len(users)} users.")

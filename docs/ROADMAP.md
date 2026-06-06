@@ -87,6 +87,7 @@ Current coverage:
 
 - Pure offline integrity checker can report invalid loan states and user aggregate mismatches.
 - Read-only database integrity runner added for dev/staging database checks.
+- Test database schema setup script added with test-database safety guard.
 
 ### 7. Test Reddit Staging
 
