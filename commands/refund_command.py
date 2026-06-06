@@ -1,118 +1,67 @@
-import os
 import re
 import logging
-from datetime import datetime
 from decimal import Decimal
-import traceback
 
 logger = logging.getLogger("LoanCentral")
 
-# Command trigger - this will be used by the CommandManager
 COMMAND_TRIGGER = "$refunded"
 
+
 def process_refund_command(comment):
-    """Process $refunded command"""
-    # Import here to avoid circular imports
-    from utils import get_db_connection, reddit
-    
-    # Check if this is a reply to a loan bot comment
-    if not comment.parent().author or comment.parent().author.name.lower() != os.getenv("REDDIT_USERNAME").lower():
+    """Process $refunded command - lender cancels a loan."""
+    import os
+    from services import mark_refunded
+
+    # Must be a reply to the bot's confirmation comment
+    parent = comment.parent()
+    if not parent.author or parent.author.name.lower() != os.getenv("REDDIT_USERNAME", "").lower():
         return
-    
+
     if "refunded" not in comment.body.lower():
         return
-    
-    # Extract the loan information from the parent comment
-    parent_body = comment.parent().body
-    loan_regex = r'u\/([^\s]+) has confirmed receiving (\d+(?:\.\d+)?)\s+([A-Z]{3}) from u\/([^\s\.]+)'
-    match = re.search(loan_regex, parent_body)
-    
+
+    # Extract loan details from the bot's confirmation comment
+    match = re.search(
+        r'u\/([^\s]+) has confirmed receiving (\d+(?:\.\d+)?)\s+([A-Z]{3}) from u\/([^\s\.]+)',
+        parent.body
+    )
     if not match:
         return
-    
+
     borrower = match.group(1).lower()
     amount = Decimal(match.group(2))
     currency = match.group(3)
     lender = match.group(4).lower()
-    
-    # Verify the refund command is from the lender
+
+    # Only the lender can refund
     if comment.author.name.lower() != lender:
         comment.reply("Only the lender can mark a loan as refunded.")
         return
-    
-    conn = get_db_connection()
-    if not conn:
+
+    result, error = mark_refunded(lender, borrower, amount, currency)
+
+    if error:
+        comment.reply(f"Error: {error}")
         return
-    
+
+    # Notify moderators
     try:
-        cur = conn.cursor()
-        
-        # Find the relevant loan
-        cur.execute('''
-            SELECT id, status FROM loans
-            WHERE lender = %s AND borrower = %s AND amount = %s AND currency = %s
-            ORDER BY date_created DESC
-            LIMIT 1
-        ''', (lender, borrower, amount, currency))
-        
-        result = cur.fetchone()
-        if not result:
-            logger.warning(f"No matching loan found for refund: {lender} to {borrower} for {amount} {currency}")
-            comment.reply(f"Error: Could not find a matching loan from you to u/{borrower} for {amount} {currency}.")
-            return
-        
-        loan_id, status = result
-
-        if status == 'refunded':
-            comment.reply("This loan has already been marked as refunded.")
-            return
-
-        if status == 'repaid':
-            comment.reply("Error: This loan has already been fully repaid and cannot be marked refunded.")
-            return
-
-        # Update the loan status to refunded
-        cur.execute('''
-            UPDATE loans
-            SET status = 'refunded',
-                last_updated = %s
-            WHERE id = %s
-        ''', (datetime.now(), loan_id))
-        
-        # Update user statistics - properly update based on existing values
-        cur.execute('''
-            UPDATE users
-            SET loans_as_lender = GREATEST(loans_as_lender - 1, 0),
-                amount_lent = GREATEST(amount_lent - %s, 0),
-                last_updated = %s
-            WHERE username = %s
-        ''', (amount, datetime.now(), lender))
-        
-        cur.execute('''
-            UPDATE users
-            SET loans_as_borrower = GREATEST(loans_as_borrower - 1, 0),
-                amount_borrowed = GREATEST(amount_borrowed - %s, 0),
-                last_updated = %s
-            WHERE username = %s
-        ''', (amount, datetime.now(), borrower))
-        
-        conn.commit()
-        logger.info(f"Loan refunded: {lender} refunded {amount} {currency} to {borrower}")
-        
-        # Reply to the comment
-        comment.reply(f"Loan marked as refunded. The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} has been removed from both users' statistics.")
-        
-        # Notify moderators
+        from utils import reddit
         post_subreddit = comment.submission.subreddit.display_name
-        subreddit = reddit.subreddit(post_subreddit)
-        subject = f"Loan Refunded - {lender} to {borrower}"
-        message = f"A loan has been marked as refunded:\n\nLender: u/{lender}\nBorrower: u/{borrower}\nAmount: {amount:.2f} {currency}\n\nLink to comment: https://www.reddit.com{comment.permalink}"
-        subreddit.message(subject, message)
-        
+        reddit.subreddit(post_subreddit).message(
+            subject=f"Loan Refunded - {lender} to {borrower}",
+            message=(
+                f"A loan has been marked as refunded:\n\n"
+                f"Lender: u/{lender}\nBorrower: u/{borrower}\n"
+                f"Amount: {amount:.2f} {currency}\n\n"
+                f"Link: https://www.reddit.com{comment.permalink}"
+            )
+        )
     except Exception as e:
-        conn.rollback()
-        logger.error(f"Error processing refund command: {e}")
-        logger.error(traceback.format_exc())
-    finally:
-        cur.close()
-        conn.close()
+        logger.error(f"Failed to notify mods of refund: {e}")
+
+    comment.reply(
+        f"Loan marked as refunded. The loan from u/{lender} to u/{borrower} "
+        f"for {amount:.2f} {currency} has been removed from both users' statistics."
+    )
+    logger.info(f"Loan refunded: {lender} -> {borrower} {amount} {currency}")

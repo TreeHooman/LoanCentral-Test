@@ -1,107 +1,49 @@
 import re
 import logging
-from datetime import datetime
-import traceback
 
 logger = logging.getLogger("LoanCentral")
 
-# Command trigger - this will be used by the CommandManager
 COMMAND_TRIGGER = "$unpaid"
 
+
+def _parse_unpaid(text):
+    """Parse $unpaid from text. Returns (loan_id, borrower) or None."""
+    pattern = r'\$unpaid\s+(\d+)\s+u?\/?([\w-]+)'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(1), match.group(2).lower()
+    return None
+
+
 def process_unpaid_command(comment):
-    """Process $unpaid command - lender marks loan as unpaid"""
-    # Import here to avoid circular imports
-    from utils import get_db_connection, reddit
-    
-    # Check for command format
-    unpaid_regex = r'\$unpaid\s+(\d+)\s+u?\/?([\w-]+)'
-    match = re.search(unpaid_regex, comment.body, re.IGNORECASE)
-    
-    if not match:
+    """Process $unpaid command - lender marks loan as unpaid."""
+    from services import mark_unpaid
+
+    parsed = _parse_unpaid(comment.body)
+    if not parsed:
         return
-    
+
+    loan_id, borrower = parsed
     lender = comment.author.name.lower()
-    loan_id = match.group(1)
-    borrower = match.group(2).lower()
-    
-    conn = get_db_connection()
-    if not conn:
+
+    result, error = mark_unpaid(loan_id, borrower, lender)
+
+    if error:
+        comment.reply(f"Error: {error}")
         return
-    
-    try:
-        cur = conn.cursor()
-        
-        # Find the loan and verify the lender owns it
-        cur.execute('''
-            SELECT id, amount, currency, amount_repaid, original_thread, status
-            FROM loans
-            WHERE (id::text = %s OR loan_id = %s) AND lender = %s AND borrower = %s
-            ORDER BY id DESC
-            LIMIT 1
-        ''', (loan_id, loan_id, lender, borrower))
-        
-        result = cur.fetchone()
-        if not result:
-            logger.warning(f"No matching loan found for unpaid: ID {loan_id} by {lender} for borrower {borrower}")
-            comment.reply(f"Error: Could not find a loan with ID {loan_id} where you are the lender and u/{borrower} is the borrower.")
-            return
-        
-        db_id, loan_amount, loan_currency, amount_repaid, thread_url, status = result
-        
-        # Ensure not already marked as unpaid
-        if status == 'unpaid':
-            comment.reply(f"This loan has already been marked as unpaid.")
-            return
 
-        if status == 'repaid':
-            comment.reply("Error: This loan has already been fully repaid and cannot be marked unpaid.")
-            return
+    current_subreddit = comment.subreddit.display_name
+    response = (
+        f"u/{lender} has marked their loan to u/{borrower} as unpaid.\n\n"
+        f"|Lender|Borrower|Amount|Amount Repaid|Date|Original Thread|\n"
+        f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
+        f"|{lender}|{borrower}|{result['loan_amount']:.2f} {result['currency']}"
+        f"|{result['amount_repaid']:.2f} {result['currency']}|"
+        f"{__import__('datetime').datetime.now().strftime('%Y-%m-%d')}|[Link]({result['thread_url']})|\n\n"
+        f"[Submit unpaid post](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true"
+        f"&title=UNPAID:%20/u/{borrower}%20{result['loan_amount']}%20{result['currency']})\n\n"
+        f"If this is in error, please contact the moderators."
+    )
 
-        if status == 'refunded':
-            comment.reply("Error: This loan has been refunded and cannot be marked unpaid.")
-            return
-        
-        # Update the loan status to unpaid
-        cur.execute('''
-            UPDATE loans
-            SET status = 'unpaid',
-                last_updated = %s
-            WHERE id = %s
-        ''', (datetime.now(), db_id))
-        
-        # Update user statistics - increment unpaid count for borrower
-        remaining_unpaid = loan_amount - amount_repaid
-        cur.execute('''
-            UPDATE users
-            SET unpaid_loans = unpaid_loans + 1,
-                unpaid_amount = unpaid_amount + %s,
-                last_updated = %s
-            WHERE username = %s
-        ''', (remaining_unpaid, datetime.now(), borrower))
-        
-        conn.commit()
-        logger.info(f"Loan marked as unpaid: Loan ID {loan_id} from {lender} to {borrower}")
-        
-        # Get current subreddit from the comment
-        current_subreddit = comment.subreddit.display_name
-        
-        # Create comprehensive response with details
-        response = f"u/{lender} has marked their loan to u/{borrower} as unpaid.\n\n"
-        response += "This loan has been recorded as unpaid in the database.\n\n"
-        response += "|Lender|Borrower|Amount|Amount Repaid|Date|Original Thread|\n"
-        response += "|:--:|:--:|:--:|:--:|:--:|:--:|\n"
-        response += f"|{lender}|{borrower}|{loan_amount:.2f} {loan_currency}|{amount_repaid:.2f} {loan_currency}|{datetime.now().strftime('%Y-%m-%d')}|[Link]({thread_url})|\n\n"
-        
-        # Add unpaid post link using the comment's subreddit instead of hardcoded one
-        response += f"If you would like to make a loan unpaid post, [use this link](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true&title=UNPAID:%20/u/{borrower}%20{str(loan_amount)}%20{loan_currency}).\n\n"
-        response += "If this is in error, please contact the moderators."
-        
-        comment.reply(response)
-        
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Error processing unpaid command: {e}")
-        logger.error(traceback.format_exc())
-    finally:
-        cur.close()
-        conn.close()
+    comment.reply(response)
+    logger.info(f"Loan {loan_id} marked unpaid by {lender}")

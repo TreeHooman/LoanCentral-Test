@@ -19,9 +19,10 @@ class ConfirmCommandTests(unittest.TestCase):
         submission = FakeSubmission(author_name=post_author_name, permalink=permalink)
         comment = FakeComment(body=body, author_name=author_name, submission=submission)
 
+        import services
         with patch.dict(sys.modules, {"utils": fake_utils_module(fake_db)}):
             confirm_command = importlib.import_module("commands.confirm_command")
-            with patch.object(confirm_command, "generate_loan_id", return_value="public-123"):
+            with patch.object(services, "_generate_loan_id", return_value="public-123"):
                 confirm_command.process_confirm_command(comment)
 
         return comment
