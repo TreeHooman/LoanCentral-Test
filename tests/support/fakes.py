@@ -111,6 +111,31 @@ class FakeDb:
             return None
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
+    def find_loan_for_borrower(self, db_id, borrower):
+        loan = self.find_loan(db_id)
+        if not loan or loan["borrower"] != borrower:
+            return None
+        return loan
+
+    def find_loan_for_unpaid(self, db_id, lender, borrower):
+        loan = self.find_loan(db_id)
+        if not loan or loan["lender"] != lender or loan["borrower"] != borrower:
+            return None
+        return loan
+
+    def find_loan_for_refund(self, lender, borrower, amount, currency):
+        matches = [
+            loan
+            for loan in self.loans
+            if loan["lender"] == lender
+            and loan["borrower"] == borrower
+            and loan["amount"] == amount
+            and loan["currency"] == currency
+        ]
+        if not matches:
+            return None
+        return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
+
     def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status):
         db_id = self.next_id
         self.next_id += 1
@@ -175,9 +200,40 @@ class FakeCursor:
             )
             return
 
-        if normalized.startswith("select id from loans where lender"):
+        if normalized.startswith("select id from loans where lender") and "status = 'confirmed'" in normalized:
             lender, borrower = params
             loan = self.fake_db.find_confirmed_loan(lender, borrower)
+            self.last_result = None if not loan else (loan["id"],)
+            return
+
+        if normalized.startswith("select lender, amount, amount_repaid"):
+            db_id, borrower = params
+            loan = self.fake_db.find_loan_for_borrower(db_id, borrower)
+            self.last_result = None if not loan else (
+                loan["lender"],
+                loan["amount"],
+                loan["amount_repaid"],
+                loan["currency"],
+                loan["status"],
+            )
+            return
+
+        if normalized.startswith("select id, amount, currency, amount_repaid"):
+            db_id, lender, borrower = params
+            loan = self.fake_db.find_loan_for_unpaid(db_id, lender, borrower)
+            self.last_result = None if not loan else (
+                loan["id"],
+                loan["amount"],
+                loan["currency"],
+                loan["amount_repaid"],
+                loan["original_thread"],
+                loan["status"],
+            )
+            return
+
+        if normalized.startswith("select id from loans where lender") and "amount = %s" in normalized:
+            lender, borrower, amount, currency = params
+            loan = self.fake_db.find_loan_for_refund(lender, borrower, amount, currency)
             self.last_result = None if not loan else (loan["id"],)
             return
 
@@ -214,10 +270,34 @@ class FakeCursor:
             self.last_result = None
             return
 
+        if normalized.startswith("update loans set status = 'unpaid'"):
+            _last_updated, db_id = params
+            loan = self.fake_db.find_loan(db_id)
+            if loan:
+                loan["status"] = "unpaid"
+            self.last_result = None
+            return
+
+        if normalized.startswith("update loans set status = 'refunded'"):
+            _last_updated, db_id = params
+            loan = self.fake_db.find_loan(db_id)
+            if loan:
+                loan["status"] = "refunded"
+            self.last_result = None
+            return
+
         if normalized.startswith("update users set amount_repaid"):
             amount_paid, _last_updated, username = params
             user = self.fake_db.users.setdefault(username, {})
             user["amount_repaid"] = user.get("amount_repaid", Decimal("0")) + amount_paid
+            self.last_result = None
+            return
+
+        if normalized.startswith("update users set unpaid_loans = unpaid_loans + 1"):
+            unpaid_amount, _last_updated, username = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["unpaid_loans"] = user.get("unpaid_loans", 0) + 1
+            user["unpaid_amount"] = user.get("unpaid_amount", Decimal("0")) + unpaid_amount
             self.last_result = None
             return
 
@@ -227,6 +307,33 @@ class FakeCursor:
             user["unpaid_loans"] = max(user.get("unpaid_loans", 0) - 1, 0)
             user["unpaid_amount"] = max(user.get("unpaid_amount", Decimal("0")) - loan_amount, Decimal("0"))
             self.last_result = None
+            return
+
+        if normalized.startswith("update users set loans_as_lender"):
+            amount, _last_updated, username = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["loans_as_lender"] = max(user.get("loans_as_lender", 0) - 1, 0)
+            user["amount_lent"] = max(user.get("amount_lent", Decimal("0")) - amount, Decimal("0"))
+            self.last_result = None
+            return
+
+        if normalized.startswith("update users set loans_as_borrower"):
+            amount, _last_updated, username = params
+            user = self.fake_db.users.setdefault(username, {})
+            user["loans_as_borrower"] = max(user.get("loans_as_borrower", 0) - 1, 0)
+            user["amount_borrowed"] = max(user.get("amount_borrowed", Decimal("0")) - amount, Decimal("0"))
+            self.last_result = None
+            return
+
+        if normalized.startswith("select coalesce(loans_as_borrower"):
+            username = params[0]
+            user = self.fake_db.users.get(username)
+            self.last_result = None if not user else (
+                user.get("loans_as_borrower", 0),
+                user.get("amount_borrowed", Decimal("0")),
+                user.get("amount_repaid", Decimal("0")),
+                user.get("unpaid_loans", 0),
+            )
             return
 
         raise AssertionError(f"FakeCursor does not support query: {query}")
@@ -261,8 +368,8 @@ def loan_record(
     }
 
 
-def fake_utils_module(fake_db):
+def fake_utils_module(fake_db, reddit=None):
     return SimpleNamespace(
-        reddit=FakeReddit(),
+        reddit=reddit or FakeReddit(),
         get_db_connection=lambda: fake_db.connection(),
     )

@@ -41,3 +41,11 @@ The `$confirm` tests cover:
 - `/u/name` and `u/name` lender formats work
 - non-original requester cannot confirm
 - duplicate confirmed lender/borrower pair is blocked
+
+Additional offline command coverage:
+
+- `$repaid` borrower authorization and partial repayment
+- `$unpaid` lender authorization and remaining-balance unpaid tracking
+- `$refunded` lender authorization, refund status, stat reversal, and moderator notification capture
+- `$health` no-history and borrower total reporting
+- `$help` core command listing and non-command silence
