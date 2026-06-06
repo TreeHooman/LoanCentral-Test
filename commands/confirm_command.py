@@ -28,32 +28,40 @@ def confirm_restriction(func):
             # Extract borrower from comment
             borrower = comment.author.name.lower()
             
-            # Extract lender from the command - similar to what's in the function
-            confirm_regex = r'\$confirm\s+\/u\/([^\s]+)'
+            # Extract full loan details so duplicate checks only block the same loan.
+            confirm_regex = r'\$confirm\s+\/u\/([^\s]+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})'
             match = re.search(confirm_regex, comment.body, re.IGNORECASE)
             if not match:
-                alt_confirm_regex = r'\$confirm\s+u\/([^\s]+)'
+                alt_confirm_regex = r'\$confirm\s+u\/([^\s]+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})'
                 match = re.search(alt_confirm_regex, comment.body, re.IGNORECASE)
                 if not match:
                     return func(comment, *args, **kwargs)  # Can't find lender, let the function handle it
             
             lender = match.group(1).lower()
+            amount = Decimal(match.group(2))
+            currency = match.group(3).upper()
+            post = comment.submission
+            thread_url = f"https://www.reddit.com{post.permalink}"
             
             # Check if this loan already exists
             cur.execute('''
                 SELECT id FROM loans
-                WHERE lender = %s AND borrower = %s AND status = 'confirmed'
+                WHERE lender = %s
+                    AND borrower = %s
+                    AND amount = %s
+                    AND currency = %s
+                    AND original_thread = %s
+                    AND status = 'confirmed'
                 ORDER BY date_created DESC
                 LIMIT 1
-            ''', (lender, borrower))
+            ''', (lender, borrower, amount, currency, thread_url))
             
             existing = cur.fetchone()
             if existing:
-                comment.reply(f"Error: You have already confirmed a loan with u/{lender}. If this is a new loan, please ask the lender to use a new $loan command.")
+                comment.reply(f"Error: You have already confirmed this loan with u/{lender}.")
                 return  # Skip the wrapped function
                 
             # Check if commenter is the OP of the post
-            post = comment.submission
             if comment.author.name.lower() != post.author.name.lower():
                 comment.reply(f"Error: Only the original requester (u/{post.author.name}) can confirm this loan. If you're the requester but using a different account, please contact the moderators.")
                 return

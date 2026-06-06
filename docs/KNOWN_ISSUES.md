@@ -47,3 +47,13 @@ Likely areas:
 - `commands/stats_command.py`
 
 Status: Fixed in upgrade branch.
+
+### `$confirm` blocks legitimate second loans between the same lender and borrower
+
+Command: `$confirm`
+
+Expected: A duplicate confirmation for the same loan should be blocked, but a new loan between the same lender and borrower should be allowed when it is on a different thread or has different loan details.
+
+Actual: The old logic blocked any second confirmed loan between the same lender and borrower.
+
+Status: Fixed in upgrade branch. Duplicate checks now include lender, borrower, amount, currency, original thread, and confirmed status.

@@ -141,13 +141,16 @@ class FakeDb:
             loan["original_thread"],
         )
 
-    def find_confirmed_loan(self, lender, borrower):
+    def find_confirmed_loan(self, lender, borrower, amount=None, currency=None, original_thread=None):
         matches = [
             loan
             for loan in self.loans
             if loan["lender"] == lender
             and loan["borrower"] == borrower
             and loan["status"] == "confirmed"
+            and (amount is None or loan["amount"] == amount)
+            and (currency is None or loan["currency"] == currency)
+            and (original_thread is None or loan["original_thread"] == original_thread)
         ]
         if not matches:
             return None
@@ -250,8 +253,12 @@ class FakeCursor:
             return
 
         if normalized.startswith("select id from loans where lender") and "status = 'confirmed'" in normalized:
-            lender, borrower = params
-            loan = self.fake_db.find_confirmed_loan(lender, borrower)
+            if len(params) == 5:
+                lender, borrower, amount, currency, original_thread = params
+                loan = self.fake_db.find_confirmed_loan(lender, borrower, amount, currency, original_thread)
+            else:
+                lender, borrower = params
+                loan = self.fake_db.find_confirmed_loan(lender, borrower)
             self.last_result = None if not loan else (loan["id"],)
             return
 
@@ -422,6 +429,7 @@ def loan_record(
     amount_repaid="0.00",
     currency="USD",
     status="confirmed",
+    original_thread="https://www.reddit.com/r/LoanCentralTest/comments/abc/test/",
 ):
     return {
         "id": db_id,
@@ -432,7 +440,7 @@ def loan_record(
         "amount_repaid": Decimal(amount_repaid),
         "currency": currency,
         "status": status,
-        "original_thread": "https://www.reddit.com/r/LoanCentralTest/comments/abc/test/",
+        "original_thread": original_thread,
     }
 
 

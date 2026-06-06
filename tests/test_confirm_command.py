@@ -8,8 +8,15 @@ from tests.support.fakes import FakeComment, FakeDb, FakeSubmission, fake_utils_
 
 
 class ConfirmCommandTests(unittest.TestCase):
-    def run_confirm_command(self, fake_db, body, author_name="borrower", post_author_name="borrower"):
-        submission = FakeSubmission(author_name=post_author_name)
+    def run_confirm_command(
+        self,
+        fake_db,
+        body,
+        author_name="borrower",
+        post_author_name="borrower",
+        permalink="/r/LoanCentralTest/comments/abc/test/",
+    ):
+        submission = FakeSubmission(author_name=post_author_name, permalink=permalink)
         comment = FakeComment(body=body, author_name=author_name, submission=submission)
 
         with patch.dict(sys.modules, {"utils": fake_utils_module(fake_db)}):
@@ -61,15 +68,50 @@ class ConfirmCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans, [])
         self.assertIn("Only the original requester", comment.replies[0])
 
-    def test_duplicate_confirmed_lender_borrower_pair_is_blocked(self):
-        fake_db = FakeDb(loans=[loan_record(db_id=7, lender="lender", borrower="borrower", status="confirmed")])
+    def test_exact_duplicate_confirmation_is_blocked(self):
+        fake_db = FakeDb(
+            loans=[
+                loan_record(
+                    db_id=7,
+                    lender="lender",
+                    borrower="borrower",
+                    amount="100.00",
+                    currency="USD",
+                    status="confirmed",
+                    original_thread="https://www.reddit.com/r/LoanCentralTest/comments/abc/test/",
+                )
+            ]
+        )
 
         comment = self.run_confirm_command(fake_db, "$confirm /u/lender 100 USD")
 
         self.assertEqual(len(fake_db.loans), 1)
-        self.assertIn("already confirmed a loan", comment.replies[0])
+        self.assertIn("already confirmed this loan", comment.replies[0])
+
+    def test_same_lender_borrower_can_confirm_different_thread(self):
+        fake_db = FakeDb(
+            loans=[
+                loan_record(
+                    db_id=7,
+                    lender="lender",
+                    borrower="borrower",
+                    amount="100.00",
+                    currency="USD",
+                    status="confirmed",
+                    original_thread="https://www.reddit.com/r/LoanCentralTest/comments/abc/test/",
+                )
+            ]
+        )
+
+        comment = self.run_confirm_command(
+            fake_db,
+            "$confirm /u/lender 100 USD",
+            permalink="/r/LoanCentralTest/comments/def/new_test/",
+        )
+
+        self.assertEqual(len(fake_db.loans), 2)
+        self.assertIn("Confirmed: u/borrower", comment.replies[0])
 
 
 if __name__ == "__main__":
     unittest.main()
-
