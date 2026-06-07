@@ -827,6 +827,45 @@ def get_analytics():
         conn.close()
 
 
+@app.route("/api/analytics/lender/<username>", methods=["GET"])
+@require_auth
+def get_lender_analytics(username):
+    """Per-lender analytics: monthly loan counts + status breakdown."""
+    if session.get("username") and session.get("role") not in ("mod",):
+        if username.lower() != session.get("username", ""):
+            return _json({"error": "You can only view your own analytics."}, 403)
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT TO_CHAR(DATE_TRUNC('month', date_created), 'Mon YY') AS month,
+                   COUNT(*) AS cnt
+            FROM loans
+            WHERE lender = %s AND date_created >= NOW() - INTERVAL '12 months'
+            GROUP BY DATE_TRUNC('month', date_created), month
+            ORDER BY DATE_TRUNC('month', date_created)
+        """, (username.lower(),))
+        monthly = cur.fetchall()
+        cur.execute("""
+            SELECT status, COUNT(*) FROM loans WHERE lender = %s GROUP BY status
+        """, (username.lower(),))
+        by_status = {r[0]: r[1] for r in cur.fetchall()}
+        return _json({
+            "months": [r[0] for r in monthly],
+            "counts": [r[1] for r in monthly],
+            "by_status": by_status,
+        })
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+    finally:
+        try: cur.close()
+        except Exception: pass
+        conn.close()
+
+
 @app.route("/api/stats/lender/<lender>", methods=["GET"])
 @require_auth
 def get_lender_stats(lender):

@@ -7,7 +7,10 @@
     <div class="section-title" style="font-size:20px">My Loan Overview</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
-  <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="openRoleRequestModal()">Request Lender Access</button>
+  <div style="display:flex;gap:8px">
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="openRoleRequestModal()">Request Lender Access</button>
+    <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/auth/change-password">⚙ Settings</a>
+  </div>
 </div>
 
 <!-- Role request modal -->

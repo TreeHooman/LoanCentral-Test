@@ -11,6 +11,8 @@
     <span style="font-size:12px;color:var(--muted)">Available to lend:</span>
     <button id="availBtn" class="btn-primary" onclick="toggleAvailability()" style="min-width:80px">Loading…</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showLenderTab('applications')">📋 Applications</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showLenderTab('analytics')">📊 Analytics</button>
+    <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/auth/change-password">⚙ Settings</a>
   </div>
 </div>
 
@@ -50,6 +52,24 @@
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
 
+<!-- Analytics tab -->
+<div id="tab-analytics" style="display:none;margin-top:8px">
+  <div class="section-header">
+    <span class="section-title">My Lending Analytics</span>
+    <button class="btn-primary" onclick="showLenderTab('loans')">← Back to My Loans</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
+    <div class="table-wrap" style="padding:20px">
+      <h4 style="margin:0 0 12px;font-size:14px;color:var(--text2)">Loans Over Time (last 12 months)</h4>
+      <canvas id="lenderLoansChart" height="200"></canvas>
+    </div>
+    <div class="table-wrap" style="padding:20px">
+      <h4 style="margin:0 0 12px;font-size:14px;color:var(--text2)">Portfolio Breakdown</h4>
+      <canvas id="lenderStatusChart" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
 <!-- Loan Applications tab -->
 <div id="tab-applications" style="display:none;margin-top:8px">
   <div class="section-header">
@@ -67,6 +87,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
   const ME = '{{ username }}';
   let currentStatus = '';
@@ -185,9 +206,11 @@
 
   function showLenderTab(name) {
     document.getElementById('tab-applications').style.display = name === 'applications' ? '' : 'none';
+    document.getElementById('tab-analytics').style.display    = name === 'analytics'    ? '' : 'none';
     document.querySelectorAll('#loansBody').forEach(el => el.closest('.table-wrap').style.display = name === 'loans' ? '' : 'none');
-    document.getElementById('loadMoreBtn').style.display = name === 'applications' ? 'none' : '';
+    document.getElementById('loadMoreBtn').style.display = ['applications','analytics'].includes(name) ? 'none' : '';
     if (name === 'applications') loadApplications();
+    if (name === 'analytics')    loadLenderAnalytics();
   }
 
   async function loadAvailability() {
@@ -247,6 +270,51 @@
       await apiFetch(`/api/loan-applications/${id}/claim`, { method: 'POST' });
       toast('Application claimed! Contact the borrower to arrange the loan.', 'success');
       loadApplications();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  let _loansChart = null, _statusChart = null;
+
+  async function loadLenderAnalytics() {
+    try {
+      const data = await apiFetch(`/api/analytics/lender/${ME}`);
+
+      // Loans over time
+      const ctx1 = document.getElementById('lenderLoansChart').getContext('2d');
+      if (_loansChart) _loansChart.destroy();
+      _loansChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+          labels: data.months || [],
+          datasets: [{
+            label: 'Loans Given',
+            data: data.counts || [],
+            backgroundColor: 'rgba(91,110,245,0.5)',
+            borderColor: 'rgba(91,110,245,1)',
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+      });
+
+      // Status pie
+      const ctx2 = document.getElementById('lenderStatusChart').getContext('2d');
+      if (_statusChart) _statusChart.destroy();
+      const st = data.by_status || {};
+      const labels = Object.keys(st);
+      const colorMap = {confirmed:'#5b6ef5',partially_repaid:'#f39c12',repaid:'#2ecc71',unpaid:'#e74c3c',refunded:'#95a5a6'};
+      _statusChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{ data: labels.map(l => st[l]), backgroundColor: labels.map(l => colorMap[l] || '#888') }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
     } catch(e) { toast(e.message, 'error'); }
   }
 </script>

@@ -241,8 +241,12 @@ class FakeCursor:
         params = params or ()
 
         if normalized.startswith("select id, loan_id, lender, borrower") and "id::text = %s" in normalized:
-            # Single-loan lookup (mark_repaid): WHERE id::text = %s OR loan_id = %s
+            # Single-loan lookup (mark_repaid OR forgive): WHERE id::text = %s OR loan_id = %s [AND lender = %s]
             loan = self.fake_db.find_loan(params[0])
+            if loan and len(params) == 3:
+                # forgive: also check lender matches
+                if loan.get("lender") != params[2]:
+                    loan = None
             self.last_result = None if not loan else (
                 loan["id"],
                 loan["loan_id"],
@@ -380,7 +384,8 @@ class FakeCursor:
             return
 
         if normalized.startswith("update loans set status = 'refunded'"):
-            _last_updated, db_id = params
+            # mark_refunded uses (last_updated, db_id), forgive uses (db_id,)
+            db_id = params[0] if len(params) == 1 else params[1]
             loan = self.fake_db.find_loan(db_id)
             if loan:
                 loan["status"] = "refunded"
@@ -399,6 +404,19 @@ class FakeCursor:
             user = self.fake_db.users.setdefault(username, {})
             user["unpaid_loans"] = user.get("unpaid_loans", 0) + 1
             user["unpaid_amount"] = user.get("unpaid_amount", Decimal("0")) + unpaid_amount
+            self.last_result = None
+            return
+
+        if normalized.startswith("update users set unpaid_loans = greatest"):
+            if "last_updated = now()" in normalized:
+                # forgive command: params = (remaining_amount, borrower)
+                remaining, username = params[0], params[1]
+            else:
+                # mark_repaid unpaid clear: params = (amount_paid, last_updated, borrower)
+                remaining, _, username = params[0], params[1], params[2]
+            user = self.fake_db.users.setdefault(username, {})
+            user["unpaid_loans"] = max(user.get("unpaid_loans", 0) - 1, 0)
+            user["unpaid_amount"] = max(user.get("unpaid_amount", Decimal("0")) - remaining, Decimal("0"))
             self.last_result = None
             return
 
