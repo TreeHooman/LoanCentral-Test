@@ -54,6 +54,7 @@ All history, health scores, stats, and mod tools are on the **[LoanCentral Dashb
 |:---|:---|
 | `$ban u/username [reason]` | Ban a user from bot commands |
 | `$unban u/username` | Lift a bot ban |
+| `$warn u/username [reason]` | Send a formal warning DM + log to mod notes |
 | `$note u/username [text]` | Add an internal mod note (not visible to users) |
 
 ---

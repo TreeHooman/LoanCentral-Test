@@ -936,7 +936,7 @@ def get_overdue_loans():
 @app.route("/u/<username>")
 @login_required
 def user_profile(username):
-    from services import get_user_profile, get_loan_history, calculate_health_score
+    from services import get_user_profile, get_loan_history, calculate_health_score, check_ban, get_mod_notes
     username = username.lower()
     profile, error = get_user_profile(username)
     if error or profile is None:
@@ -944,6 +944,9 @@ def user_profile(username):
         return redirect(url_for("home"))
     score, label = calculate_health_score(profile)
     loans, _ = get_loan_history(username, role="both", limit=50)
+    viewer_is_mod = session.get("role") == "mod"
+    is_banned, ban_reason = check_ban(username) if viewer_is_mod else (False, None)
+    mod_notes, _ = get_mod_notes(username) if viewer_is_mod else ([], None)
     return render_template(
         "profile.html",
         target=username,
@@ -953,6 +956,10 @@ def user_profile(username):
         loans=loans or [],
         viewer=session["username"],
         role=session["role"],
+        is_mod=viewer_is_mod,
+        is_banned=is_banned,
+        ban_reason=ban_reason,
+        mod_notes=mod_notes or [],
     )
 
 

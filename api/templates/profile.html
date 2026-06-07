@@ -123,4 +123,112 @@
     </tbody>
   </table>
 </div>
+
+{% if is_mod %}
+<!-- Mod-only panel: ban status + notes -->
+<div style="margin-top:24px;border:1px solid rgba(231,76,60,0.3);border-radius:10px;padding:20px;background:rgba(231,76,60,0.04)">
+  <div class="section-header" style="margin-bottom:14px">
+    <span class="section-title" style="font-size:15px;color:var(--red)">🔒 Mod Panel — u/{{ target }}</span>
+    <div style="display:flex;gap:8px">
+      {% if is_banned %}
+        <form method="POST" action="/api/admin/bans/{{ target }}" onsubmit="return confirm('Unban u/{{ target }}?')">
+          <input type="hidden" name="_method" value="DELETE">
+          <button type="button" onclick="unbanUser('{{ target }}')" class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)">✓ Unban</button>
+        </form>
+      {% else %}
+        <button onclick="openBanModal('{{ target }}')" class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)">🔨 Ban</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if is_banned %}
+  <div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--red)">
+    ⛔ <strong>Bot-banned</strong> — {{ ban_reason }}
+  </div>
+  {% endif %}
+
+  <!-- Notes -->
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Mod Notes</div>
+    <div id="modNotesDiv">
+      {% if mod_notes %}
+        {% for n in mod_notes %}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:8px;font-size:13px">
+          <div style="color:var(--text)">{{ n.note }}</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:4px">— u/{{ n.added_by }} &nbsp;·&nbsp; {{ n.created_at.strftime('%Y-%m-%d') if n.created_at else '' }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">No notes yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Add note -->
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <input type="text" id="newNoteInput" placeholder="Add a note…"
+           style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;outline:none" />
+    <button onclick="submitNote('{{ target }}')" class="btn-primary">Add Note</button>
+  </div>
+  <p id="noteMsg" style="margin:8px 0 0;font-size:13px;min-height:16px"></p>
+</div>
+
+<!-- Ban modal (reuse pattern) -->
+<div class="modal-overlay" id="profileBanModal" style="display:none">
+  <div class="modal">
+    <h3 id="profileBanTitle">Ban User</h3>
+    <div class="modal-error" id="profileBanError"></div>
+    <label>Reason</label>
+    <input type="text" id="profileBanReason" placeholder="Optional reason" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('profileBanModal').style.display='none'">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitProfileBan()">Ban</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _banTarget = '';
+function openBanModal(u) {
+  _banTarget = u;
+  document.getElementById('profileBanTitle').textContent = 'Ban u/' + u;
+  document.getElementById('profileBanReason').value = '';
+  document.getElementById('profileBanError').textContent = '';
+  document.getElementById('profileBanModal').style.display = 'flex';
+}
+async function submitProfileBan() {
+  const reason = document.getElementById('profileBanReason').value.trim();
+  const r = await fetch(`/api/admin/bans/${_banTarget}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({reason})
+  });
+  if (r.ok) { location.reload(); }
+  else { const d = await r.json(); document.getElementById('profileBanError').textContent = d.error; }
+}
+async function unbanUser(u) {
+  if (!confirm('Unban u/' + u + '?')) return;
+  const r = await fetch(`/api/admin/bans/${u}`, { method: 'DELETE' });
+  if (r.ok) location.reload();
+}
+async function submitNote(u) {
+  const note = document.getElementById('newNoteInput').value.trim();
+  const msg  = document.getElementById('noteMsg');
+  if (!note) { msg.style.color = 'var(--red)'; msg.textContent = 'Note cannot be empty.'; return; }
+  const r = await fetch(`/api/admin/notes/${u}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({note})
+  });
+  if (r.ok) {
+    msg.style.color = 'var(--green)'; msg.textContent = 'Note saved.';
+    document.getElementById('newNoteInput').value = '';
+    setTimeout(() => location.reload(), 800);
+  } else {
+    const d = await r.json(); msg.style.color = 'var(--red)'; msg.textContent = d.error;
+  }
+}
+</script>
+{% endif %}
+
 {% endblock %}
