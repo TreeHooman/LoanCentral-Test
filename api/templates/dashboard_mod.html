@@ -48,6 +48,12 @@
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
     <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
+    <div style="display:flex;gap:0;align-items:stretch">
+      <input type="text" id="userLookupInput" placeholder="Look up user…"
+             style="background:var(--bg);border:1px solid var(--border);border-right:none;color:var(--text);padding:6px 10px;border-radius:6px 0 0 6px;font-size:13px;outline:none;width:140px"
+             onkeydown="if(event.key==='Enter')goToUser()" />
+      <button onclick="goToUser()" class="btn-primary" style="border-radius:0 6px 6px 0;padding:6px 10px">→</button>
+    </div>
   </div>
   <!-- Advanced filters panel -->
   <div id="filtersPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
@@ -521,6 +527,11 @@
       toast(`Reminders sent: ${r.periodic_sent} periodic, ${r.due_sent} due-date.`, 'success');
     } catch(e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '📲 Send Reminders'; }
+  }
+
+  function goToUser() {
+    const u = document.getElementById('userLookupInput').value.trim().replace(/^u\//i, '').toLowerCase();
+    if (u) window.location.href = '/u/' + u;
   }
 
   async function loadBans() {

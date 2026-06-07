@@ -531,6 +531,15 @@ def set_loan_unpaid(loan_id):
     result, error = mark_unpaid(loan_id, lender)
     if error:
         return _json({"error": error}, 400)
+    try:
+        from notifications import notify_discord
+        notify_discord(
+            f"⚠️ Loan unpaid (dashboard): u/{lender} marked loan to "
+            f"u/{result.get('borrower','?')} as UNPAID | "
+            f"{float(result.get('loan_amount',0)):.2f} {result.get('currency','?')} | ID: {loan_id}"
+        )
+    except Exception:
+        pass
     return _json(result)
 
 

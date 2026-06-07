@@ -33,6 +33,8 @@ services:
         sync: false
       - key: ADMIN_EMAIL
         sync: false
+      - key: LENDER_FLAIR
+        value: "Verified Lender"
 
   - type: worker
     name: loancentral-bot
@@ -58,6 +60,8 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      - key: LENDER_FLAIR
+        value: "Verified Lender"
 
   - type: cron
     name: loancentral-reminders
