@@ -654,6 +654,20 @@ class FakeCursor:
             self.last_result = (total, active)
             return
 
+        # $outstanding: active loans for a lender
+        if normalized.startswith("select loan_id, borrower, amount, amount_repaid, currency, status, due_date") and "lender = %s" in normalized:
+            lender = params[0]
+            matches = [
+                l for l in self.fake_db.loans
+                if l["lender"] == lender and l["status"] in ("confirmed", "partially_repaid")
+            ]
+            self.last_result = [
+                (l["loan_id"], l["borrower"], l["amount"], l["amount_repaid"],
+                 l["currency"], l["status"], l.get("due_date"))
+                for l in matches
+            ]
+            return
+
         if normalized.startswith("select id from disputes where loan_id"):
             self.last_result = None
             return

@@ -46,6 +46,7 @@ All history, health scores, stats, and mod tools are on the **[LoanCentral Dashb
 | `$unpaid loan_id` | Mark a loan as unpaid |
 | `$refunded loan_id` | Mark a loan as refunded/cancelled |
 | `$forgive loan_id` | Forgive/waive a loan (removes debt from borrower's record) |
+| `$outstanding` | List all your active/partially-repaid loans and amounts owed |
 
 ---
 

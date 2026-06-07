@@ -259,19 +259,47 @@ class CommandManager:
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
         global _processed_count
-        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME").lower():
+        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME", "").lower():
             return
 
         body_lower = comment.body.lower()
+
+        # Quick check: does the body contain any command trigger at all?
+        has_trigger = any(trigger in body_lower for trigger in self.commands)
+        if not has_trigger:
+            return
+
         _processed_count += 1
+        username = comment.author.name.lower()
+
+        # Global ban check — checked once before any command dispatch
+        # $ban, $unban, $help, $status are always allowed even for banned users
+        ALLOWED_BANNED = {"$ban", "$unban", "$help", "$status"}
+        triggered = next(
+            (t for t in sorted(self.commands, key=lambda x: -len(x)) if t in body_lower), None
+        )
+        if triggered and triggered not in ALLOWED_BANNED:
+            try:
+                from services import check_ban
+                is_banned, ban_reason = check_ban(username)
+                if is_banned:
+                    comment.reply(
+                        f"Your account has been suspended from LoanCentral bot commands. "
+                        f"Reason: {ban_reason}"
+                    )
+                    logger.info(f"Blocked banned user u/{username} from command {triggered}")
+                    return
+            except Exception as _be:
+                logger.warning(f"Ban check failed for {username}: {_be}")
+
+        # Rate limiting
+        if _is_rate_limited(username):
+            logger.warning(f"Rate limit hit for u/{username} on {triggered} — skipping")
+            return
 
         # Check each command trigger — sorted longest-first to avoid prefix collisions
         for trigger, command_func in sorted(self.commands.items(), key=lambda x: -len(x[0])):
             if trigger in body_lower:
-                username = comment.author.name.lower()
-                if _is_rate_limited(username):
-                    logger.warning(f"Rate limit hit for u/{username} on {trigger} — skipping")
-                    return
                 try:
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
                     command_func(comment)
