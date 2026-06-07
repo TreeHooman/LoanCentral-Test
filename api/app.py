@@ -69,7 +69,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
         params += [limit, offset]
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, date_repaid
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s OFFSET %s
         """, params)
@@ -79,7 +79,9 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
                 "db_id": r[0], "loan_id": r[1], "lender": r[2], "borrower": r[3],
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
+                "date_repaid": r[10],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
+                "repaid_pct": round(float(r[5]) / float(r[4]) * 100, 1) if float(r[4]) > 0 else 0,
             }
             for r in rows
         ], None
@@ -492,6 +494,79 @@ def get_stats():
             "total_volume":   row[6], "total_repaid":  row[7],
             "outstanding":    row[8],
         })
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/analytics", methods=["GET"])
+@require_mod_api
+def get_analytics():
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+
+        # Monthly loan volume for last 12 months
+        cur.execute("""
+            SELECT
+                TO_CHAR(DATE_TRUNC('month', date_created), 'YYYY-MM') AS month,
+                COUNT(*)                                               AS loan_count,
+                COALESCE(SUM(amount), 0)                              AS volume,
+                COALESCE(SUM(amount_repaid), 0)                       AS recovered,
+                COUNT(*) FILTER (WHERE status = 'repaid')             AS repaid_count,
+                COUNT(*) FILTER (WHERE status = 'unpaid')             AS unpaid_count
+            FROM loans
+            WHERE date_created >= NOW() - INTERVAL '12 months'
+            GROUP BY month
+            ORDER BY month
+        """)
+        monthly = [
+            {"month": r[0], "loan_count": r[1], "volume": r[2],
+             "recovered": r[3], "repaid_count": r[4], "unpaid_count": r[5]}
+            for r in cur.fetchall()
+        ]
+
+        # Avg repayment time (days) for fully repaid loans
+        cur.execute("""
+            SELECT AVG(EXTRACT(EPOCH FROM (date_repaid - date_created)) / 86400)
+            FROM loans
+            WHERE status = 'repaid' AND date_repaid IS NOT NULL
+        """)
+        avg_days_row = cur.fetchone()
+        avg_repayment_days = round(float(avg_days_row[0]), 1) if avg_days_row and avg_days_row[0] else None
+
+        # Overall recovery rate
+        cur.execute("""
+            SELECT
+                COALESCE(SUM(amount), 0)         AS total_lent,
+                COALESCE(SUM(amount_repaid), 0)  AS total_recovered
+            FROM loans
+        """)
+        totals = cur.fetchone()
+        total_lent = float(totals[0]) if totals else 0
+        total_recovered = float(totals[1]) if totals else 0
+        recovery_rate = round(total_recovered / total_lent * 100, 1) if total_lent > 0 else 0
+
+        # Top 5 lenders by volume
+        cur.execute("""
+            SELECT lender, COUNT(*) AS loans, SUM(amount) AS volume
+            FROM loans GROUP BY lender ORDER BY volume DESC LIMIT 5
+        """)
+        top_lenders = [{"lender": r[0], "loans": r[1], "volume": r[2]} for r in cur.fetchall()]
+
+        return _json({
+            "monthly": monthly,
+            "avg_repayment_days": avg_repayment_days,
+            "recovery_rate": recovery_rate,
+            "total_lent": total_lent,
+            "total_recovered": total_recovered,
+            "top_lenders": top_lenders,
+        })
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
     finally:
         cur.close()
         conn.close()

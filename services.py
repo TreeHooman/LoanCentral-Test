@@ -165,9 +165,12 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         new_repaid = already_repaid + amount_paid
         new_status = "repaid" if new_repaid >= loan_amount else "partially_repaid"
 
+        date_repaid_val = datetime.now() if new_status == "repaid" else None
+
         cur.execute('''
-            UPDATE loans SET amount_repaid = %s, status = %s, last_updated = %s WHERE id = %s
-        ''', (new_repaid, new_status, datetime.now(), db_id))
+            UPDATE loans SET amount_repaid = %s, status = %s, last_updated = %s,
+            date_repaid = COALESCE(date_repaid, %s) WHERE id = %s
+        ''', (new_repaid, new_status, datetime.now(), date_repaid_val, db_id))
 
         cur.execute('''
             UPDATE users SET amount_repaid = amount_repaid + %s, last_updated = %s WHERE username = %s
@@ -535,7 +538,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50, offset:
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, date_repaid
             FROM loans {where}
             ORDER BY date_created DESC
             LIMIT %s OFFSET %s
@@ -554,6 +557,8 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50, offset:
                 "status": r[7],
                 "date_created": r[8],
                 "original_thread": r[9],
+                "date_repaid": r[10],
+                "repaid_pct": round(float(r[5]) / float(r[4]) * 100, 1) if float(r[4]) > 0 else 0,
             }
             for r in rows
         ]

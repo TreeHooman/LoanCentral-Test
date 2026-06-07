@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS role_requests (
 
 CREATE INDEX IF NOT EXISTS idx_role_requests_status ON role_requests(status);
 
+-- Migration: add date_repaid column (safe to re-run)
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS date_repaid TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_date_repaid ON loans(date_repaid);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);
