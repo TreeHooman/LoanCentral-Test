@@ -748,13 +748,13 @@ def update_last_login(username: str):
 
 
 def set_phone_number(username: str, phone: str):
-    """Store a verified-format phone number for SMS reminders."""
+    """Store a US/Canada phone number for SMS reminders."""
     import re
     phone = re.sub(r"[^\d+]", "", phone.strip())
     if not phone.startswith("+"):
-        phone = "+1" + phone  # default to US if no country code
-    if len(phone) < 10:
-        return None, "Invalid phone number."
+        phone = "+1" + phone  # US/Canada +1
+    if not phone.startswith("+1") or len(phone) != 12:
+        return None, "Please enter a valid US or Canadian phone number."
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
