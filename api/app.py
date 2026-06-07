@@ -606,6 +606,41 @@ def get_me():
     return redirect(url_for("get_user", username=session["username"]))
 
 
+@app.route("/api/users/me/account", methods=["GET"])
+@login_required
+def get_my_account():
+    """Return account metadata: username, role, last_login, member_since, is_banned."""
+    username = session["username"]
+    from services import _get_db, check_ban
+    conn = _get_db()
+    last_login = member_since = None
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT role, last_login, created_at FROM user_roles WHERE username = %s",
+                (username,)
+            )
+            row = cur.fetchone()
+            if row:
+                last_login    = row[1].isoformat() if row[1] else None
+                member_since  = row[2].isoformat() if row[2] else None
+            cur.close()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+    is_banned, ban_reason = check_ban(username)
+    return _json({
+        "username":    username,
+        "role":        session.get("role", "unknown"),
+        "last_login":  last_login,
+        "member_since": member_since,
+        "is_banned":   is_banned,
+        "ban_reason":  ban_reason,
+    })
+
+
 @app.route("/api/users/search", methods=["GET"])
 @require_auth
 def search_users():

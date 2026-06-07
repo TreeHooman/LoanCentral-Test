@@ -629,6 +629,20 @@ class FakeCursor:
             self.last_result = (0,)
             return
 
+        if normalized.startswith("select id from disputes where loan_id"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into disputes"):
+            self.fake_db._next_dispute_id = getattr(self.fake_db, '_next_dispute_id', 0) + 1
+            self.last_result = (self.fake_db._next_dispute_id,)
+            return
+
+        if normalized.startswith("select id, status, borrower from loans where id::text"):
+            loan = self.fake_db.find_loan(params[0])
+            self.last_result = None if not loan else (loan["id"], loan["status"], loan["borrower"])
+            return
+
         if normalized.startswith("select") and "from disputes" in normalized:
             self.last_result = []
             return
