@@ -162,6 +162,7 @@
     {% endif %}
   </div>
   <div class="nav-right">
+    <a class="nav-link {% if request.endpoint == 'leaderboard_page' %}active{% endif %}" href="{{ url_for('leaderboard_page') }}">🏆 Leaderboard</a>
     <span class="role-badge role-{{ role }}">{{ role }}</span>
     <span class="nav-user">u/{{ username }}</span>
     <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">🔑 Password</a>
@@ -336,6 +337,7 @@
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+        ${typeof openNoteModal === 'function' ? `<button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openNoteModal('${id}','${(loan.notes||'').replace(/'/g,"\\'")}')">Note</button>` : ''}
       </div></td>
     </tr>`;
   }

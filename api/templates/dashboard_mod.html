@@ -31,6 +31,7 @@
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('audit')">📋 Audit Log</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('disputes')" id="disputesBtn">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
   </div>
   <div class="table-wrap">
@@ -84,6 +85,58 @@
       <thead><tr><th>#</th><th>Lender</th><th>Loans</th><th>Total Volume</th></tr></thead>
       <tbody id="topLendersBody"><tr><td colspan="4" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Disputes tab -->
+<div id="tab-disputes" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Loan Disputes</span>
+    <div style="display:flex;gap:8px">
+      <select id="disputeStatusFilter" onchange="loadDisputes()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+        <option value="open">Open</option>
+        <option value="resolved">Resolved</option>
+        <option value="dismissed">Dismissed</option>
+      </select>
+      <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Borrower</th><th>Lender</th><th>Amount</th><th>Reason</th><th>Filed</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="disputesBody"><tr><td colspan="8" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Dispute Resolve Modal -->
+<div class="modal-overlay" id="resolveDisputeModal">
+  <div class="modal">
+    <h3>Resolve Dispute</h3>
+    <div class="modal-error" id="resolveDisputeError"></div>
+    <input type="hidden" id="resolveDisputeId" />
+    <input type="hidden" id="resolveDisputeAction" />
+    <label>Resolution note (optional)</label>
+    <textarea id="resolveDisputeNote" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="e.g. Borrower provided proof of payment..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('resolveDisputeModal')">Cancel</button>
+      <button class="btn-confirm" id="resolveDisputeConfirmBtn" onclick="submitResolveDispute()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Note Modal -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal">
+    <h3>Mod Note</h3>
+    <div class="modal-error" id="noteError"></div>
+    <input type="hidden" id="noteLoanId" />
+    <label>Note (leave blank to clear)</label>
+    <textarea id="noteText" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Internal note visible only to mods..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('noteModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitNote()">Save Note</button>
+    </div>
   </div>
 </div>
 
@@ -154,7 +207,7 @@
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans(); loadRequestsBadge();
+    loadStats(); loadLoans(); loadRequestsBadge(); loadDisputesBadge();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -231,15 +284,14 @@
   function loadData() { loadLoans(); loadStats(); }
 
   function showTab(name) {
-    document.getElementById('tab-loans').style.display     = name === 'loans'     ? '' : 'none';
-    document.getElementById('tab-roles').style.display     = name === 'roles'     ? '' : 'none';
-    document.getElementById('tab-requests').style.display  = name === 'requests'  ? '' : 'none';
-    document.getElementById('tab-analytics').style.display = name === 'analytics' ? '' : 'none';
-    document.getElementById('tab-audit').style.display     = name === 'audit'     ? '' : 'none';
+    ['loans','roles','requests','analytics','audit','disputes'].forEach(t =>
+      document.getElementById('tab-' + t).style.display = name === t ? '' : 'none'
+    );
     if (name === 'roles')     loadRoles();
     if (name === 'requests')  loadRequests();
     if (name === 'analytics') loadAnalytics();
     if (name === 'audit')     { auditOffset = 0; loadAudit(); }
+    if (name === 'disputes')  loadDisputes();
   }
 
   let auditOffset = 0;
@@ -264,6 +316,86 @@
   async function loadMoreAudit() {
     auditOffset += 100;
     await loadAudit();
+  }
+
+  async function loadDisputesBadge() {
+    try {
+      const rows = await apiFetch('/api/disputes?status=open&limit=1');
+      const badge = document.getElementById('disputesBadge');
+      if (Array.isArray(rows) && rows.length) { badge.textContent = '!'; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadDisputes() {
+    const status = document.getElementById('disputeStatusFilter').value;
+    try {
+      const rows = await apiFetch(`/api/disputes?status=${status}&limit=50`);
+      const badge = document.getElementById('disputesBadge');
+      if (status === 'open') {
+        if (rows.length) { badge.textContent = rows.length; badge.style.display = 'inline'; }
+        else badge.style.display = 'none';
+      }
+      const tbody = document.getElementById('disputesBody');
+      tbody.innerHTML = rows.length ? rows.map(d => `<tr>
+        <td style="color:var(--muted);font-size:12px">#${d.id}</td>
+        <td class="username">u/${d.borrower}</td>
+        <td class="username">u/${d.lender}</td>
+        <td><span class="amount">${parseFloat(d.loan_amount).toFixed(2)} ${d.loan_currency}</span></td>
+        <td style="color:var(--text2);font-size:12px;max-width:220px">${d.reason || '—'}</td>
+        <td class="date-cell">${fmtDate(d.created_at)}</td>
+        <td><span class="badge" style="background:${d.status==='open'?'rgba(91,110,245,0.2)':d.status==='resolved'?'rgba(46,204,113,0.15)':'rgba(136,145,170,0.15)'};color:${d.status==='open'?'var(--accent-h)':d.status==='resolved'?'var(--green)':'var(--muted)'}">${d.status}</span></td>
+        <td><div class="actions">
+          ${d.status === 'open' ? `
+            <button class="btn-action btn-paid"   onclick="openResolveDispute(${d.id},'accept')">Accept</button>
+            <button class="btn-action btn-unpaid" onclick="openResolveDispute(${d.id},'dismiss')">Dismiss</button>
+          ` : `<span style="color:var(--muted);font-size:12px">${d.resolution || '—'}</span>`}
+        </div></td>
+      </tr>`).join('') : `<tr><td colspan="8" class="table-placeholder">No ${status} disputes.</td></tr>`;
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function openResolveDispute(id, action) {
+    document.getElementById('resolveDisputeId').value = id;
+    document.getElementById('resolveDisputeAction').value = action;
+    document.getElementById('resolveDisputeNote').value = '';
+    document.getElementById('resolveDisputeError').style.display = 'none';
+    const btn = document.getElementById('resolveDisputeConfirmBtn');
+    btn.textContent = action === 'accept' ? 'Accept (Revert to Active)' : 'Dismiss';
+    btn.style.background = action === 'accept' ? 'var(--green)' : 'var(--red)';
+    document.getElementById('resolveDisputeModal').classList.add('open');
+  }
+
+  async function submitResolveDispute() {
+    const id = document.getElementById('resolveDisputeId').value;
+    const action = document.getElementById('resolveDisputeAction').value;
+    const resolution = document.getElementById('resolveDisputeNote').value.trim();
+    const errEl = document.getElementById('resolveDisputeError');
+    try {
+      await apiFetch(`/api/disputes/${id}/resolve`, { method: 'POST', body: JSON.stringify({ action, resolution }) });
+      closeModal('resolveDisputeModal');
+      toast(action === 'accept' ? 'Dispute accepted — loan reverted to active.' : 'Dispute dismissed.', 'success');
+      loadDisputes();
+      loadDisputesBadge();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  function openNoteModal(loanId, currentNote) {
+    document.getElementById('noteLoanId').value = loanId;
+    document.getElementById('noteText').value = currentNote || '';
+    document.getElementById('noteError').style.display = 'none';
+    document.getElementById('noteModal').classList.add('open');
+  }
+
+  async function submitNote() {
+    const loanId = document.getElementById('noteLoanId').value;
+    const note   = document.getElementById('noteText').value.trim();
+    const errEl  = document.getElementById('noteError');
+    try {
+      await apiFetch(`/api/loans/${loanId}/note`, { method: 'POST', body: JSON.stringify({ note }) });
+      closeModal('noteModal');
+      toast('Note saved.', 'success');
+      loadLoans();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }
 
   let _monthlyChart = null, _statusChart = null;

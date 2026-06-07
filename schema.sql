@@ -97,6 +97,24 @@ CREATE INDEX IF NOT EXISTS idx_loan_apps_status ON loan_applications(status);
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS date_repaid TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_loans_date_repaid ON loans(date_repaid);
 
+-- Mod notes on individual loans
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Dispute system: borrowers can dispute an unpaid mark
+CREATE TABLE IF NOT EXISTS disputes (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    borrower TEXT NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'open',   -- 'open', 'resolved', 'dismissed'
+    resolution TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    resolved_at TIMESTAMP,
+    resolved_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_disputes_status  ON disputes(status);
+CREATE INDEX IF NOT EXISTS idx_disputes_loan_id ON disputes(loan_id);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

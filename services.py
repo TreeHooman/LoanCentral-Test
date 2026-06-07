@@ -843,6 +843,7 @@ def get_loans_for_reminder():
                 "db_id": r[0], "loan_id": r[1], "lender": r[2],
                 "borrower": r[3], "amount": float(r[4]), "currency": r[5],
                 "status": r[6], "date_created": r[7], "phone": r[8],
+                "reminder_type": "unpaid" if r[6] == "unpaid" else "periodic",
             }
             for r in rows
         ], None
@@ -1077,6 +1078,286 @@ def get_available_lenders():
         ], None
     except Exception as e:
         logger.error(f"get_available_lenders error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard
+# ---------------------------------------------------------------------------
+
+def get_leaderboard():
+    """Top 10 lenders by volume + top 10 borrowers by repayment rate."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT username, loans_as_lender, amount_lent
+            FROM users WHERE loans_as_lender > 0
+            ORDER BY amount_lent DESC LIMIT 10
+        """)
+        lenders = [
+            {"username": r[0], "loans": r[1], "amount_lent": float(r[2])}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT username, loans_as_borrower, amount_borrowed, amount_repaid
+            FROM users WHERE loans_as_borrower >= 2 AND amount_borrowed > 0
+            ORDER BY (amount_repaid / amount_borrowed) DESC LIMIT 10
+        """)
+        borrowers = [
+            {
+                "username": r[0],
+                "loans": r[1],
+                "amount_borrowed": float(r[2]),
+                "amount_repaid": float(r[3]),
+                "repay_rate": round(float(r[3]) / float(r[2]) * 100, 1) if float(r[2]) > 0 else 0,
+            }
+            for r in cur.fetchall()
+        ]
+
+        return {"lenders": lenders, "borrowers": borrowers}, None
+    except Exception as e:
+        logger.error(f"get_leaderboard error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Credit tier (derived from health score)
+# ---------------------------------------------------------------------------
+
+def credit_tier(score: int) -> dict:
+    """Return tier label and color class for a health score."""
+    if score >= 90:
+        return {"label": "Trusted Borrower", "color": "green"}
+    if score >= 70:
+        return {"label": "Good Standing",    "color": "accent"}
+    if score >= 50:
+        return {"label": "Fair Standing",    "color": "yellow"}
+    if score >= 25:
+        return {"label": "At Risk",          "color": "orange"}
+    return         {"label": "High Risk",    "color": "red"}
+
+
+# ---------------------------------------------------------------------------
+# Mod notes on loans
+# ---------------------------------------------------------------------------
+
+def add_loan_note(loan_id: str, note: str, actor: str):
+    """Set or replace the mod note on a loan."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE loans SET notes = %s WHERE id::text = %s OR loan_id = %s RETURNING id",
+            (note.strip()[:1000] if note else None, loan_id, loan_id),
+        )
+        if not cur.fetchone():
+            return None, "Loan not found."
+        conn.commit()
+        log_action(actor, "loan_note_set", str(loan_id), note[:100] if note else "(cleared)")
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"add_loan_note error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Disputes
+# ---------------------------------------------------------------------------
+
+def submit_dispute(loan_id: str, borrower: str, reason: str):
+    """Borrower files a dispute on a loan marked unpaid."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, status, borrower FROM loans WHERE id::text = %s OR loan_id = %s ORDER BY id DESC LIMIT 1",
+            (loan_id, loan_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None, "Loan not found."
+        db_id, status, loan_borrower = row
+        if loan_borrower != borrower.lower():
+            return None, "You can only dispute your own loans."
+        if status != "unpaid":
+            return None, "Only loans marked 'unpaid' can be disputed."
+
+        cur.execute(
+            "SELECT id FROM disputes WHERE loan_id = %s AND status = 'open'",
+            (db_id,)
+        )
+        if cur.fetchone():
+            return None, "You already have an open dispute for this loan."
+
+        cur.execute(
+            "INSERT INTO disputes (loan_id, borrower, reason) VALUES (%s, %s, %s) RETURNING id",
+            (db_id, borrower.lower(), (reason or "").strip()[:500]),
+        )
+        dispute_id = cur.fetchone()[0]
+        conn.commit()
+        log_action(borrower, "dispute_filed", str(db_id), reason[:100] if reason else None)
+        return dispute_id, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"submit_dispute error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_disputes(status: str = None, limit: int = 50, offset: int = 0):
+    """Get disputes for mod review."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        where = "WHERE d.status = %s" if status else ""
+        params = [status] if status else []
+        params += [limit, offset]
+        cur.execute(f"""
+            SELECT d.id, d.loan_id, d.borrower, d.reason, d.status,
+                   d.resolution, d.created_at, d.resolved_at, d.resolved_by,
+                   l.amount, l.currency, l.lender
+            FROM disputes d
+            JOIN loans l ON l.id = d.loan_id
+            {where}
+            ORDER BY d.created_at DESC LIMIT %s OFFSET %s
+        """, params)
+        return [
+            {
+                "id": r[0], "loan_id": r[1], "borrower": r[2], "reason": r[3],
+                "status": r[4], "resolution": r[5], "created_at": r[6],
+                "resolved_at": r[7], "resolved_by": r[8],
+                "loan_amount": float(r[9]), "loan_currency": r[10], "lender": r[11],
+            }
+            for r in cur.fetchall()
+        ], None
+    except Exception as e:
+        logger.error(f"get_disputes error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def resolve_dispute(dispute_id: int, action: str, actor: str, resolution: str = None):
+    """
+    Resolve a dispute.
+    action: 'accept' (revert loan to confirmed, clear unpaid stats) or 'dismiss'.
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT d.loan_id, d.borrower, d.status, l.amount, l.currency, l.amount_repaid "
+            "FROM disputes d JOIN loans l ON l.id = d.loan_id WHERE d.id = %s",
+            (dispute_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None, "Dispute not found."
+        loan_id, borrower, d_status, amount, currency, amount_repaid = row
+        if d_status != "open":
+            return None, "This dispute has already been resolved."
+
+        new_status = "resolved" if action == "accept" else "dismissed"
+        cur.execute("""
+            UPDATE disputes SET status = %s, resolution = %s,
+            resolved_at = NOW(), resolved_by = %s WHERE id = %s
+        """, (new_status, (resolution or "").strip()[:500], actor.lower(), dispute_id))
+
+        if action == "accept":
+            # Revert loan to confirmed; reverse unpaid stats
+            cur.execute(
+                "UPDATE loans SET status = 'confirmed', last_updated = NOW() WHERE id = %s",
+                (loan_id,),
+            )
+            remaining = Decimal(str(amount)) - Decimal(str(amount_repaid))
+            cur.execute("""
+                UPDATE users SET
+                    unpaid_loans  = GREATEST(unpaid_loans  - 1, 0),
+                    unpaid_amount = GREATEST(unpaid_amount - %s, 0),
+                    last_updated  = NOW()
+                WHERE username = %s
+            """, (remaining, borrower))
+
+        conn.commit()
+        log_action(actor, f"dispute_{new_status}", str(dispute_id),
+                   resolution[:100] if resolution else None)
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"resolve_dispute error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Due-date reminders (separate from periodic reminders)
+# ---------------------------------------------------------------------------
+
+def get_loans_approaching_due(days_ahead: int = 3):
+    """
+    Return active loans with due_date within the next N days that haven't been
+    reminded in the past day. Includes borrower phone number.
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                l.id, l.loan_id, l.lender, l.borrower,
+                l.amount, l.currency, l.status, l.due_date,
+                ur.phone_number
+            FROM loans l
+            JOIN user_roles ur ON ur.username = l.borrower
+            WHERE ur.phone_number IS NOT NULL
+              AND l.status IN ('confirmed', 'partially_repaid')
+              AND l.due_date IS NOT NULL
+              AND l.due_date BETWEEN NOW() AND NOW() + INTERVAL '%s days'
+              AND (l.last_reminder_sent IS NULL
+                   OR l.last_reminder_sent <= NOW() - INTERVAL '1 day')
+            ORDER BY l.due_date
+        """, (days_ahead,))
+        rows = cur.fetchall()
+        return [
+            {
+                "db_id": r[0], "loan_id": r[1], "lender": r[2],
+                "borrower": r[3], "amount": float(r[4]), "currency": r[5],
+                "status": r[6], "due_date": r[7], "phone": r[8],
+                "reminder_type": "due_soon",
+            }
+            for r in rows
+        ], None
+    except Exception as e:
+        logger.error(f"get_loans_approaching_due error: {e}", exc_info=True)
         return [], str(e)
     finally:
         cur.close()

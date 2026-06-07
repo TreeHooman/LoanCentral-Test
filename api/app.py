@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import sys
+import time as _time
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import wraps
@@ -29,6 +30,31 @@ app.permanent_session_lifetime = timedelta(days=7)
 
 API_KEY = os.getenv("API_KEY", "changeme")
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
+
+# Secure session cookies
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"]   = not IS_DEV  # HTTPS only in prod
+
+# Simple in-memory per-IP rate limiter for API endpoints (120 req/min)
+_api_rl: dict = {}
+_API_WINDOW   = 60
+_API_LIMIT    = 120
+
+
+@app.before_request
+def _rate_limit_api():
+    if not request.path.startswith("/api/"):
+        return
+    ip  = request.headers.get("X-Forwarded-For", request.remote_addr) or "unknown"
+    now = _time.time()
+    bucket = _api_rl.setdefault(ip, [])
+    # Evict expired entries
+    while bucket and now - bucket[0] > _API_WINDOW:
+        bucket.pop(0)
+    if len(bucket) >= _API_LIMIT:
+        return _json({"error": "Rate limit exceeded. Please slow down."}, 429)
+    bucket.append(now)
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +535,10 @@ def get_user(username):
         return _json({"error": error}, 500)
     loans, _ = get_loan_history(username, role="both", limit=50)
     profile["recent_loans"] = loans or []
+    from services import calculate_health_score, credit_tier
+    score, _ = calculate_health_score(profile)
+    profile["health_score"] = score
+    profile["credit_tier"]  = credit_tier(score)
     # Include phone number for own profile
     if session.get("username", "").lower() == username.lower() or session.get("role") == "mod":
         conn = _get_db()
@@ -936,6 +966,55 @@ def resolve_role_request(username):
 
 
 # ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+@app.route("/api/health")
+def health_check():
+    db_ok = False
+    try:
+        from services import _get_db
+        conn = _get_db()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            db_ok = True
+            cur.close()
+            conn.close()
+    except Exception:
+        pass
+    status = "ok" if db_ok else "degraded"
+    return _json({
+        "status":  status,
+        "db":      db_ok,
+        "time":    datetime.utcnow().isoformat() + "Z",
+        "version": "1.0.0",
+    }, 200 if db_ok else 503)
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard
+# ---------------------------------------------------------------------------
+
+@app.route("/leaderboard")
+@login_required
+def leaderboard_page():
+    return render_template("leaderboard.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
+@app.route("/api/leaderboard")
+@require_auth
+def get_leaderboard():
+    from services import get_leaderboard as _get_leaderboard
+    data, error = _get_leaderboard()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(data)
+
+
+# ---------------------------------------------------------------------------
 # Audit log
 # ---------------------------------------------------------------------------
 
@@ -1045,6 +1124,67 @@ def list_available_lenders():
     if error:
         return _json({"error": error}, 500)
     return _json(lenders)
+
+
+# ---------------------------------------------------------------------------
+# Mod notes on loans
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loans/<loan_id>/note", methods=["POST"])
+@require_mod_api
+def set_loan_note(loan_id):
+    from services import add_loan_note
+    data = request.get_json() or {}
+    note = (data.get("note") or "").strip()
+    ok, error = add_loan_note(loan_id, note or None, session.get("username", "api"))
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "message": "Note saved." if note else "Note cleared."})
+
+
+# ---------------------------------------------------------------------------
+# Dispute system
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loans/<loan_id>/dispute", methods=["POST"])
+@login_required
+def file_dispute(loan_id):
+    from services import submit_dispute
+    data   = request.get_json() or {}
+    reason = (data.get("reason") or "").strip()[:500]
+    dispute_id, error = submit_dispute(loan_id, session["username"], reason)
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "id": dispute_id,
+                  "message": "Dispute filed. A mod will review it shortly."})
+
+
+@app.route("/api/disputes", methods=["GET"])
+@require_mod_api
+def list_disputes():
+    from services import get_disputes
+    status = request.args.get("status", "open")
+    limit  = min(int(request.args.get("limit", 50)), 200)
+    offset = max(int(request.args.get("offset", 0)), 0)
+    rows, error = get_disputes(status=status, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(rows)
+
+
+@app.route("/api/disputes/<int:dispute_id>/resolve", methods=["POST"])
+@require_mod_api
+def resolve_dispute_route(dispute_id):
+    from services import resolve_dispute
+    data       = request.get_json() or {}
+    action     = data.get("action", "").lower()
+    resolution = (data.get("resolution") or "").strip()[:500]
+    if action not in ("accept", "dismiss"):
+        return _json({"error": "action must be 'accept' or 'dismiss'"}, 400)
+    ok, error = resolve_dispute(dispute_id, action, session.get("username", "mod"), resolution)
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "action": action})
 
 
 if __name__ == "__main__":

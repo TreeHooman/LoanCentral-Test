@@ -51,8 +51,9 @@ def _build_message(loan: dict) -> str:
     amount   = f"${loan['amount']:.2f} {loan['currency']}"
     lender   = f"u/{loan['lender']}"
     borrower = f"u/{loan['borrower']}"
+    reminder_type = loan.get("reminder_type", "periodic")
 
-    if loan["status"] == "unpaid":
+    if reminder_type == "unpaid" or loan.get("status") == "unpaid":
         return (
             f"LoanCentral URGENT: Your loan of {amount} from {lender} "
             f"has been marked UNPAID. Please contact your lender to resolve this. "
@@ -60,7 +61,17 @@ def _build_message(loan: dict) -> str:
             f"Reply STOP to unsubscribe."
         )
 
-    days_old = (datetime.utcnow() - loan["date_created"]).days if loan["date_created"] else "?"
+    if reminder_type == "due_soon":
+        due = loan.get("due_date")
+        due_str = due.strftime("%b %d") if due else "soon"
+        return (
+            f"LoanCentral reminder: {borrower}, your loan of {amount} from {lender} "
+            f"is due on {due_str}. Please arrange repayment. "
+            f"Dashboard: {DASHBOARD_URL} "
+            f"Reply STOP to unsubscribe."
+        )
+
+    days_old = (datetime.utcnow() - loan["date_created"]).days if loan.get("date_created") else "?"
     return (
         f"LoanCentral reminder: {borrower}, you have an active loan of "
         f"{amount} from {lender} ({days_old} days ago). "
@@ -70,12 +81,23 @@ def _build_message(loan: dict) -> str:
 
 
 def send_reminders():
-    from services import get_loans_for_reminder, mark_reminder_sent
+    from services import get_loans_for_reminder, get_loans_approaching_due, mark_reminder_sent
 
-    loans, error = get_loans_for_reminder()
-    if error:
-        logger.error(f"Failed to fetch loans: {error}")
-        return
+    periodic_loans, err1 = get_loans_for_reminder()
+    due_loans, err2      = get_loans_approaching_due(days_ahead=3)
+
+    if err1:
+        logger.error(f"Failed to fetch periodic reminder loans: {err1}")
+    if err2:
+        logger.error(f"Failed to fetch due-date reminder loans: {err2}")
+
+    # Deduplicate: a loan may appear in both lists if it's also approaching due
+    seen_ids = set()
+    loans = []
+    for loan in (periodic_loans or []) + (due_loans or []):
+        if loan["db_id"] not in seen_ids:
+            seen_ids.add(loan["db_id"])
+            loans.append(loan)
 
     if not loans:
         logger.info("No loans need reminders today.")
@@ -99,8 +121,8 @@ def send_reminders():
             )
             mark_reminder_sent(loan["db_id"])
             logger.info(
-                f"SMS sent to {loan['borrower']} ({loan['phone']}) "
-                f"for loan {loan['loan_id']} [{loan['status']}]"
+                f"SMS [{loan.get('reminder_type','?')}] sent to {loan['borrower']} "
+                f"({loan['phone']}) for loan {loan['loan_id']}"
             )
             sent += 1
         except Exception as e:

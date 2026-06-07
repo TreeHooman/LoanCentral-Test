@@ -42,8 +42,8 @@
 
 <div class="table-wrap" style="margin-bottom:24px">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th></tr></thead>
-    <tbody id="owingBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th><th>Action</th></tr></thead>
+    <tbody id="owingBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -106,6 +106,24 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('loanAppModal')">Cancel</button>
       <button class="btn-confirm" onclick="submitLoanApp()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dispute Modal -->
+<div class="modal-overlay" id="disputeModal">
+  <div class="modal">
+    <h3>File a Dispute</h3>
+    <div class="modal-error" id="disputeError"></div>
+    <input type="hidden" id="disputeLoanId" />
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+      If you believe a loan has been incorrectly marked unpaid, file a dispute and a mod will review it.
+    </p>
+    <label>Reason (optional)</label>
+    <textarea id="disputeReason" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Explain why you believe this is incorrect..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('disputeModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitDispute()">File Dispute</button>
     </div>
   </div>
 </div>
@@ -192,7 +210,7 @@
       const all = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
       const tbody = document.getElementById('owingBody');
       if (!all.length) {
-        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
         return;
       }
       tbody.innerHTML = all.map(loan => {
@@ -206,6 +224,7 @@
           <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td>${loan.status === 'unpaid' ? `<button class="btn-action btn-unpaid" onclick="openDisputeModal('${id}')">Dispute</button>` : '—'}</td>
         </tr>`;
       }).join('');
     } catch(e) {
@@ -264,6 +283,24 @@
       offset -= 50;
       btn.style.display = '';
     } finally { btn.disabled = false; btn.textContent = 'Load More'; }
+  }
+
+  function openDisputeModal(loanId) {
+    document.getElementById('disputeLoanId').value = loanId;
+    document.getElementById('disputeReason').value = '';
+    document.getElementById('disputeError').style.display = 'none';
+    document.getElementById('disputeModal').classList.add('open');
+  }
+
+  async function submitDispute() {
+    const loanId = document.getElementById('disputeLoanId').value;
+    const reason = document.getElementById('disputeReason').value.trim();
+    const errEl  = document.getElementById('disputeError');
+    try {
+      const r = await apiFetch(`/api/loans/${loanId}/dispute`, { method: 'POST', body: JSON.stringify({ reason }) });
+      closeModal('disputeModal');
+      toast(r.message || 'Dispute filed!', 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }
 
   function openRoleRequestModal() {

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title" style="font-size:22px">Community Leaderboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">Updated in real time</div>
+  </div>
+  <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadAll()">↻ Refresh</button>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+  <!-- Top Lenders -->
+  <div>
+    <div class="section-header" style="margin-bottom:12px">
+      <span class="section-title">🏆 Top Lenders by Volume</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Lender</th><th>Loans Made</th><th>Total Lent</th></tr></thead>
+        <tbody id="lendersBody">
+          <tr><td colspan="4" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top Borrowers -->
+  <div>
+    <div class="section-header" style="margin-bottom:12px">
+      <span class="section-title">⭐ Top Borrowers by Repayment</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Borrower</th><th>Loans</th><th>Repayment Rate</th><th>Total Repaid</th></tr></thead>
+        <tbody id="borrowersBody">
+          <tr><td colspan="5" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:32px;color:var(--muted);font-size:12px;text-align:center">
+  Borrower leaderboard requires at least 2 loans. Repayment rate = total repaid ÷ total borrowed.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', loadAll);
+
+  async function loadAll() {
+    try {
+      const data = await apiFetch('/api/leaderboard');
+
+      const lenders = document.getElementById('lendersBody');
+      lenders.innerHTML = data.lenders.length
+        ? data.lenders.map((l, i) => `<tr>
+            <td style="color:var(--muted);font-weight:700">${medal(i)}</td>
+            <td class="username"><a href="/u/${l.username}">u/${l.username}</a></td>
+            <td>${l.loans}</td>
+            <td><span class="amount">$${fmt(l.amount_lent)}</span></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="table-placeholder">No lenders yet.</td></tr>';
+
+      const borrowers = document.getElementById('borrowersBody');
+      borrowers.innerHTML = data.borrowers.length
+        ? data.borrowers.map((b, i) => `<tr>
+            <td style="color:var(--muted);font-weight:700">${medal(i)}</td>
+            <td class="username"><a href="/u/${b.username}">u/${b.username}</a></td>
+            <td>${b.loans}</td>
+            <td>
+              <span style="font-weight:700;color:${b.repay_rate >= 95 ? 'var(--green)' : b.repay_rate >= 75 ? 'var(--yellow)' : 'var(--orange)'}">
+                ${b.repay_rate.toFixed(1)}%
+              </span>
+            </td>
+            <td>$${fmt(b.amount_repaid)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="table-placeholder">Need at least 2 loans per borrower to qualify.</td></tr>';
+
+    } catch(e) {
+      toast('Failed to load leaderboard: ' + e.message, 'error');
+    }
+  }
+
+  function medal(i) {
+    return ['🥇','🥈','🥉'][i] || (i + 1);
+  }
+</script>
+{% endblock %}

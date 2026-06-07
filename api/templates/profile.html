@@ -5,7 +5,22 @@
 <div class="section-header" style="margin-bottom:20px">
   <div>
     <div class="section-title" style="font-size:22px">u/{{ target }}</div>
-    <div style="color:var(--muted);font-size:13px;margin-top:4px">Public loan profile</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <div style="color:var(--muted);font-size:13px">Public loan profile</div>
+      {% if score >= 90 %}
+        <span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green)">⭐ Trusted Borrower</span>
+      {% elif score >= 70 %}
+        <span class="badge" style="background:rgba(91,110,245,0.2);color:var(--accent-h)">✓ Good Standing</span>
+      {% elif score >= 50 %}
+        <span class="badge" style="background:rgba(241,196,15,0.15);color:var(--yellow)">Fair Standing</span>
+      {% elif score >= 25 %}
+        <span class="badge" style="background:rgba(243,156,18,0.15);color:var(--orange)">⚠ At Risk</span>
+      {% elif profile.loans_as_borrower > 0 %}
+        <span class="badge" style="background:rgba(231,76,60,0.15);color:var(--red)">⛔ High Risk</span>
+      {% else %}
+        <span class="badge" style="background:rgba(136,145,170,0.15);color:var(--muted)">New Member</span>
+      {% endif %}
+    </div>
   </div>
   <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;text-decoration:none;">← Back</a>
 </div>
