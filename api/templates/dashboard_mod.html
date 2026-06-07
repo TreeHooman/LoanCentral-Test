@@ -14,6 +14,14 @@
 
 <!-- Loans tab -->
 <div id="tab-loans">
+  <!-- Bulk action bar (visible when loans checked) -->
+  <div id="bulkBar" style="display:none;background:rgba(91,110,245,0.1);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+    <span id="bulkCount" style="font-weight:600;color:var(--accent-h)">0 selected</span>
+    <button class="btn-action btn-unpaid" onclick="bulkAction('unpaid')">Mark Unpaid</button>
+    <button class="btn-action btn-refund" onclick="bulkAction('refunded')">Refund</button>
+    <button class="btn-action" style="background:rgba(136,145,170,0.15);color:var(--muted)" onclick="clearSelection()">Clear</button>
+  </div>
+
   <div class="toolbar">
     <div class="tabs">
       <button class="tab active" data-status="">All</button>
@@ -26,6 +34,7 @@
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
     </div>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="toggleFilters()">⚙ Filters</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
@@ -34,10 +43,35 @@
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('disputes')" id="disputesBtn">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
   </div>
+  <!-- Advanced filters panel -->
+  <div id="filtersPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Date From</label>
+        <input type="date" id="filterDateFrom" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Date To</label>
+        <input type="date" id="filterDateTo" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Min Amount</label>
+        <input type="number" id="filterAmtMin" placeholder="0.00" step="0.01" min="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Max Amount</label>
+        <input type="number" id="filterAmtMax" placeholder="any" step="0.01" min="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:100%" onclick="clearFilters()">Clear Filters</button>
+      </div>
+    </div>
+  </div>
+
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
-      <tbody id="loansBody"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+      <thead><tr><th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="cursor:pointer"></th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+      <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
   <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
@@ -245,20 +279,34 @@
     } catch(e) { console.error(e); }
   }
 
+  function _buildLoanUrl(extraOffset) {
+    const search   = document.getElementById('searchInput').value.trim();
+    const dateFrom = document.getElementById('filterDateFrom')?.value || '';
+    const dateTo   = document.getElementById('filterDateTo')?.value || '';
+    const amtMin   = document.getElementById('filterAmtMin')?.value || '';
+    const amtMax   = document.getElementById('filterAmtMax')?.value || '';
+    let url = `/api/loans?limit=50&offset=${extraOffset}`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search)   url += `&search=${encodeURIComponent(search)}`;
+    if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
+    if (dateTo)   url += `&date_to=${encodeURIComponent(dateTo + 'T23:59:59')}`;
+    if (amtMin)   url += `&amount_min=${encodeURIComponent(amtMin)}`;
+    if (amtMax)   url += `&amount_max=${encodeURIComponent(amtMax)}`;
+    return url;
+  }
+
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '↻ Loading...';
-    const search = document.getElementById('searchInput').value.trim();
-    let url = `/api/loans?limit=50&offset=${offset}`;
-    if (currentStatus) url += `&status=${currentStatus}`;
-    if (search) url += `&search=${encodeURIComponent(search)}`;
+    clearSelection();
     try {
-      const loans = await apiFetch(url);
+      const loans = await apiFetch(_buildLoanUrl(offset));
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="11" class="table-placeholder">No loans found.</td></tr>';
+      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="12" class="table-placeholder">No loans found.</td></tr>';
       document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
+      attachCheckboxListeners();
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="11" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="12" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
 
@@ -266,19 +314,74 @@
     const btn = document.getElementById('loadMoreBtn');
     btn.disabled = true; btn.textContent = 'Loading...';
     offset += 50;
-    const search = document.getElementById('searchInput').value.trim();
-    let url = `/api/loans?limit=50&offset=${offset}`;
-    if (currentStatus) url += `&status=${currentStatus}`;
-    if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
-      const loans = await apiFetch(url);
+      const loans = await apiFetch(_buildLoanUrl(offset));
       const tbody = document.getElementById('loansBody');
-      if (loans.length) tbody.insertAdjacentHTML('beforeend', loans.map(loanRow).join(''));
+      if (loans.length) {
+        tbody.insertAdjacentHTML('beforeend', loans.map(loanRow).join(''));
+        attachCheckboxListeners();
+      }
       btn.style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
       offset -= 50;
       btn.style.display = '';
     } finally { btn.disabled = false; btn.textContent = 'Load More'; }
+  }
+
+  function toggleFilters() {
+    const p = document.getElementById('filtersPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+  }
+
+  function clearFilters() {
+    ['filterDateFrom','filterDateTo','filterAmtMin','filterAmtMax'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    offset = 0;
+    loadLoans();
+  }
+
+  // --- Bulk selection ---
+  function attachCheckboxListeners() {
+    document.querySelectorAll('.loan-check').forEach(cb => {
+      cb.onchange = updateBulkBar;
+    });
+  }
+
+  function toggleSelectAll(masterCb) {
+    document.querySelectorAll('.loan-check').forEach(cb => cb.checked = masterCb.checked);
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const checked = document.querySelectorAll('.loan-check:checked');
+    const bar = document.getElementById('bulkBar');
+    document.getElementById('bulkCount').textContent = `${checked.length} selected`;
+    bar.style.display = checked.length ? 'flex' : 'none';
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.loan-check').forEach(cb => cb.checked = false);
+    const sa = document.getElementById('selectAll');
+    if (sa) sa.checked = false;
+    const bar = document.getElementById('bulkBar');
+    if (bar) bar.style.display = 'none';
+  }
+
+  async function bulkAction(action) {
+    const ids = [...document.querySelectorAll('.loan-check:checked')]
+      .map(cb => cb.dataset.id);
+    if (!ids.length) return;
+    const label = action === 'unpaid' ? 'mark unpaid' : 'refund';
+    if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} ${ids.length} loan(s)?`)) return;
+    try {
+      const r = await apiFetch('/api/loans/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
+      toast(`Done: ${r.success} succeeded, ${r.failed} failed.`, r.failed ? 'error' : 'success');
+      clearSelection();
+      loadLoans();
+      loadStats();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   function loadData() { loadLoans(); loadStats(); }

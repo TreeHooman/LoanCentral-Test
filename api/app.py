@@ -77,7 +77,9 @@ def _json(data, status=200):
     )
 
 
-def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
+def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0,
+                           date_from=None, date_to=None,
+                           amount_min=None, amount_max=None):
     from services import _get_db
     conn = _get_db()
     if not conn:
@@ -91,11 +93,23 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
         if search:
             conditions.append("(lender ILIKE %s OR borrower ILIKE %s)")
             params += [f"%{search}%", f"%{search}%"]
+        if date_from:
+            conditions.append("date_created >= %s")
+            params.append(date_from)
+        if date_to:
+            conditions.append("date_created <= %s")
+            params.append(date_to)
+        if amount_min is not None:
+            conditions.append("amount >= %s")
+            params.append(amount_min)
+        if amount_max is not None:
+            conditions.append("amount <= %s")
+            params.append(amount_max)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         params += [limit, offset]
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, date_repaid
+                   currency, status, date_created, original_thread, date_repaid, notes
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s OFFSET %s
         """, params)
@@ -105,7 +119,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0):
                 "db_id": r[0], "loan_id": r[1], "lender": r[2], "borrower": r[3],
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
-                "date_repaid": r[10],
+                "date_repaid": r[10], "notes": r[11],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
                 "repaid_pct": round(float(r[5]) / float(r[4]) * 100, 1) if float(r[4]) > 0 else 0,
             }
@@ -367,10 +381,34 @@ def set_role(username):
     from services import set_user_role
     data = request.get_json() or {}
     role = data.get("role", "").strip().lower()
-    result, err = set_user_role(username, role)
+    result, err = set_user_role(username, role, actor=session.get("username", "mod"))
     if err:
         return _json({"error": err}, 400)
+    # Fire-and-forget flair sync when granting lender role
+    if role == "lender":
+        _sync_lender_flair(username)
     return _json({"username": username, "role": role, "ok": True})
+
+
+def _sync_lender_flair(username: str):
+    """Set 'Verified Lender' Reddit flair for a newly promoted lender. Best-effort."""
+    try:
+        import praw
+        reddit = praw.Reddit(
+            client_id=os.getenv("REDDIT_CLIENT_ID"),
+            client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+            username=os.getenv("REDDIT_USERNAME"),
+            password=os.getenv("REDDIT_PASSWORD"),
+            user_agent=os.getenv("REDDIT_USER_AGENT",
+                                 f"LoanCentral/1.0 by u/{os.getenv('REDDIT_USERNAME', 'LoanBot')}"),
+        )
+        for sub in [s.strip() for s in os.getenv("SUBREDDITS", "").split(",") if s.strip()]:
+            reddit.subreddit(sub).flair.set(username, text="Verified Lender", css_class="lender")
+        import logging
+        logging.getLogger("LoanCentral").info(f"Flair set for u/{username} → Verified Lender")
+    except Exception as e:
+        import logging
+        logging.getLogger("LoanCentral").error(f"Flair sync failed for u/{username}: {e}")
 
 
 @app.route("/api/admin/roles", methods=["GET"])
@@ -402,12 +440,16 @@ def list_roles():
 def get_loans():
     from services import get_loan_history
 
-    lender   = request.args.get("lender")
-    borrower = request.args.get("borrower")
-    status   = request.args.get("status")
-    search   = request.args.get("search")
-    limit    = min(int(request.args.get("limit", 50)), 200)
-    offset   = max(int(request.args.get("offset", 0)), 0)
+    lender     = request.args.get("lender")
+    borrower   = request.args.get("borrower")
+    status     = request.args.get("status")
+    search     = request.args.get("search")
+    limit      = min(int(request.args.get("limit", 50)), 200)
+    offset     = max(int(request.args.get("offset", 0)), 0)
+    date_from  = request.args.get("date_from") or None
+    date_to    = request.args.get("date_to") or None
+    amount_min = float(request.args.get("amount_min")) if request.args.get("amount_min") else None
+    amount_max = float(request.args.get("amount_max")) if request.args.get("amount_max") else None
 
     # Non-mods can only see their own data
     if session.get("username") and session.get("role") != "mod":
@@ -426,7 +468,11 @@ def get_loans():
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
     else:
-        loans, error = _get_all_loans_from_db(status=status, search=search, limit=limit, offset=offset)
+        loans, error = _get_all_loans_from_db(
+            status=status, search=search, limit=limit, offset=offset,
+            date_from=date_from, date_to=date_to,
+            amount_min=amount_min, amount_max=amount_max,
+        )
 
     if error:
         return _json({"error": error}, 500)
@@ -1124,6 +1170,26 @@ def list_available_lenders():
     if error:
         return _json({"error": error}, 500)
     return _json(lenders)
+
+
+# ---------------------------------------------------------------------------
+# Bulk loan actions (mod only)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loans/bulk", methods=["POST"])
+@require_mod_api
+def bulk_loan_action():
+    from services import bulk_loan_action as _bulk
+    data   = request.get_json() or {}
+    ids    = data.get("ids", [])
+    action = data.get("action", "").lower()
+    actor  = session.get("username", "api")
+    if not ids or action not in ("unpaid", "refunded"):
+        return _json({"error": "ids (list) and action ('unpaid' or 'refunded') are required."}, 400)
+    if len(ids) > 50:
+        return _json({"error": "Maximum 50 loans per bulk action."}, 400)
+    results = _bulk(ids, action, actor)
+    return _json(results, 200 if results["failed"] == 0 else 207)
 
 
 # ---------------------------------------------------------------------------

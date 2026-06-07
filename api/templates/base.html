@@ -316,16 +316,19 @@
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
+    const dbId = loan.db_id || loan.loan_id;
     const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
     const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
     const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
     const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
+    const noteIcon   = loan.notes ? `<span title="${loan.notes.replace(/"/g,'&quot;')}" style="color:var(--yellow);cursor:help">📝</span> ` : '';
     return `<tr>
-      <td><span class="loan-id">${id}</span></td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
+      <td style="width:36px"><input type="checkbox" class="loan-check" data-id="${dbId}" style="cursor:pointer"></td>
+      <td><span class="loan-id">${id}</span> ${noteIcon}</td>
+      <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
+      <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
@@ -337,7 +340,7 @@
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
-        ${typeof openNoteModal === 'function' ? `<button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openNoteModal('${id}','${(loan.notes||'').replace(/'/g,"\\'")}')">Note</button>` : ''}
+        ${typeof openNoteModal === 'function' ? `<button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openNoteModal('${dbId}',${JSON.stringify(loan.notes||'')})">Note</button>` : ''}
       </div></td>
     </tr>`;
   }

@@ -1085,6 +1085,84 @@ def get_available_lenders():
 
 
 # ---------------------------------------------------------------------------
+# Bulk mod actions
+# ---------------------------------------------------------------------------
+
+def bulk_loan_action(loan_ids: list, action: str, actor: str):
+    """
+    Mod-only bulk action on a list of loan IDs.
+    action: 'unpaid' or 'refunded'
+    Returns {'success': int, 'failed': int, 'errors': list}
+    """
+    results = {"success": 0, "failed": 0, "errors": []}
+    if not loan_ids or action not in ("unpaid", "refunded"):
+        results["errors"].append("Invalid parameters.")
+        return results
+
+    for loan_id in loan_ids[:50]:  # hard cap — no runaway bulk ops
+        try:
+            if action == "unpaid":
+                # Look up the lender so mark_unpaid can verify it
+                conn = _get_db()
+                if not conn:
+                    results["failed"] += 1
+                    continue
+                try:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT lender FROM loans WHERE id::text = %s OR loan_id = %s LIMIT 1",
+                        (str(loan_id), str(loan_id)),
+                    )
+                    row = cur.fetchone()
+                finally:
+                    try: cur.close()
+                    except Exception: pass
+                    try: conn.close()
+                    except Exception: pass
+                if not row:
+                    results["failed"] += 1
+                    results["errors"].append(f"Loan {loan_id}: not found")
+                    continue
+                _, error = mark_unpaid(str(loan_id), row[0])
+            else:
+                _, error = mark_refunded_by_id(str(loan_id), _get_lender_for_id(str(loan_id)))
+
+            if error:
+                results["failed"] += 1
+                results["errors"].append(f"Loan {loan_id}: {error}")
+            else:
+                results["success"] += 1
+                log_action(actor, f"bulk_{action}", str(loan_id))
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"Loan {loan_id}: {e}")
+
+    return results
+
+
+def _get_lender_for_id(loan_id: str):
+    """Return lender username for a loan id, or empty string."""
+    conn = _get_db()
+    if not conn:
+        return ""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT lender FROM loans WHERE id::text = %s OR loan_id = %s LIMIT 1",
+            (loan_id, loan_id),
+        )
+        row = cur.fetchone()
+        return row[0] if row else ""
+    except Exception:
+        return ""
+    finally:
+        try: cur.close()
+        except Exception: pass
+        try: conn.close()
+        except Exception: pass
+
+
+# ---------------------------------------------------------------------------
 # Leaderboard
 # ---------------------------------------------------------------------------
 
