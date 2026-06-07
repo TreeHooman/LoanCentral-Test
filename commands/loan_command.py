@@ -78,9 +78,10 @@ def process_loan_command(comment):
         for flair in subreddit.flair(redditor=comment.author):
             user_flair = flair["flair_text"]
             break
-        if not user_flair or "verified lender" not in user_flair.lower():
+        from config import LENDER_FLAIR
+        if not user_flair or LENDER_FLAIR.lower() not in user_flair.lower():
             comment.reply(
-                f"Error: Only users with 'Verified Lender' flair can issue loans "
+                f"Error: Only users with '{LENDER_FLAIR}' flair can issue loans "
                 f"in r/{subreddit.display_name}."
             )
             return

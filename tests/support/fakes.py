@@ -647,6 +647,13 @@ class FakeCursor:
             self.last_result = (0,)
             return
 
+        # $status quick stats: SELECT COUNT(*), COUNT(*) FILTER (WHERE status IN ...) FROM loans
+        if normalized.startswith("select count(*), count(*) filter") and "from loans" in normalized:
+            total  = len(self.fake_db.loans)
+            active = sum(1 for l in self.fake_db.loans if l["status"] in ("confirmed", "partially_repaid"))
+            self.last_result = (total, active)
+            return
+
         if normalized.startswith("select id from disputes where loan_id"):
             self.last_result = None
             return

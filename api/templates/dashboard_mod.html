@@ -497,8 +497,8 @@
         const days = loan.days_overdue || 0;
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
-          <td class="username">u/${loan.borrower}</td>
+          <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
+          <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell" style="color:var(--red);font-weight:600">${fmtDate(loan.due_date)}</td>
@@ -771,7 +771,7 @@
       const tbody = document.getElementById('rolesBody');
       tbody.innerHTML = roles.length ? roles.map(r => `
         <tr>
-          <td class="username">u/${r.username}</td>
+          <td class="username"><a href="/u/${r.username}">u/${r.username}</a></td>
           <td><span class="badge badge-${r.role === 'confirmed' ? 'confirmed' : ''}" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
           <td style="color:var(--muted)">${r.subscription_status}</td>
           <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>

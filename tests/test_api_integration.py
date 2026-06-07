@@ -235,5 +235,97 @@ class OverdueLoansTests(unittest.TestCase):
             self.assertIsInstance(data, list)
 
 
+class BanAPITests(unittest.TestCase):
+    """Ban management endpoints — mod only."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret"
+        app.config["PROPAGATE_EXCEPTIONS"] = False
+        self.client = app.test_client()
+
+    def _mod_session(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "moduser"
+            sess["role"] = "mod"
+
+    def test_list_bans_requires_mod(self):
+        r = self.client.get("/api/admin/bans")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_list_bans_non_mod_forbidden(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "somelender"
+            sess["role"] = "lender"
+        r = self.client.get("/api/admin/bans")
+        self.assertEqual(r.status_code, 403)
+
+    def test_list_bans_mod_gets_json(self):
+        self._mod_session()
+        r = self.client.get("/api/admin/bans")
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            data = json.loads(r.data)
+            self.assertIn("banned", data)
+            self.assertIsInstance(data["banned"], list)
+
+    def test_ban_user_requires_mod(self):
+        r = self.client.post("/api/admin/bans/someuser",
+                             json={"reason": "test"},
+                             content_type="application/json")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_unban_user_requires_mod(self):
+        r = self.client.delete("/api/admin/bans/someuser")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_ban_user_mod_returns_ok_or_db_error(self):
+        self._mod_session()
+        r = self.client.post("/api/admin/bans/testbaduser",
+                             json={"reason": "integration test ban"},
+                             content_type="application/json")
+        self.assertIn(r.status_code, (200, 400, 500))
+
+    def test_notes_requires_mod(self):
+        r = self.client.get("/api/admin/notes/someuser")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_notes_mod_gets_json(self):
+        self._mod_session()
+        r = self.client.get("/api/admin/notes/someuser")
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            data = json.loads(r.data)
+            self.assertIn("notes", data)
+
+
+class AccountInfoTests(unittest.TestCase):
+    """Account info endpoint."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret"
+        app.config["PROPAGATE_EXCEPTIONS"] = False
+        self.client = app.test_client()
+
+    def test_account_info_requires_auth(self):
+        r = self.client.get("/api/users/me/account")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_account_info_with_session(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "testuser"
+            sess["role"] = "borrower"
+        r = self.client.get("/api/users/me/account")
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            data = json.loads(r.data)
+            self.assertEqual(data["username"], "testuser")
+            self.assertEqual(data["role"], "borrower")
+            self.assertIn("last_login", data)
+            self.assertIn("member_since", data)
+            self.assertIn("is_banned", data)
+
+
 if __name__ == "__main__":
     unittest.main()

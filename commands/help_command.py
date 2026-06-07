@@ -23,6 +23,7 @@ All history, health scores, stats, and mod tools are on the **[LoanCentral Dashb
 
 | Command | Description |
 |:---|:---|
+| `$status` | Check if the bot and database are online |
 | `$mystats` | Your own loan stats + health score |
 | `$check u/username` | Another user's stats (borrower + lender history) |
 | `$leaderboard` | Top lenders by volume & top borrowers by repayment rate |
