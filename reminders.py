@@ -56,14 +56,16 @@ def _build_message(loan: dict) -> str:
         return (
             f"LoanCentral URGENT: Your loan of {amount} from {lender} "
             f"has been marked UNPAID. Please contact your lender to resolve this. "
-            f"Dashboard: {DASHBOARD_URL}"
+            f"Dashboard: {DASHBOARD_URL} "
+            f"Reply STOP to unsubscribe."
         )
 
     days_old = (datetime.utcnow() - loan["date_created"]).days if loan["date_created"] else "?"
     return (
         f"LoanCentral reminder: {borrower}, you have an active loan of "
         f"{amount} from {lender} ({days_old} days ago). "
-        f"Please update your repayment status: {DASHBOARD_URL}"
+        f"Please update your repayment status: {DASHBOARD_URL} "
+        f"Reply STOP to unsubscribe."
     )
 
 

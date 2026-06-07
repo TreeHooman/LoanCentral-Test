@@ -751,6 +751,38 @@ def export_loans_csv():
 # Error handlers
 # ---------------------------------------------------------------------------
 
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/api/users/me/delete-data", methods=["POST"])
+@login_required
+def delete_my_data():
+    """Removes PII (phone, password hash, login timestamp) — keeps loan records."""
+    from services import _get_db
+    username = session["username"]
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed."}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE user_roles
+            SET phone_number = NULL, password_hash = NULL, last_login = NULL
+            WHERE username = %s
+        """, (username,))
+        conn.commit()
+        session.clear()
+        return _json({"ok": True, "message": "Personal data removed. Loan records are retained for community integrity."})
+    except Exception as e:
+        conn.rollback()
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.errorhandler(404)
 def not_found(e):
     if request.path.startswith("/api/"):
