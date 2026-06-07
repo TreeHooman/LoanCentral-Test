@@ -265,8 +265,8 @@ class CommandManager:
         body_lower = comment.body.lower()
         _processed_count += 1
 
-        # Check each command trigger
-        for trigger, command_func in self.commands.items():
+        # Check each command trigger — sorted longest-first to avoid prefix collisions
+        for trigger, command_func in sorted(self.commands.items(), key=lambda x: -len(x[0])):
             if trigger in body_lower:
                 username = comment.author.name.lower()
                 if _is_rate_limited(username):

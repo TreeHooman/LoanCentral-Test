@@ -55,6 +55,7 @@ Optional due date: `$loan 50 USD u/borrower due:30d` *(30d / 2w / 1m)*
 
 **Record a repayment**
 `$paid_with_id [loan_id] [amount] [currency]`
+Alias: `$paid [loan_id] [amount] [currency]`
 
 **Mark a loan as unpaid**
 `$unpaid [loan_id]`

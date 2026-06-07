@@ -501,6 +501,7 @@ class FakeCursor:
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
                     loan.get("date_repaid"),
+                    loan.get("due_date"),
                 )
                 for loan in matches
             ]
@@ -578,6 +579,10 @@ class FakeCursor:
 
         if normalized.startswith("insert into user_roles"):
             self.last_result = None
+            return
+
+        if normalized.startswith("select count(*)") and "from loan_applications" in normalized:
+            self.last_result = (0,)
             return
 
         if normalized.startswith("insert into loan_applications"):

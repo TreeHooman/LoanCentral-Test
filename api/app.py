@@ -109,7 +109,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0,
         params += [limit, offset]
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, date_repaid, notes
+                   currency, status, date_created, original_thread, date_repaid, notes, due_date
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s OFFSET %s
         """, params)
@@ -119,7 +119,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0,
                 "db_id": r[0], "loan_id": r[1], "lender": r[2], "borrower": r[3],
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
-                "date_repaid": r[10], "notes": r[11],
+                "date_repaid": r[10], "notes": r[11], "due_date": r[12],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
                 "repaid_pct": round(float(r[5]) / float(r[4]) * 100, 1) if float(r[4]) > 0 else 0,
             }

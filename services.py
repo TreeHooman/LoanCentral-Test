@@ -566,7 +566,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50, offset:
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, date_repaid
+                   currency, status, date_created, original_thread, date_repaid, due_date
             FROM loans {where}
             ORDER BY date_created DESC
             LIMIT %s OFFSET %s
@@ -586,6 +586,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50, offset:
                 "date_created": r[8],
                 "original_thread": r[9],
                 "date_repaid": r[10],
+                "due_date": r[11],
                 "repaid_pct": round(float(r[5]) / float(r[4]) * 100, 1) if float(r[4]) > 0 else 0,
             }
             for r in rows
@@ -952,6 +953,14 @@ def submit_loan_application(borrower: str, amount: Decimal, currency: str,
         return None, "Database connection failed."
     try:
         cur = conn.cursor()
+        # Limit: max 3 open applications per borrower
+        cur.execute(
+            "SELECT COUNT(*) FROM loan_applications WHERE borrower = %s AND status = 'open'",
+            (borrower.lower(),)
+        )
+        open_count = cur.fetchone()[0]
+        if open_count >= 3:
+            return None, "You already have 3 open loan requests. Cancel one before submitting a new one."
         cur.execute("""
             INSERT INTO loan_applications (borrower, amount, currency, reason, repayment_plan)
             VALUES (%s, %s, %s, %s, %s) RETURNING id

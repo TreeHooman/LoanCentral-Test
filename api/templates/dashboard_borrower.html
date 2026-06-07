@@ -42,8 +42,8 @@
 
 <div class="table-wrap" style="margin-bottom:24px">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th><th>Action</th></tr></thead>
-    <tbody id="owingBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th><th>Due</th><th>Action</th></tr></thead>
+    <tbody id="owingBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -180,7 +180,9 @@
       const el = document.getElementById('s-health');
       el.textContent = score + '/100';
       el.className = 'stat-value ' + healthColor(score);
-      document.getElementById('s-health-label').textContent = healthLabel(score);
+      const tier = p.credit_tier || {};
+      document.getElementById('s-health-label').textContent =
+        healthLabel(score) + (tier.label ? ' — ' + tier.label : '');
       if (p.phone_number) document.getElementById('phoneInput').value = p.phone_number;
     } catch(e) { console.error(e); }
   }
@@ -216,6 +218,8 @@
       tbody.innerHTML = all.map(loan => {
         const owe = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
         const id = loan.loan_id || loan.db_id;
+        const dueDate = loan.due_date ? fmtDate(loan.due_date) : '—';
+        const duePast = loan.due_date && new Date(loan.due_date) < new Date();
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
@@ -224,11 +228,12 @@
           <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td class="date-cell" style="${duePast?'color:var(--red);font-weight:600':''}">${dueDate}</td>
           <td>${loan.status === 'unpaid' ? `<button class="btn-action btn-unpaid" onclick="openDisputeModal('${id}')">Dispute</button>` : '—'}</td>
         </tr>`;
       }).join('');
     } catch(e) {
-      document.getElementById('owingBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('owingBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
   }
 
