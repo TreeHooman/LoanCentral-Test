@@ -540,10 +540,12 @@ def calculate_health_score(profile: dict) -> tuple:
     return score, label
 
 
-def get_loan_history(username: str, role: str = "both", limit: int = 50, offset: int = 0):
+def get_loan_history(username: str, role: str = "both", limit: int = 50, offset: int = 0,
+                     search: str = None):
     """
     Fetch recent loans for a user.
     role: "borrower", "lender", or "both"
+    search: optional filter by counterparty username or loan_id
     Returns (list_of_loan_dicts, error_message)
     """
     conn = _get_db()
@@ -555,14 +557,27 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50, offset:
         username = username.lower()
 
         if role == "borrower":
-            where = "WHERE borrower = %s"
-            params = (username, limit, offset)
+            if search:
+                where  = "WHERE borrower = %s AND (lender ILIKE %s OR loan_id ILIKE %s)"
+                params = (username, f"%{search}%", f"%{search}%", limit, offset)
+            else:
+                where  = "WHERE borrower = %s"
+                params = (username, limit, offset)
         elif role == "lender":
-            where = "WHERE lender = %s"
-            params = (username, limit, offset)
+            if search:
+                where  = "WHERE lender = %s AND (borrower ILIKE %s OR loan_id ILIKE %s)"
+                params = (username, f"%{search}%", f"%{search}%", limit, offset)
+            else:
+                where  = "WHERE lender = %s"
+                params = (username, limit, offset)
         else:  # both
-            where = "WHERE borrower = %s OR lender = %s"
-            params = (username, username, limit, offset)
+            if search:
+                where  = ("WHERE (borrower = %s OR lender = %s) "
+                          "AND (lender ILIKE %s OR borrower ILIKE %s OR loan_id ILIKE %s)")
+                params = (username, username, f"%{search}%", f"%{search}%", f"%{search}%", limit, offset)
+            else:
+                where  = "WHERE borrower = %s OR lender = %s"
+                params = (username, username, limit, offset)
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
@@ -913,6 +928,104 @@ def get_lender_stats(lender: str):
     finally:
         cur.close()
         conn.close()
+
+
+def get_borrower_stats(borrower: str):
+    """
+    Get borrowing stats for a specific borrower.
+    Returns (stats_dict, error_message).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*)                                                       AS total,
+                COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active,
+                COUNT(*) FILTER (WHERE status = 'unpaid')                     AS unpaid,
+                COUNT(*) FILTER (WHERE status = 'repaid')                     AS repaid,
+                COALESCE(SUM(amount), 0)                                      AS total_borrowed,
+                COALESCE(SUM(amount_repaid), 0)                               AS total_repaid,
+                COALESCE(SUM(amount) FILTER (
+                    WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding,
+                COUNT(*) FILTER (WHERE due_date IS NOT NULL
+                                  AND due_date < NOW()
+                                  AND status NOT IN ('repaid','refunded','unpaid')) AS overdue
+            FROM loans WHERE borrower = %s
+        """, (borrower.lower(),))
+        row = cur.fetchone()
+        return {
+            "total_loans":    row[0],
+            "active_loans":   row[1],
+            "unpaid_loans":   row[2],
+            "repaid_loans":   row[3],
+            "total_borrowed": row[4],
+            "total_repaid":   row[5],
+            "outstanding":    row[6],
+            "overdue_loans":  row[7],
+        }, None
+    except Exception as e:
+        logger.error(f"get_borrower_stats error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def send_due_reminders():
+    """
+    Query loans due within 3 days where borrower has a phone number,
+    send SMS via Twilio, and mark them as reminded.
+    Returns (count_sent, error_message).
+    """
+    from notifications import send_sms
+    conn = _get_db()
+    if not conn:
+        return 0, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.id, l.loan_id, l.lender, l.borrower,
+                   l.amount, l.currency, l.due_date,
+                   ur.phone_number
+            FROM loans l
+            JOIN user_roles ur ON ur.username = l.borrower
+            WHERE l.status IN ('confirmed', 'partially_repaid')
+              AND l.due_date IS NOT NULL
+              AND l.due_date BETWEEN NOW() AND NOW() + INTERVAL '3 days'
+              AND ur.phone_number IS NOT NULL
+              AND (l.last_reminder_sent IS NULL
+                   OR l.last_reminder_sent < NOW() - INTERVAL '24 hours')
+        """)
+        rows = cur.fetchall()
+    except Exception as e:
+        logger.error(f"send_due_reminders query error: {e}", exc_info=True)
+        return 0, str(e)
+    finally:
+        try: cur.close()
+        except Exception: pass
+        try: conn.close()
+        except Exception: pass
+
+    count = 0
+    for r in rows:
+        db_id, loan_id, lender, borrower, amount, currency, due_date, phone = r
+        try:
+            days_left = max((due_date.date() - datetime.now().date()).days, 0)
+            msg = (
+                f"LoanCentral: Your loan of {float(amount):.2f} {currency} "
+                f"from u/{lender} (#{loan_id}) is due in {days_left} day(s). "
+                f"Please arrange repayment soon."
+            )
+            send_sms(phone, msg)
+            mark_reminder_sent(db_id)
+            count += 1
+            logger.info(f"Due-date SMS sent: loan #{loan_id} -> u/{borrower}")
+        except Exception as e:
+            logger.error(f"SMS due-reminder failed for u/{borrower} loan {loan_id}: {e}")
+    return count, None
 
 
 # ---------------------------------------------------------------------------

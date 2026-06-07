@@ -9,13 +9,15 @@ COMMAND_TRIGGER = "$loan"
 
 
 def _parse_due_date(due_str):
-    """Parse '30d', '2w', '1m' into a future datetime."""
+    """Parse '30d', '2w', '1m' into a future datetime. Minimum 1 unit."""
     if not due_str:
         return None
     m = re.match(r'^(\d+)([dwm])$', due_str.lower())
     if not m:
         return None
     n, unit = int(m.group(1)), m.group(2)
+    if n < 1:
+        return None
     if unit == 'd':
         return datetime.now() + timedelta(days=n)
     if unit == 'w':
@@ -34,7 +36,7 @@ def process_loan_command(comment):
     from services import create_loan
 
     match = re.search(
-        r'\$loan\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+u?/?([\w-]+)(?:\s+due:(\d+[dwm]))?',
+        r'\$loan\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+u?/?([\w-]+)(?:\s+due:([^\s]+))?',
         comment.body,
         re.IGNORECASE,
     )
@@ -45,7 +47,14 @@ def process_loan_command(comment):
     amount = Decimal(match.group(1))
     currency = match.group(2).upper()
     borrower = match.group(3).lower()
-    due_date = _parse_due_date(match.group(4))
+    due_raw  = match.group(4)
+    due_date = _parse_due_date(due_raw)
+    if due_raw and not due_date:
+        comment.reply(
+            "Error: Invalid due date format. Use `due:Nd`, `due:Nw`, or `due:Nm` "
+            "with N ≥ 1 (e.g. `due:30d`, `due:2w`, `due:1m`)."
+        )
+        return
 
     if lender == borrower:
         comment.reply("Error: You cannot lend to yourself.")

@@ -130,5 +130,110 @@ class PublicProfileTests(unittest.TestCase):
         self.assertIn(r.status_code, (200, 302, 404))
 
 
+class CSVExportTests(unittest.TestCase):
+    """CSV export endpoints — verify auth gates and content-type."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret"
+        app.config["PROPAGATE_EXCEPTIONS"] = False
+        self.client = app.test_client()
+
+    def test_mod_export_requires_auth(self):
+        r = self.client.get("/api/loans/export.csv")
+        self.assertNotEqual(r.status_code, 200, "Mod CSV export should require auth")
+
+    def test_my_export_requires_login(self):
+        r = self.client.get("/api/loans/my-export.csv")
+        # Without session must redirect or 401/403
+        self.assertNotEqual(r.status_code, 200, "My-export CSV should require login")
+
+    def test_my_export_with_session_returns_csv_or_error(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "testlender"
+            sess["role"] = "lender"
+        r = self.client.get("/api/loans/my-export.csv")
+        # With session: either CSV (200) or DB error (500) — never a redirect/auth error
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            self.assertIn("text/csv", r.content_type)
+            # First line of CSV must be the header
+            first_line = r.data.decode().splitlines()[0]
+            self.assertIn("loan_id", first_line)
+            self.assertIn("borrower", first_line)
+
+    def test_my_export_csv_header_columns(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "testlender"
+            sess["role"] = "lender"
+        r = self.client.get("/api/loans/my-export.csv")
+        if r.status_code == 200:
+            cols = r.data.decode().splitlines()[0].split(",")
+            expected = {"loan_id", "borrower", "amount", "currency", "status"}
+            self.assertTrue(expected.issubset(set(cols)))
+
+
+class BorrowerStatsTests(unittest.TestCase):
+    """Borrower stats endpoint."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret"
+        app.config["PROPAGATE_EXCEPTIONS"] = False
+        self.client = app.test_client()
+
+    def test_borrower_stats_requires_auth(self):
+        r = self.client.get("/api/stats/borrower/someuser")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_borrower_stats_own_data_allowed(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "testborrower"
+            sess["role"] = "borrower"
+        r = self.client.get("/api/stats/borrower/testborrower")
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            data = json.loads(r.data)
+            self.assertIn("total_loans", data)
+            self.assertIn("outstanding", data)
+
+    def test_borrower_stats_other_user_forbidden(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "testborrower"
+            sess["role"] = "borrower"
+        r = self.client.get("/api/stats/borrower/differentuser")
+        self.assertEqual(r.status_code, 403)
+
+
+class OverdueLoansTests(unittest.TestCase):
+    """Overdue loans endpoint — mod only."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["SECRET_KEY"] = "test-secret"
+        self.client = app.test_client()
+
+    def test_overdue_requires_mod(self):
+        r = self.client.get("/api/loans/overdue")
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_overdue_with_non_mod_session_forbidden(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "somelender"
+            sess["role"] = "lender"
+        r = self.client.get("/api/loans/overdue")
+        self.assertEqual(r.status_code, 403)
+
+    def test_overdue_with_mod_session_returns_json(self):
+        with self.client.session_transaction() as sess:
+            sess["username"] = "moduser"
+            sess["role"] = "mod"
+        r = self.client.get("/api/loans/overdue")
+        self.assertIn(r.status_code, (200, 500))
+        if r.status_code == 200:
+            data = json.loads(r.data)
+            self.assertIsInstance(data, list)
+
+
 if __name__ == "__main__":
     unittest.main()

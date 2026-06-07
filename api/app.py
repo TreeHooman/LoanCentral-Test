@@ -91,8 +91,8 @@ def _get_all_loans_from_db(status=None, search=None, limit=50, offset=0,
             conditions.append("status = %s")
             params.append(status)
         if search:
-            conditions.append("(lender ILIKE %s OR borrower ILIKE %s)")
-            params += [f"%{search}%", f"%{search}%"]
+            conditions.append("(lender ILIKE %s OR borrower ILIKE %s OR loan_id ILIKE %s OR id::text = %s)")
+            params += [f"%{search}%", f"%{search}%", f"%{search}%", search]
         if date_from:
             conditions.append("date_created >= %s")
             params.append(date_from)
@@ -460,11 +460,11 @@ def get_loans():
             return _json({"error": "You can only view your own loans."}, 403)
 
     if lender:
-        loans, error = get_loan_history(lender, role="lender", limit=limit, offset=offset)
+        loans, error = get_loan_history(lender, role="lender", limit=limit, offset=offset, search=search)
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
     elif borrower:
-        loans, error = get_loan_history(borrower, role="borrower", limit=limit, offset=offset)
+        loans, error = get_loan_history(borrower, role="borrower", limit=limit, offset=offset, search=search)
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
     else:
@@ -797,6 +797,56 @@ def get_lender_stats(lender):
     return _json(stats)
 
 
+@app.route("/api/stats/borrower/<borrower>", methods=["GET"])
+@require_auth
+def get_borrower_stats(borrower):
+    from services import get_borrower_stats as _get_borrower_stats
+    if session.get("username") and session.get("role") != "mod":
+        if borrower.lower() != session["username"]:
+            return _json({"error": "You can only view your own stats."}, 403)
+    stats, error = _get_borrower_stats(borrower)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(stats)
+
+
+@app.route("/api/loans/overdue", methods=["GET"])
+@require_mod_api
+def get_overdue_loans():
+    """Return active loans past their due date."""
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, lender, borrower, amount, amount_repaid,
+                   currency, status, date_created, due_date
+            FROM loans
+            WHERE due_date IS NOT NULL
+              AND due_date < NOW()
+              AND status NOT IN ('repaid', 'refunded', 'unpaid')
+            ORDER BY due_date ASC
+            LIMIT 200
+        """)
+        rows = cur.fetchall()
+        return _json([
+            {
+                "db_id": r[0], "loan_id": r[1], "lender": r[2], "borrower": r[3],
+                "amount": r[4], "amount_repaid": r[5], "currency": r[6],
+                "status": r[7], "date_created": r[8], "due_date": r[9],
+                "days_overdue": (datetime.utcnow().date() - r[9].date()).days if r[9] else 0,
+            }
+            for r in rows
+        ])
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Public profile page
 # ---------------------------------------------------------------------------
@@ -838,22 +888,65 @@ def export_loans_csv():
         return _json({"error": error}, 500)
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["loan_id", "lender", "borrower", "amount", "amount_repaid",
-                     "remaining", "currency", "status", "date_created", "original_thread"])
+    writer.writerow([
+        "loan_id", "lender", "borrower", "amount", "amount_repaid",
+        "remaining", "currency", "status", "date_created", "due_date",
+        "date_repaid", "original_thread",
+    ])
     for loan in loans:
         writer.writerow([
             loan["loan_id"], loan["lender"], loan["borrower"],
-            float(loan["amount"]), float(loan["amount_repaid"]),
+            float(loan["amount"]), float(loan.get("amount_repaid", 0)),
             float(loan["remaining"]), loan["currency"], loan["status"],
-            loan["date_created"].isoformat() if loan["date_created"] else "",
-            loan["original_thread"] or "",
+            loan["date_created"].isoformat() if loan.get("date_created") else "",
+            loan["due_date"].isoformat() if loan.get("due_date") else "",
+            loan["date_repaid"].isoformat() if loan.get("date_repaid") else "",
+            loan.get("original_thread") or "",
         ])
-    output = buf.getvalue()
     return app.response_class(
-        response=output,
+        response=buf.getvalue(),
         status=200,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=loancentral_export.csv"},
+    )
+
+
+@app.route("/api/loans/my-export.csv")
+@login_required
+def export_my_loans_csv():
+    """Let lenders export their own loan history as CSV."""
+    import csv
+    import io
+    from services import get_loan_history
+    username = session["username"]
+    loans, error = get_loan_history(username, role="lender", limit=10000)
+    if error:
+        return _json({"error": error}, 500)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "loan_id", "borrower", "amount", "amount_repaid", "remaining",
+        "currency", "status", "date_created", "due_date", "date_repaid",
+        "original_thread",
+    ])
+    for loan in loans:
+        amt     = float(loan["amount"])
+        repaid  = float(loan.get("amount_repaid", 0))
+        writer.writerow([
+            loan.get("loan_id") or loan.get("db_id"),
+            loan["borrower"],
+            amt, repaid, round(amt - repaid, 2),
+            loan["currency"], loan["status"],
+            loan["date_created"].isoformat() if loan.get("date_created") else "",
+            loan["due_date"].isoformat()     if loan.get("due_date")     else "",
+            loan["date_repaid"].isoformat()  if loan.get("date_repaid")  else "",
+            loan.get("original_thread") or "",
+        ])
+    return app.response_class(
+        response=buf.getvalue(),
+        status=200,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=my_loans_{username}.csv"},
     )
 
 

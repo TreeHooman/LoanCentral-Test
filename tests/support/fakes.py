@@ -470,21 +470,19 @@ class FakeCursor:
             return
 
         # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
+        # limit is always params[-2], offset always params[-1], regardless of search params
         if normalized.startswith("select id, loan_id, lender, borrower, amount, amount_repaid") and "id::text" not in normalized and "limit %s" in normalized:
             username = params[0]
-            if "borrower = %s or lender = %s" in normalized:
-                # "both" role: params are (username, username, limit)
-                username2 = params[1]
-                limit = params[2]
+            limit = params[-2]
+            # Determine which role based on WHERE clause
+            if "borrower = %s or lender = %s" in normalized or "(borrower = %s or lender = %s)" in normalized:
                 matches = [
                     loan for loan in self.fake_db.loans
-                    if loan["borrower"] == username or loan["lender"] == username2
+                    if loan["borrower"] == username or loan["lender"] == username
                 ]
             elif "borrower = %s" in normalized:
-                limit = params[1]
                 matches = [loan for loan in self.fake_db.loans if loan["borrower"] == username]
             else:
-                limit = params[1]
                 matches = [loan for loan in self.fake_db.loans if loan["lender"] == username]
 
             matches = sorted(matches, key=lambda l: l.get("date_created", 0), reverse=True)[:limit]
@@ -507,8 +505,13 @@ class FakeCursor:
             ]
             return
 
+        # JOIN queries from send_due_reminders / complex multi-table queries (no positional params)
+        if normalized.startswith("select l.id, l.loan_id") and "join user_roles" in normalized:
+            self.last_result = []
+            return
+
         # Active loans query (get_active_loans): fetchall path
-        if "status in ('confirmed', 'partially_repaid')" in normalized:
+        if "borrower = %s" in normalized and "status in ('confirmed', 'partially_repaid')" in normalized:
             username = params[0]
             matches = [
                 loan for loan in self.fake_db.loans
@@ -583,6 +586,11 @@ class FakeCursor:
 
         if normalized.startswith("select count(*)") and "from loan_applications" in normalized:
             self.last_result = (0,)
+            return
+
+        # get_borrower_stats: multiple COUNT(*) FILTER on loans WHERE borrower = %s
+        if normalized.startswith("select") and "count(*) filter" in normalized and "from loans where borrower" in normalized:
+            self.last_result = (0, 0, 0, 0, 0, 0, 0, 0)
             return
 
         if normalized.startswith("insert into loan_applications"):

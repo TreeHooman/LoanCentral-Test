@@ -28,6 +28,23 @@ def notify_discord(message: str, retries: int = 2):
             time.sleep(2 ** attempt)  # 1s, 2s backoff
 
 
+def send_sms(to: str, message: str):
+    """Send an SMS via Twilio. No-op if TWILIO_ACCOUNT_SID is not configured."""
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    auth_token  = os.getenv("TWILIO_AUTH_TOKEN", "")
+    from_number = os.getenv("TWILIO_FROM", "")
+    if not all([account_sid, auth_token, from_number]):
+        return
+    try:
+        from twilio.rest import Client
+        Client(account_sid, auth_token).messages.create(
+            body=message[:1600], from_=from_number, to=to
+        )
+        logger.info(f"SMS sent to {to[:6]}***")
+    except Exception as e:
+        logger.warning(f"SMS send failed to {to[:6]}***: {e}")
+
+
 def notify_email(subject: str, body: str, to: str = None):
     """Send a plain-text email via SMTP. No-op if SMTP_HOST is not configured."""
     smtp_host = os.getenv("SMTP_HOST", "")
