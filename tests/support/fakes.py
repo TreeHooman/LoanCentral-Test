@@ -109,9 +109,10 @@ class FakeRedditor:
 
 
 class FakeDb:
-    def __init__(self, loans=None, users=None):
+    def __init__(self, loans=None, users=None, bans=None):
         self.loans = deepcopy(loans or [])
         self.users = deepcopy(users or {})
+        self.bans  = deepcopy(bans or {})
         self.next_id = max([loan["id"] for loan in self.loans], default=0) + 1
 
     def connection(self):
@@ -459,14 +460,21 @@ class FakeCursor:
             return
 
         if normalized.startswith("select count(*), coalesce(sum(amount - amount_repaid)"):
-            borrower = params[0]
-            active = [
-                loan for loan in self.fake_db.loans
-                if loan["borrower"] == borrower and loan["status"] == "confirmed"
-            ]
+            user = params[0]
+            active_statuses = ("confirmed", "partially_repaid")
+            if "lender = %s" in normalized:
+                active = [l for l in self.fake_db.loans if l["lender"] == user and l["status"] in active_statuses]
+            else:
+                active = [l for l in self.fake_db.loans if l["borrower"] == user and l["status"] in active_statuses]
             count = len(active)
             total = sum(loan["amount"] - loan["amount_repaid"] for loan in active)
             self.last_result = (count, total)
+            return
+
+        if normalized.startswith("select count(*) from loans where lender = %s and status = 'unpaid'"):
+            lender = params[0]
+            count = sum(1 for l in self.fake_db.loans if l["lender"] == lender and l["status"] == "unpaid")
+            self.last_result = (count,)
             return
 
         # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
@@ -661,6 +669,32 @@ class FakeCursor:
 
         if normalized.startswith("select") and "from role_requests" in normalized:
             self.last_result = None
+            return
+
+        # Ban system queries
+        if normalized.startswith("select reason from banned_users where username"):
+            username = params[0]
+            ban = self.fake_db.bans.get(username)
+            self.last_result = (ban["reason"],) if ban else None
+            return
+
+        if normalized.startswith("insert into banned_users"):
+            username, reason, banned_by = params[0], params[1], params[2]
+            self.fake_db.bans[username] = {"username": username, "reason": reason, "banned_by": banned_by}
+            self.last_result = None
+            return
+
+        if normalized.startswith("delete from banned_users where username"):
+            username = params[0]
+            removed = self.fake_db.bans.pop(username, None)
+            self.last_result = (username,) if removed else None
+            return
+
+        if normalized.startswith("select username, reason, banned_by, banned_at from banned_users"):
+            self.last_result = [
+                (b["username"], b.get("reason"), b.get("banned_by"), None)
+                for b in self.fake_db.bans.values()
+            ]
             return
 
         raise AssertionError(f"FakeCursor does not support query: {query}")

@@ -20,6 +20,12 @@ def process_unpaid_command(comment):
     loan_id = match.group(1)
     lender = comment.author.name.lower()
 
+    from services import check_ban
+    is_banned, ban_reason = check_ban(lender)
+    if is_banned:
+        comment.reply(f"Your account has been suspended from LoanCentral bot commands. Reason: {ban_reason}")
+        return
+
     result, error = mark_unpaid(loan_id, lender)
 
     if error:

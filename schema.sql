@@ -124,6 +124,14 @@ CREATE TABLE IF NOT EXISTS bot_status (
 );
 INSERT INTO bot_status (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS banned_users (
+    id         SERIAL PRIMARY KEY,
+    username   TEXT NOT NULL UNIQUE,
+    reason     TEXT,
+    banned_by  TEXT NOT NULL,
+    banned_at  TIMESTAMP DEFAULT NOW()
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

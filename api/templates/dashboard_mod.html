@@ -47,6 +47,7 @@
     <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="showTab('overdue')" id="overdueBtn">⏰ Overdue <span id="overdueBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
   </div>
   <!-- Advanced filters panel -->
   <div id="filtersPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
@@ -235,6 +236,39 @@
   </div>
 </div>
 
+<div id="tab-bans" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Banned Users</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="loadBans()">↻ Refresh</button>
+      <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="openBanModal()">🔨 Ban User</button>
+      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Reason</th><th>Banned By</th><th>Banned At</th><th>Actions</th></tr></thead>
+      <tbody id="bansBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Ban User Modal -->
+<div class="modal-overlay" id="banModal">
+  <div class="modal">
+    <h3>Ban User from Bot Commands</h3>
+    <div class="modal-error" id="banModalError"></div>
+    <label>Reddit Username</label>
+    <input type="text" id="banUsername" placeholder="e.g. someuser (no u/)" />
+    <label>Reason</label>
+    <input type="text" id="banReason" placeholder="Optional reason" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('banModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitBan()">Ban User</button>
+    </div>
+  </div>
+</div>
+
 <!-- Set Password Modal -->
 <div class="modal-overlay" id="setPwModal">
   <div class="modal">
@@ -419,7 +453,7 @@
   function loadData() { loadLoans(); loadStats(); }
 
   function showTab(name) {
-    ['loans','roles','requests','analytics','audit','disputes','overdue'].forEach(t =>
+    ['loans','roles','requests','analytics','audit','disputes','overdue','bans'].forEach(t =>
       document.getElementById('tab-' + t).style.display = name === t ? '' : 'none'
     );
     if (name === 'roles')     loadRoles();
@@ -428,6 +462,7 @@
     if (name === 'audit')     { auditOffset = 0; loadAudit(); }
     if (name === 'disputes')  loadDisputes();
     if (name === 'overdue')   loadOverdue();
+    if (name === 'bans')      loadBans();
   }
 
   async function loadDisputesBadge() {
@@ -486,6 +521,51 @@
       toast(`Reminders sent: ${r.periodic_sent} periodic, ${r.due_sent} due-date.`, 'success');
     } catch(e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '📲 Send Reminders'; }
+  }
+
+  async function loadBans() {
+    try {
+      const data = await apiFetch('/api/admin/bans');
+      const tbody = document.getElementById('bansBody');
+      const rows = data.banned || [];
+      tbody.innerHTML = rows.length ? rows.map(r => `<tr>
+        <td class="username">u/${r.username}</td>
+        <td style="color:var(--text2);font-size:13px">${r.reason || '—'}</td>
+        <td class="username">u/${r.banned_by}</td>
+        <td class="date-cell">${fmtDate(r.banned_at)}</td>
+        <td><button class="btn-action btn-refund" onclick="unbanUser('${r.username}')">Unban</button></td>
+      </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No banned users.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function openBanModal() {
+    document.getElementById('banUsername').value = '';
+    document.getElementById('banReason').value = '';
+    document.getElementById('banModalError').textContent = '';
+    document.getElementById('banModal').style.display = 'flex';
+  }
+
+  async function submitBan() {
+    const username = document.getElementById('banUsername').value.trim();
+    const reason   = document.getElementById('banReason').value.trim();
+    const errEl    = document.getElementById('banModalError');
+    if (!username) { errEl.textContent = 'Username is required.'; return; }
+    errEl.textContent = '';
+    try {
+      await apiFetch(`/api/admin/bans/${username}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reason}) });
+      closeModal('banModal');
+      toast(`u/${username} banned.`, 'success');
+      loadBans();
+    } catch(e) { errEl.textContent = e.message; }
+  }
+
+  async function unbanUser(username) {
+    if (!confirm(`Unban u/${username}?`)) return;
+    try {
+      await apiFetch(`/api/admin/bans/${username}`, { method: 'DELETE' });
+      toast(`u/${username} unbanned.`, 'success');
+      loadBans();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   let auditOffset = 0;

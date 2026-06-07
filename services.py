@@ -472,10 +472,23 @@ def get_user_profile(username: str):
 
         cur.execute('''
             SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
-            FROM loans WHERE borrower = %s AND status = 'confirmed'
+            FROM loans WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
         ''', (username.lower(),))
 
         active = cur.fetchone()
+
+        cur.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
+            FROM loans WHERE lender = %s AND status IN ('confirmed', 'partially_repaid')
+        ''', (username.lower(),))
+
+        active_lent = cur.fetchone()
+
+        cur.execute('''
+            SELECT COUNT(*) FROM loans WHERE lender = %s AND status = 'unpaid'
+        ''', (username.lower(),))
+
+        lender_unpaid_row = cur.fetchone()
 
         if not row:
             return {
@@ -489,6 +502,9 @@ def get_user_profile(username: str):
                 "unpaid_amount": Decimal("0"),
                 "active_loans": 0,
                 "active_amount": Decimal("0"),
+                "active_loans_given": 0,
+                "active_amount_given": Decimal("0"),
+                "borrowers_unpaid": 0,
             }, None
 
         return {
@@ -502,6 +518,9 @@ def get_user_profile(username: str):
             "unpaid_amount": Decimal(row[6]),
             "active_loans": active[0] if active else 0,
             "active_amount": Decimal(active[1]) if active else Decimal("0"),
+            "active_loans_given": active_lent[0] if active_lent else 0,
+            "active_amount_given": Decimal(active_lent[1]) if active_lent else Decimal("0"),
+            "borrowers_unpaid": lender_unpaid_row[0] if lender_unpaid_row else 0,
         }, None
 
     except Exception as e:
@@ -1647,6 +1666,108 @@ def get_loans_approaching_due(days_ahead: int = 3):
         ], None
     except Exception as e:
         logger.error(f"get_loans_approaching_due error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def check_ban(username: str):
+    """Check if a user is banned. Returns (is_banned, reason)."""
+    conn = _get_db()
+    if not conn:
+        return False, None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT reason FROM banned_users WHERE username = %s",
+            (username.lower(),)
+        )
+        row = cur.fetchone()
+        if row:
+            return True, row[0] or "No reason provided."
+        return False, None
+    except Exception as e:
+        logger.warning(f"check_ban error for {username}: {e}")
+        return False, None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def ban_user(username: str, reason: str, banned_by: str):
+    """Ban a user. Returns (success, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO banned_users (username, reason, banned_by)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (username) DO UPDATE
+                SET reason = EXCLUDED.reason,
+                    banned_by = EXCLUDED.banned_by,
+                    banned_at = NOW()
+            """,
+            (username.lower(), reason, banned_by.lower())
+        )
+        conn.commit()
+        log_action(banned_by, "user_banned", username, reason or "no reason")
+        logger.info(f"u/{username} banned by u/{banned_by}: {reason}")
+        return True, None
+    except Exception as e:
+        logger.error(f"ban_user error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def unban_user(username: str, unbanned_by: str):
+    """Unban a user. Returns (success, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM banned_users WHERE username = %s RETURNING username",
+            (username.lower(),)
+        )
+        row = cur.fetchone()
+        if not row:
+            return False, f"u/{username} is not banned."
+        conn.commit()
+        log_action(unbanned_by, "user_unbanned", username, "")
+        logger.info(f"u/{username} unbanned by u/{unbanned_by}")
+        return True, None
+    except Exception as e:
+        logger.error(f"unban_user error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def list_banned_users():
+    """Return list of all banned users. Returns (list, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT username, reason, banned_by, banned_at FROM banned_users ORDER BY banned_at DESC"
+        )
+        rows = cur.fetchall()
+        return [
+            {"username": r[0], "reason": r[1], "banned_by": r[2], "banned_at": r[3]}
+            for r in rows
+        ], None
+    except Exception as e:
+        logger.error(f"list_banned_users error: {e}", exc_info=True)
         return [], str(e)
     finally:
         cur.close()

@@ -1211,6 +1211,44 @@ def trigger_reminders():
 
 
 # ---------------------------------------------------------------------------
+# Ban management
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/bans", methods=["GET"])
+@require_mod_api
+def list_bans():
+    from services import list_banned_users
+    banned, error = list_banned_users()
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"banned": banned})
+
+
+@app.route("/api/admin/bans/<username>", methods=["POST"])
+@require_mod_api
+def ban_user_api(username):
+    data   = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip() or "No reason provided."
+    actor  = session.get("username", "dashboard")
+    from services import ban_user
+    success, error = ban_user(username.lower(), reason, actor)
+    if not success:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "username": username.lower(), "reason": reason})
+
+
+@app.route("/api/admin/bans/<username>", methods=["DELETE"])
+@require_mod_api
+def unban_user_api(username):
+    actor = session.get("username", "dashboard")
+    from services import unban_user
+    success, error = unban_user(username.lower(), actor)
+    if not success:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "username": username.lower()})
+
+
+# ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
 

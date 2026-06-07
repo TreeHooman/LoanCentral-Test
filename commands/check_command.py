@@ -48,14 +48,30 @@ def process_check_command(comment):
 
     repay_pct = round((repaid / borrowed * 100), 1) if borrowed > 0 else 100.0
 
-    comment.reply(
+    reply = (
         f"**Loan history for u/{target}** — *{tier['label']}*\n\n"
+        f"**As Borrower**\n\n"
         f"|Health Score|Credit Tier|Total Loans|Repaid|Unpaid|Active|\n"
         f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
         f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
         f"|Total Borrowed|Total Repaid|Repayment Rate|Outstanding|\n"
         f"|:--:|:--:|:--:|:--:|\n"
-        f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|\n\n"
-        f"[View full profile on LoanCentral Dashboard]({DASHBOARD_URL})"
+        f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|"
     )
+
+    lent_total = profile["loans_as_lender"]
+    if lent_total > 0:
+        lent_amt     = float(profile["amount_lent"])
+        active_given = profile["active_loans_given"]
+        active_given_amt = float(profile["active_amount_given"])
+        bad_borrowers = profile["borrowers_unpaid"]
+        reply += (
+            f"\n\n**As Lender**\n\n"
+            f"|Loans Given|Total Lent|Active Out|Borrowers Unpaid|\n"
+            f"|:--:|:--:|:--:|:--:|\n"
+            f"|{lent_total}|${lent_amt:.2f}|{active_given} (${active_given_amt:.2f})|{bad_borrowers}|"
+        )
+
+    reply += f"\n\n[View full profile on LoanCentral Dashboard]({DASHBOARD_URL})"
+    comment.reply(reply)
     logger.info(f"$check on u/{target} requested by u/{requester}")

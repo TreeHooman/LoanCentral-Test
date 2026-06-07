@@ -31,6 +31,12 @@ def process_paid_command(comment):
     loan_id, amount_paid, currency = parsed
     lender = comment.author.name.lower()
 
+    from services import check_ban
+    is_banned, ban_reason = check_ban(lender)
+    if is_banned:
+        comment.reply(f"Your account has been suspended from LoanCentral bot commands. Reason: {ban_reason}")
+        return
+
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")
 
     if error:

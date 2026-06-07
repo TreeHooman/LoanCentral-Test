@@ -44,6 +44,13 @@ def process_loan_command(comment):
         return
 
     lender = comment.author.name.lower()
+
+    from services import check_ban
+    is_banned, ban_reason = check_ban(lender)
+    if is_banned:
+        comment.reply(f"Your account has been suspended from LoanCentral bot commands. Reason: {ban_reason}")
+        return
+
     amount = Decimal(match.group(1))
     currency = match.group(2).upper()
     borrower = match.group(3).lower()

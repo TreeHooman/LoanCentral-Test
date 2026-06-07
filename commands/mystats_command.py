@@ -47,6 +47,7 @@ def process_mystats_command(comment):
 
     reply = (
         f"**Your loan stats, u/{username}** — *{tier['label']}*\n\n"
+        f"**As Borrower**\n\n"
         f"|Health Score|Credit Tier|Total Loans|Repaid|Unpaid|Active|\n"
         f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
         f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
@@ -54,6 +55,19 @@ def process_mystats_command(comment):
         f"|:--:|:--:|:--:|:--:|\n"
         f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|"
     )
+
+    lent_total = profile["loans_as_lender"]
+    if lent_total > 0:
+        lent_amt         = float(profile["amount_lent"])
+        active_given     = profile["active_loans_given"]
+        active_given_amt = float(profile["active_amount_given"])
+        bad_borrowers    = profile["borrowers_unpaid"]
+        reply += (
+            f"\n\n**As Lender**\n\n"
+            f"|Loans Given|Total Lent|Active Out|Borrowers Unpaid|\n"
+            f"|:--:|:--:|:--:|:--:|\n"
+            f"|{lent_total}|${lent_amt:.2f}|{active_given} (${active_given_amt:.2f})|{bad_borrowers}|"
+        )
 
     if unpaid > 0:
         reply += f"\n\n⚠️ You have {unpaid} unpaid loan(s) on record."
