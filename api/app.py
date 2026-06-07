@@ -232,6 +232,51 @@ def auth_dev_login():
     return render_template("dev_login.html")
 
 
+@app.route("/auth/login", methods=["POST"])
+def auth_password_login():
+    from services import verify_password, update_last_login
+    username = request.form.get("username", "").strip().lower()
+    password = request.form.get("password", "")
+    if not username or not password:
+        flash("Username and password are required.", "error")
+        return redirect(url_for("login"))
+    role, error = verify_password(username, password)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("login"))
+    update_last_login(username)
+    session.permanent = True
+    session["username"] = username
+    session["role"]     = role
+    return redirect(url_for("home"))
+
+
+@app.route("/auth/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    from services import verify_password, set_password
+    if request.method == "POST":
+        current  = request.form.get("current_password", "")
+        new_pw   = request.form.get("new_password", "")
+        confirm  = request.form.get("confirm_password", "")
+        if len(new_pw) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return redirect(url_for("change_password"))
+        if new_pw != confirm:
+            flash("New passwords do not match.", "error")
+            return redirect(url_for("change_password"))
+        _, error = verify_password(session["username"], current)
+        if error:
+            flash("Current password is incorrect.", "error")
+            return redirect(url_for("change_password"))
+        set_password(session["username"], new_pw)
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("home"))
+    return render_template("change_password.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
 @app.route("/auth/logout")
 def auth_logout():
     session.clear()
@@ -265,6 +310,20 @@ def dashboard_borrower():
 # ---------------------------------------------------------------------------
 # Admin: role management
 # ---------------------------------------------------------------------------
+
+@app.route("/api/admin/users/<username>/password", methods=["POST"])
+@require_mod_api
+def set_user_password(username):
+    from services import set_password
+    data     = request.get_json() or {}
+    password = data.get("password", "")
+    if len(password) < 8:
+        return _json({"error": "Password must be at least 8 characters."}, 400)
+    ok, error = set_password(username.lower(), password)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "message": f"Password set for u/{username}."})
+
 
 @app.route("/api/admin/roles/<username>", methods=["GET"])
 @require_mod_api

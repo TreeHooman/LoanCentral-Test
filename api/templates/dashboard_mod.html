@@ -109,6 +109,25 @@
     </table>
   </div>
 </div>
+<!-- Set Password Modal -->
+<div class="modal-overlay" id="setPwModal">
+  <div class="modal">
+    <h3>Set Dashboard Password</h3>
+    <div class="modal-error" id="setPwError"></div>
+    <input type="hidden" id="setPwUsername" />
+    <label>User</label>
+    <input type="text" id="setPwUsernameDisplay" readonly style="opacity:.6" />
+    <label>New Password</label>
+    <input type="password" id="setPwPassword" placeholder="Min. 8 characters" />
+    <label>Confirm Password</label>
+    <input type="password" id="setPwConfirm" placeholder="Repeat password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('setPwModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitSetPassword()">Set Password</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -312,6 +331,7 @@
             <button class="btn-action btn-paid" onclick="quickRole('${r.username}','lender')">→ Lender</button>
             <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">→ Mod</button>
+            <button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openSetPwModal('${r.username}')">Set PW</button>
           </div></td>
         </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }
@@ -335,5 +355,28 @@
 
   function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+
+  function openSetPwModal(username) {
+    document.getElementById('setPwUsername').value = username;
+    document.getElementById('setPwUsernameDisplay').value = 'u/' + username;
+    document.getElementById('setPwPassword').value = '';
+    document.getElementById('setPwConfirm').value = '';
+    document.getElementById('setPwError').style.display = 'none';
+    document.getElementById('setPwModal').classList.add('open');
+  }
+
+  async function submitSetPassword() {
+    const username = document.getElementById('setPwUsername').value;
+    const password = document.getElementById('setPwPassword').value;
+    const confirm  = document.getElementById('setPwConfirm').value;
+    const errEl    = document.getElementById('setPwError');
+    if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+    if (password !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+    try {
+      await apiFetch(`/api/admin/users/${username}/password`, { method: 'POST', body: JSON.stringify({ password }) });
+      closeModal('setPwModal');
+      toast(`Password set for u/${username}.`, 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
 </script>
 {% endblock %}

@@ -143,6 +143,7 @@
   <div class="nav-right">
     <span class="role-badge role-{{ role }}">{{ role }}</span>
     <span class="nav-user">u/{{ username }}</span>
+    <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">🔑 Password</a>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>
 </nav>

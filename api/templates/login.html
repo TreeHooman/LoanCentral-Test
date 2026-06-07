@@ -9,7 +9,7 @@
     :root {
       --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
       --accent: #5b6ef5; --accent-h: #7b8cff; --green: #2ecc71; --red: #e74c3c;
-      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+      --yellow: #f1c40f; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     .container { width: 100%; max-width: 420px; padding: 24px; }
@@ -17,26 +17,45 @@
     .logo h1 { font-size: 32px; font-weight: 800; color: var(--accent-h); letter-spacing: -1px; }
     .logo p { color: var(--muted); font-size: 14px; margin-top: 6px; }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
-    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
-    .card p { color: var(--text2); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
-    .btn-reddit { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 13px; background: #FF4500; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity 0.15s; margin-bottom: 12px; }
+    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+
+    /* Flash messages */
+    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .flash.error   { background: rgba(231,76,60,0.1);  border: 1px solid rgba(231,76,60,0.3);  color: var(--red); }
+    .flash.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); color: var(--green); }
+
+    /* Reddit button */
+    .btn-reddit { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 13px; background: #FF4500; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity 0.15s; margin-bottom: 4px; }
     .btn-reddit:hover { opacity: 0.9; }
     .btn-reddit svg { width: 20px; height: 20px; fill: #fff; }
+
+    /* Divider */
     .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
     .divider hr { flex: 1; border: none; border-top: 1px solid var(--border); }
-    .divider span { color: var(--muted); font-size: 12px; }
+    .divider span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+    /* Password form */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+    .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; transition: border 0.15s; }
+    .form-group input:focus { border-color: var(--accent); }
+    .form-group input::placeholder { color: var(--muted); }
+    .btn-login { width: 100%; padding: 12px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.15s; margin-top: 4px; }
+    .btn-login:hover { background: var(--accent-h); }
+    .forgot { text-align: center; margin-top: 10px; font-size: 12px; color: var(--muted); }
+
+    /* Dev login */
+    .btn-dev { display: block; text-align: center; width: 100%; padding: 10px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; text-decoration: none; transition: all 0.15s; }
+    .btn-dev:hover { border-color: var(--accent); color: var(--accent-h); }
+    .dev-badge { display: inline-block; background: rgba(241,196,15,0.15); color: var(--yellow); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; vertical-align: middle; margin-left: 6px; }
+
+    /* Features */
     .features { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
     .feature { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text2); }
     .feature-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
     .fi-mod    { background: rgba(241,196,15,0.15); }
     .fi-lender { background: rgba(91,110,245,0.2); }
     .fi-borrow { background: rgba(46,204,113,0.15); }
-    .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-    .flash.error { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); }
-    .not-configured { background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); color: var(--yellow); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
-    .btn-dev { display: block; text-align: center; width: 100%; padding: 10px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; text-decoration: none; transition: all 0.15s; }
-    .btn-dev:hover { border-color: var(--accent); color: var(--accent-h); }
-    .dev-badge { display: inline-block; background: rgba(241,196,15,0.15); color: var(--yellow); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; vertical-align: middle; margin-left: 6px; }
   </style>
 </head>
 <body>
@@ -47,8 +66,7 @@
   </div>
 
   <div class="card">
-    <h2>Welcome back</h2>
-    <p>Sign in with your Reddit account to access your dashboard. We only request permission to read your username — nothing else.</p>
+    <h2>Sign in</h2>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
@@ -63,23 +81,33 @@
         </svg>
         Continue with Reddit
       </a>
-    {% else %}
-      <div class="not-configured">
-        ⚠️ Reddit OAuth is not configured yet. Set <code>DASHBOARD_CLIENT_ID</code> and <code>DASHBOARD_CLIENT_SECRET</code> in your <code>.env</code> file.
-      </div>
+      <div class="divider"><hr><span>or sign in with password</span><hr></div>
     {% endif %}
+
+    <form method="POST" action="/auth/login">
+      <div class="form-group">
+        <label>Reddit Username</label>
+        <input type="text" name="username" placeholder="e.g. yourusername" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Your dashboard password" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn-login">Sign In</button>
+    </form>
+    <p class="forgot">No password? Ask a mod to set one for you.</p>
 
     {% if is_dev %}
       <div class="divider"><hr><span>dev only</span><hr></div>
       <a class="btn-dev" href="/auth/dev-login">
-        Dev Login (bypass OAuth) <span class="dev-badge">local only</span>
+        Dev Login (bypass auth) <span class="dev-badge">local only</span>
       </a>
     {% endif %}
 
     <div class="features">
-      <div class="feature"><div class="feature-icon fi-mod">🛡️</div><span><strong>Mods</strong> — full loan management, role assignment, stats</span></div>
-      <div class="feature"><div class="feature-icon fi-lender">💰</div><span><strong>Lenders</strong> — track loans given, record payments, manage borrowers</span></div>
-      <div class="feature"><div class="feature-icon fi-borrow">📋</div><span><strong>Borrowers</strong> — see what you owe and your loan history</span></div>
+      <div class="feature"><div class="feature-icon fi-mod">🛡️</div><span><strong>Mods</strong> — full loan management, role assignment, analytics</span></div>
+      <div class="feature"><div class="feature-icon fi-lender">💰</div><span><strong>Lenders</strong> — track loans, record payments, manage borrowers</span></div>
+      <div class="feature"><div class="feature-icon fi-borrow">📋</div><span><strong>Borrowers</strong> — see what you owe, health score, full history</span></div>
     </div>
   </div>
 </div>

@@ -674,6 +674,58 @@ def set_user_role(username: str, role: str):
         conn.close()
 
 
+def set_password(username: str, password: str):
+    """Set or replace a user's dashboard password hash."""
+    from werkzeug.security import generate_password_hash
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        pw_hash = generate_password_hash(password)
+        cur.execute("""
+            INSERT INTO user_roles (username, role, password_hash)
+            VALUES (%s, 'borrower', %s)
+            ON CONFLICT (username) DO UPDATE SET password_hash = %s
+        """, (username.lower(), pw_hash, pw_hash))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"set_password error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def verify_password(username: str, password: str):
+    """Verify username + password. Returns (role, error)."""
+    from werkzeug.security import check_password_hash
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT role, password_hash FROM user_roles WHERE username = %s",
+            (username.lower(),)
+        )
+        row = cur.fetchone()
+        if not row or not row[1]:
+            return None, "Invalid username or password."
+        role, pw_hash = row
+        if not check_password_hash(pw_hash, password):
+            return None, "Invalid username or password."
+        return role, None
+    except Exception as e:
+        logger.error(f"verify_password error: {e}", exc_info=True)
+        return None, "Database error."
+    finally:
+        cur.close()
+        conn.close()
+
+
 def update_last_login(username: str):
     """Upsert user_roles on login — creates borrower record if first time."""
     conn = _get_db()
