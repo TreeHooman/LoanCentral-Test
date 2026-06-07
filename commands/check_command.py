@@ -12,7 +12,7 @@ def process_check_command(comment):
     Shows a borrower's public loan stats and health score.
     Useful for lenders doing due diligence before lending.
     """
-    from services import get_user_profile, calculate_health_score
+    from services import get_user_profile, calculate_health_score, credit_tier
     from config import DASHBOARD_URL
 
     match = re.search(r'\$check\s+u?/?([\w-]+)', comment.body, re.IGNORECASE)
@@ -29,6 +29,7 @@ def process_check_command(comment):
         return
 
     score, label = calculate_health_score(profile)
+    tier = credit_tier(score)
 
     if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
         comment.reply(
@@ -48,12 +49,12 @@ def process_check_command(comment):
     repay_pct = round((repaid / borrowed * 100), 1) if borrowed > 0 else 100.0
 
     comment.reply(
-        f"**Loan history for u/{target}**\n\n"
-        f"|Health Score|Total Loans|Repaid|Unpaid|Active|\n"
-        f"|:--:|:--:|:--:|:--:|:--:|\n"
-        f"|**{score}/100** ({label})|{total}|{paid_count}|{unpaid}|{active}|\n\n"
+        f"**Loan history for u/{target}** — *{tier['label']}*\n\n"
+        f"|Health Score|Credit Tier|Total Loans|Repaid|Unpaid|Active|\n"
+        f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
+        f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
         f"|Total Borrowed|Total Repaid|Repayment Rate|Outstanding|\n"
-        f"|:--:|:--:|:--:|:--:|\n"
+        f"|:--:|:--:|:--:|\n"
         f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|\n\n"
         f"[View full profile on LoanCentral Dashboard]({DASHBOARD_URL})"
     )

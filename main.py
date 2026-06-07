@@ -184,6 +184,9 @@ _rate_limit_window = 60
 _rate_limit_max = 5
 _user_command_times: dict = {}
 
+# Comments processed counter — flushed to DB by keep_alive()
+_processed_count: int = 0
+
 def _is_rate_limited(username: str) -> bool:
     now = time.time()
     times = _user_command_times.get(username, [])
@@ -255,11 +258,13 @@ class CommandManager:
     
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
+        global _processed_count
         if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME").lower():
             return
-        
+
         body_lower = comment.body.lower()
-        
+        _processed_count += 1
+
         # Check each command trigger
         for trigger, command_func in self.commands.items():
             if trigger in body_lower:
@@ -340,9 +345,17 @@ def generate_user_info(username):
 
 # Function to keep the bot alive
 def keep_alive():
+    global _processed_count
     while True:
         try:
             logger.info("Keep-alive heartbeat")
+            try:
+                from services import update_bot_heartbeat
+                delta = _processed_count
+                _processed_count = 0
+                update_bot_heartbeat(delta)
+            except Exception as hb_err:
+                logger.error(f"Heartbeat update failed: {hb_err}")
             time.sleep(300)  # 5-minute heartbeat
         except Exception as e:
             logger.error(f"Error in keep_alive: {e}")

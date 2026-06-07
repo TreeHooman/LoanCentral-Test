@@ -604,6 +604,36 @@ class FakeCursor:
             self.last_result = None
             return
 
+        if normalized.startswith("select lender from loans where id::text"):
+            # Used by _get_lender_for_id / bulk_loan_action
+            loan = self.fake_db.find_loan(params[0])
+            self.last_result = None if not loan else (loan["lender"],)
+            return
+
+        if normalized.startswith("insert into bot_status"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("update bot_status"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select") and "from bot_status" in normalized:
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into role_requests"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("update role_requests"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select") and "from role_requests" in normalized:
+            self.last_result = None
+            return
+
         raise AssertionError(f"FakeCursor does not support query: {query}")
 
     def fetchone(self):

@@ -56,3 +56,12 @@ def process_refund_command(comment):
         f"**[View updated stats on LoanCentral Dashboard]({DASHBOARD_URL})**"
     )
     logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")
+
+    try:
+        from notifications import notify_discord
+        notify_discord(
+            f"\U0001f504 **Loan Refunded** — u/{lender} → u/{borrower} "
+            f"| {amount:.2f} {currency} | ID: {loan_id}"
+        )
+    except Exception as _e:
+        logger.error(f"Discord notify failed for refund: {_e}")

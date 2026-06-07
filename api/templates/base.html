@@ -165,7 +165,7 @@
     <a class="nav-link {% if request.endpoint == 'leaderboard_page' %}active{% endif %}" href="{{ url_for('leaderboard_page') }}">🏆 Leaderboard</a>
     <span class="role-badge role-{{ role }}">{{ role }}</span>
     <span class="nav-user">u/{{ username }}</span>
-    <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">🔑 Password</a>
+    <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">⚙ Settings</a>
     <a class="btn-logout" href="/privacy" style="margin-right:4px">Privacy</a>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>

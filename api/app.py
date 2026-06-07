@@ -1029,12 +1029,21 @@ def health_check():
             conn.close()
     except Exception:
         pass
+
+    bot = None
+    try:
+        from services import get_bot_status
+        bot = get_bot_status()
+    except Exception:
+        pass
+
     status = "ok" if db_ok else "degraded"
     return _json({
         "status":  status,
         "db":      db_ok,
         "time":    datetime.utcnow().isoformat() + "Z",
         "version": "1.0.0",
+        "bot":     bot,
     }, 200 if db_ok else 503)
 
 
@@ -1119,13 +1128,55 @@ def list_loan_applications():
 @app.route("/api/loan-applications/<int:app_id>/claim", methods=["POST"])
 @require_auth
 def claim_loan_application(app_id):
-    from services import update_loan_application
+    from services import update_loan_application, get_loan_applications
     if session.get("role") not in ("mod", "lender"):
         return _json({"error": "Only lenders can claim applications."}, 403)
+
+    apps, _ = get_loan_applications()
+    app_record = next((a for a in apps if a["id"] == app_id), None)
+    if not app_record:
+        return _json({"error": "Application not found."}, 404)
+    if app_record.get("status") != "open":
+        return _json({"error": f"Application is already {app_record.get('status')}."}, 400)
+    if app_record["borrower"] == session["username"]:
+        return _json({"error": "You cannot claim your own application."}, 400)
+
     ok, error = update_loan_application(app_id, "claimed", session["username"], lender=session["username"])
     if error:
         return _json({"error": error}, 400)
-    return _json({"ok": True, "message": "Application claimed. Contact the borrower to arrange the loan."})
+
+    lender   = session["username"]
+    borrower = app_record["borrower"]
+    amount   = float(app_record["amount"])
+    currency = app_record["currency"]
+
+    # Notify borrower via Reddit PM (fire-and-forget)
+    try:
+        from utils import reddit as _reddit
+        _reddit.redditor(borrower).message(
+            subject="Your LoanCentral application was claimed!",
+            message=(
+                f"Hi u/{borrower},\n\n"
+                f"Your loan request for **{amount:.2f} {currency}** (Application #{app_id}) "
+                f"has been claimed by u/{lender}.\n\n"
+                f"Please reach out to u/{lender} to arrange the loan details.\n\n"
+                f"---\n*LoanCentral Bot — reply with $help for commands*"
+            )
+        )
+    except Exception as _e:
+        logger.warning(f"Failed to PM borrower on application claim: {_e}")
+
+    # Discord notification
+    try:
+        from notifications import notify_discord
+        notify_discord(
+            f"\U0001f91d **Application #{app_id} Claimed** — "
+            f"u/{lender} → u/{borrower} | {amount:.2f} {currency}"
+        )
+    except Exception:
+        pass
+
+    return _json({"ok": True, "message": "Application claimed. Borrower has been notified."})
 
 
 @app.route("/api/loan-applications/<int:app_id>/cancel", methods=["POST"])

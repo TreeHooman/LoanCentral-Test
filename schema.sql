@@ -115,6 +115,15 @@ CREATE TABLE IF NOT EXISTS disputes (
 CREATE INDEX IF NOT EXISTS idx_disputes_status  ON disputes(status);
 CREATE INDEX IF NOT EXISTS idx_disputes_loan_id ON disputes(loan_id);
 
+-- Bot heartbeat: single-row table for liveness tracking
+CREATE TABLE IF NOT EXISTS bot_status (
+    id             INT PRIMARY KEY DEFAULT 1,
+    started_at     TIMESTAMP DEFAULT NOW(),
+    last_heartbeat TIMESTAMP,
+    comment_count  BIGINT DEFAULT 0
+);
+INSERT INTO bot_status (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

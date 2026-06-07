@@ -1399,6 +1399,95 @@ def resolve_dispute(dispute_id: int, action: str, actor: str, resolution: str = 
 # Due-date reminders (separate from periodic reminders)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Bot heartbeat
+# ---------------------------------------------------------------------------
+
+def update_bot_heartbeat(comment_delta: int = 0):
+    """Write a heartbeat timestamp to bot_status. Silent fail."""
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bot_status (id, last_heartbeat, comment_count)
+            VALUES (1, NOW(), %s)
+            ON CONFLICT (id) DO UPDATE SET
+                last_heartbeat = NOW(),
+                comment_count  = bot_status.comment_count + %s
+        """, (comment_delta, comment_delta))
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        try: cur.close()
+        except Exception: pass
+        try: conn.close()
+        except Exception: pass
+
+
+def get_bot_status():
+    """Return bot liveness info dict, or None."""
+    conn = _get_db()
+    if not conn:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT last_heartbeat, comment_count, started_at FROM bot_status WHERE id = 1"
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "last_heartbeat": row[0],
+            "comment_count":  row[1],
+            "started_at":     row[2],
+        }
+    except Exception:
+        return None
+    finally:
+        try: cur.close()
+        except Exception: pass
+        try: conn.close()
+        except Exception: pass
+
+
+# ---------------------------------------------------------------------------
+# Role requests (bot-side helper)
+# ---------------------------------------------------------------------------
+
+def submit_role_request(username: str, requested_role: str, reason: str = None):
+    """
+    Create or update a pending role request.
+    Returns (True, None) on success or (None, error_str).
+    """
+    if requested_role not in ("lender", "mod"):
+        return None, "Invalid role. Only 'lender' requests are accepted via bot."
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO role_requests (username, requested_role, reason, status, created_at)
+            VALUES (%s, %s, %s, 'pending', NOW())
+            ON CONFLICT (username) DO UPDATE
+                SET requested_role = %s, reason = %s, status = 'pending', created_at = NOW()
+        """, (username.lower(), requested_role, reason, requested_role, reason))
+        conn.commit()
+        log_action(username, "role_requested", requested_role, reason[:100] if reason else None)
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"submit_role_request error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_loans_approaching_due(days_ahead: int = 3):
     """
     Return active loans with due_date within the next N days that haven't been

@@ -15,53 +15,57 @@ def process_help_command(comment):
     help_text = f"""
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[LoanCentral Dashboard]({DASHBOARD_URL})**.
+All history, health scores, stats, and mod tools are on the **[LoanCentral Dashboard]({DASHBOARD_URL})**.
 
 ---
 
-## Commands
+## Anyone Can Use
 
-**Check a user's loan history**
-```
-$check u/[username]
-```
-Example: `$check u/borrower`
-*Shows borrower health score, repayment rate, and stats. Public — anyone can use it.*
+**Check your own stats**
+`$mystats`
+
+**Check another user's stats**
+`$check u/[username]`
+
+**Post a loan request (borrowers looking for lenders)**
+`$apply [amount] [currency] [optional reason]`
+Example: `$apply 100 USD need help with rent`
+
+**Cancel a pending loan request**
+`$apply cancel #[id]`
+Example: `$apply cancel #42`
+
+**Community leaderboard**
+`$leaderboard`
+
+**Report a user to mods**
+`$report u/[username] [optional reason]`
+
+**Request lender access**
+`$request lender [optional reason]`
+Example: `$request lender I have been lending on r/borrow for 2 years`
 
 ---
 
-## Lender Commands
+## Lender Commands *(Verified Lender flair required)*
 
 **Record a new loan**
-```
-$loan [amount] [currency] u/[borrower]
-```
-Example: `$loan 50 USD u/borrower`
-*Requires Verified Lender flair. Loan is recorded immediately.*
+`$loan [amount] [currency] u/[borrower]`
+Optional due date: `$loan 50 USD u/borrower due:30d` *(30d / 2w / 1m)*
 
-**Record a repayment received**
-```
-$paid_with_id [loan_id] [amount] [currency]
-```
-Example: `$paid_with_id 123 50 USD`
+**Record a repayment**
+`$paid_with_id [loan_id] [amount] [currency]`
 
 **Mark a loan as unpaid**
-```
-$unpaid [loan_id]
-```
-Example: `$unpaid 123`
+`$unpaid [loan_id]`
 
 **Cancel / refund a loan**
-```
-$refunded [loan_id]
-```
-Example: `$refunded 123`
+`$refunded [loan_id]`
 
 ---
 
-**View your loan history, health score, and stats:** {DASHBOARD_URL}
-
-**Need help?** Contact the moderators.
+**Dashboard:** {DASHBOARD_URL} — full history, health scores, SMS reminders, loan applications.
+**Questions?** Contact the moderators.
 """
 
     comment.reply(help_text)

@@ -9,15 +9,40 @@ COMMAND_TRIGGER = "$apply"
 
 def process_apply_command(comment):
     """
-    $apply [amount] [currency] [reason...]
-    Submit a loan application from Reddit. Lenders can claim it on the dashboard.
+    $apply [amount] [currency] [reason...]   — post loan application
+    $apply cancel #[id]                      — cancel a pending application
     """
-    from services import submit_loan_application
     from config import DASHBOARD_URL
+
+    body = comment.body
+    borrower = comment.author.name.lower()
+
+    # Cancel subcommand
+    cancel_match = re.search(r'\$apply\s+cancel\s+#?(\d+)', body, re.IGNORECASE)
+    if cancel_match:
+        from services import update_loan_application, get_loan_applications
+        app_id = int(cancel_match.group(1))
+        apps, _ = get_loan_applications(borrower=borrower)
+        app = next((a for a in apps if a["id"] == app_id), None)
+        if not app:
+            comment.reply(f"No open application #{app_id} found under your account.")
+            return
+        if app["status"] != "open":
+            comment.reply(f"Application #{app_id} is already {app['status']} and cannot be cancelled.")
+            return
+        ok, error = update_loan_application(app_id, "cancelled", borrower)
+        if error:
+            comment.reply(f"Error: {error}")
+            return
+        comment.reply(f"Application #{app_id} cancelled.")
+        logger.info(f"Loan application #{app_id} cancelled by u/{borrower}")
+        return
+
+    from services import submit_loan_application
 
     match = re.search(
         r'\$apply\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})(?:\s+(.+))?',
-        comment.body,
+        body,
         re.IGNORECASE | re.DOTALL,
     )
     if not match:
