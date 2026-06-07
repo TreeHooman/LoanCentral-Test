@@ -54,6 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_role_requests_status ON role_requests(status);
 -- Password login support (no Reddit OAuth required)
 ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
+-- SMS reminders
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS phone_number TEXT;
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS last_reminder_sent TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_reminder ON loans(last_reminder_sent);
+
 -- Migration: add date_repaid column (safe to re-run)
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS date_repaid TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_loans_date_repaid ON loans(date_repaid);

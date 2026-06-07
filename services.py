@@ -747,6 +747,104 @@ def update_last_login(username: str):
         conn.close()
 
 
+def set_phone_number(username: str, phone: str):
+    """Store a verified-format phone number for SMS reminders."""
+    import re
+    phone = re.sub(r"[^\d+]", "", phone.strip())
+    if not phone.startswith("+"):
+        phone = "+1" + phone  # default to US if no country code
+    if len(phone) < 10:
+        return None, "Invalid phone number."
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role, phone_number)
+            VALUES (%s, 'borrower', %s)
+            ON CONFLICT (username) DO UPDATE SET phone_number = %s
+        """, (username.lower(), phone, phone))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"set_phone_number error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_loans_for_reminder():
+    """
+    Return loans that need an SMS reminder:
+    - Active/partial loans older than 7 days, not reminded in last 7 days
+    - Unpaid loans not reminded in last 3 days
+    Each row includes borrower phone number (skips users with no phone).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                l.id, l.loan_id, l.lender, l.borrower,
+                l.amount, l.currency, l.status, l.date_created,
+                ur.phone_number
+            FROM loans l
+            JOIN user_roles ur ON ur.username = l.borrower
+            WHERE ur.phone_number IS NOT NULL
+              AND (
+                (l.status IN ('confirmed', 'partially_repaid')
+                 AND l.date_created <= NOW() - INTERVAL '7 days'
+                 AND (l.last_reminder_sent IS NULL
+                      OR l.last_reminder_sent <= NOW() - INTERVAL '7 days'))
+                OR
+                (l.status = 'unpaid'
+                 AND (l.last_reminder_sent IS NULL
+                      OR l.last_reminder_sent <= NOW() - INTERVAL '3 days'))
+              )
+            ORDER BY l.status, l.date_created
+        """)
+        rows = cur.fetchall()
+        return [
+            {
+                "db_id": r[0], "loan_id": r[1], "lender": r[2],
+                "borrower": r[3], "amount": float(r[4]), "currency": r[5],
+                "status": r[6], "date_created": r[7], "phone": r[8],
+            }
+            for r in rows
+        ], None
+    except Exception as e:
+        logger.error(f"get_loans_for_reminder error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_reminder_sent(db_id: int):
+    """Update last_reminder_sent timestamp for a loan."""
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE loans SET last_reminder_sent = NOW() WHERE id = %s",
+            (db_id,)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"mark_reminder_sent error: {e}", exc_info=True)
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_lender_stats(lender: str):
     """
     Get lending stats for a specific lender.

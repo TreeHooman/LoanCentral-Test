@@ -65,6 +65,23 @@
   </table>
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
+
+<!-- SMS Reminders Settings -->
+<div class="section-header" style="margin-top:32px">
+  <span class="section-title">SMS Reminders</span>
+</div>
+<div class="table-wrap" style="padding:24px;max-width:480px">
+  <p style="color:var(--text2);font-size:13px;margin-bottom:16px;line-height:1.6">
+    Add your phone number to receive SMS reminders for active loans (every 7 days) and urgent notices when a loan is marked unpaid. Completely optional.
+  </p>
+  <div style="display:flex;gap:10px;align-items:center">
+    <input type="tel" id="phoneInput" placeholder="+1 555 123 4567"
+           style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:6px;font-size:14px;outline:none" />
+    <button class="btn-primary" onclick="savePhone()">Save</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--red)" onclick="removePhone()">Remove</button>
+  </div>
+  <p style="color:var(--muted);font-size:11px;margin-top:8px">US numbers: just enter 10 digits. International: include country code (e.g. +44...).</p>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -102,7 +119,25 @@
       el.textContent = score + '/100';
       el.className = 'stat-value ' + healthColor(score);
       document.getElementById('s-health-label').textContent = healthLabel(score);
+      if (p.phone_number) document.getElementById('phoneInput').value = p.phone_number;
     } catch(e) { console.error(e); }
+  }
+
+  async function savePhone() {
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (!phone) { toast('Enter a phone number first.', 'error'); return; }
+    try {
+      const r = await apiFetch('/api/users/me/phone', { method: 'POST', body: JSON.stringify({ phone }) });
+      toast(r.message || 'Phone number saved!', 'success');
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function removePhone() {
+    document.getElementById('phoneInput').value = '';
+    try {
+      const r = await apiFetch('/api/users/me/phone', { method: 'POST', body: JSON.stringify({ phone: '' }) });
+      toast(r.message || 'Phone number removed.', 'success');
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function loadOwing() {

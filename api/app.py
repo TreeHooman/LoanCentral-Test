@@ -499,7 +499,7 @@ def set_loan_paid(loan_id):
 @app.route("/api/users/<username>", methods=["GET"])
 @require_auth
 def get_user(username):
-    from services import get_user_profile, get_loan_history
+    from services import get_user_profile, get_loan_history, _get_db
     # Scope check
     if session.get("username") and session.get("role") != "mod":
         if username.lower() != session["username"]:
@@ -509,6 +509,18 @@ def get_user(username):
         return _json({"error": error}, 500)
     loans, _ = get_loan_history(username, role="both", limit=50)
     profile["recent_loans"] = loans or []
+    # Include phone number for own profile
+    if session.get("username", "").lower() == username.lower() or session.get("role") == "mod":
+        conn = _get_db()
+        if conn:
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT phone_number FROM user_roles WHERE username = %s", (username.lower(),))
+                row = cur.fetchone()
+                profile["phone_number"] = row[0] if row else None
+            finally:
+                cur.close()
+                conn.close()
     return _json(profile)
 
 
@@ -516,6 +528,33 @@ def get_user(username):
 @login_required
 def get_me():
     return redirect(url_for("get_user", username=session["username"]))
+
+
+@app.route("/api/users/me/phone", methods=["POST"])
+@login_required
+def update_phone():
+    from services import set_phone_number
+    data  = request.get_json() or {}
+    phone = data.get("phone", "").strip()
+    if not phone:
+        from services import _get_db
+        conn = _get_db()
+        if conn:
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE user_roles SET phone_number = NULL WHERE username = %s",
+                    (session["username"],)
+                )
+                conn.commit()
+            finally:
+                cur.close()
+                conn.close()
+        return _json({"ok": True, "message": "Phone number removed."})
+    ok, error = set_phone_number(session["username"], phone)
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "message": "Phone number saved. You'll receive SMS loan reminders."})
 
 
 # ---------------------------------------------------------------------------

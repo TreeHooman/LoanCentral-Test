@@ -28,6 +28,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
+      - key: DATABASE_URL
+        sync: false
       - key: REDDIT_CLIENT_ID
         sync: false
       - key: REDDIT_CLIENT_SECRET
@@ -40,15 +42,23 @@ services:
         sync: false
       - key: SUBREDDITS
         sync: false
-      - key: DB_HOST
+      - key: DASHBOARD_URL
         sync: false
-      - key: DB_PORT
-        sync: false
-      - key: DB_NAME
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
+
+  - type: cron
+    name: loancentral-reminders
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 14 * * *"   # 9 AM Eastern / 2 PM UTC daily
+    startCommand: python reminders.py
+    envVars:
+      - key: DATABASE_URL
         sync: false
       - key: DASHBOARD_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
         sync: false
