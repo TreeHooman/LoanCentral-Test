@@ -44,6 +44,8 @@ services:
         sync: false
       - key: DASHBOARD_URL
         sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
 
   - type: cron
     name: loancentral-reminders

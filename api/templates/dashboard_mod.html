@@ -30,6 +30,7 @@
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('audit')">📋 Audit Log</button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
   </div>
   <div class="table-wrap">
@@ -84,6 +85,21 @@
       <tbody id="topLendersBody"><tr><td colspan="4" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
+</div>
+
+<!-- Audit log tab -->
+<div id="tab-audit" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Audit Log</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+      <tbody id="auditBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <button class="btn-primary" id="auditMoreBtn" style="display:none;margin-top:12px" onclick="loadMoreAudit()">Load More</button>
 </div>
 
 <!-- Role management tab -->
@@ -219,9 +235,35 @@
     document.getElementById('tab-roles').style.display     = name === 'roles'     ? '' : 'none';
     document.getElementById('tab-requests').style.display  = name === 'requests'  ? '' : 'none';
     document.getElementById('tab-analytics').style.display = name === 'analytics' ? '' : 'none';
+    document.getElementById('tab-audit').style.display     = name === 'audit'     ? '' : 'none';
     if (name === 'roles')     loadRoles();
     if (name === 'requests')  loadRequests();
     if (name === 'analytics') loadAnalytics();
+    if (name === 'audit')     { auditOffset = 0; loadAudit(); }
+  }
+
+  let auditOffset = 0;
+
+  async function loadAudit() {
+    try {
+      const rows = await apiFetch(`/api/audit-log?limit=100&offset=${auditOffset}`);
+      const tbody = document.getElementById('auditBody');
+      const html = rows.length ? rows.map(r => `<tr>
+        <td class="date-cell">${fmtDate(r.created_at)} ${r.created_at ? r.created_at.split('T')[1]?.slice(0,5) : ''}</td>
+        <td class="username">u/${r.actor}</td>
+        <td style="color:var(--accent-h);font-family:monospace;font-size:12px">${r.action}</td>
+        <td style="font-family:monospace;font-size:12px">${r.target || '—'}</td>
+        <td style="color:var(--text2);font-size:12px">${r.details || '—'}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No audit entries yet.</td></tr>';
+      if (auditOffset === 0) tbody.innerHTML = html;
+      else tbody.insertAdjacentHTML('beforeend', html);
+      document.getElementById('auditMoreBtn').style.display = rows.length === 100 ? '' : 'none';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function loadMoreAudit() {
+    auditOffset += 100;
+    await loadAudit();
   }
 
   let _monthlyChart = null, _statusChart = null;

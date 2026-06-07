@@ -7,6 +7,11 @@
     <div class="section-title" style="font-size:20px">My Lending Dashboard</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span style="font-size:12px;color:var(--muted)">Available to lend:</span>
+    <button id="availBtn" class="btn-primary" onclick="toggleAvailability()" style="min-width:80px">Loading…</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showLenderTab('applications')">📋 Applications</button>
+  </div>
 </div>
 
 <!-- Stats -->
@@ -43,6 +48,21 @@
   </table>
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
+
+<!-- Loan Applications tab -->
+<div id="tab-applications" style="display:none;margin-top:8px">
+  <div class="section-header">
+    <span class="section-title">Open Loan Applications</span>
+    <button class="btn-primary" onclick="showLenderTab('loans')">← Back to My Loans</button>
+  </div>
+  <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Borrowers seeking lenders. Claim one to connect.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Borrower</th><th>Amount</th><th>Reason</th><th>Repayment Plan</th><th>Posted</th><th>Action</th></tr></thead>
+      <tbody id="appsBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -52,8 +72,10 @@
   let offset = 0;
   let searchTimer = null;
 
+  let isAvailable = true;
+
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans();
+    loadStats(); loadLoans(); loadAvailability();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -155,5 +177,72 @@
   }
 
   function loadData() { loadLoans(); loadStats(); }
+
+  function showLenderTab(name) {
+    document.getElementById('tab-applications').style.display = name === 'applications' ? '' : 'none';
+    document.querySelectorAll('#loansBody').forEach(el => el.closest('.table-wrap').style.display = name === 'loans' ? '' : 'none');
+    document.getElementById('loadMoreBtn').style.display = name === 'applications' ? 'none' : '';
+    if (name === 'applications') loadApplications();
+  }
+
+  async function loadAvailability() {
+    try {
+      const lenders = await apiFetch('/api/lenders/available');
+      isAvailable = lenders.some(l => l.username === ME);
+      renderAvailBtn();
+    } catch(e) { document.getElementById('availBtn').textContent = 'Available'; }
+  }
+
+  function renderAvailBtn() {
+    const btn = document.getElementById('availBtn');
+    if (isAvailable) {
+      btn.textContent = '✓ Available';
+      btn.style.background = 'rgba(46,204,113,0.2)';
+      btn.style.border = '1px solid var(--green)';
+      btn.style.color = 'var(--green)';
+    } else {
+      btn.textContent = '✗ Unavailable';
+      btn.style.background = 'rgba(231,76,60,0.15)';
+      btn.style.border = '1px solid var(--red)';
+      btn.style.color = 'var(--red)';
+    }
+  }
+
+  async function toggleAvailability() {
+    isAvailable = !isAvailable;
+    renderAvailBtn();
+    try {
+      await apiFetch('/api/users/me/availability', { method: 'POST', body: JSON.stringify({ available: isAvailable }) });
+      toast(isAvailable ? 'You are now available to lend.' : 'You are now marked unavailable.', 'success');
+    } catch(e) {
+      isAvailable = !isAvailable;
+      renderAvailBtn();
+      toast(e.message, 'error');
+    }
+  }
+
+  async function loadApplications() {
+    try {
+      const apps = await apiFetch('/api/loan-applications?status=open');
+      const tbody = document.getElementById('appsBody');
+      tbody.innerHTML = apps.length ? apps.map(a => `<tr>
+        <td style="color:var(--muted);font-size:12px">#${a.id}</td>
+        <td class="username">u/${a.borrower}</td>
+        <td><span class="amount">${parseFloat(a.amount).toFixed(2)} ${a.currency}</span></td>
+        <td style="color:var(--text2);max-width:200px;font-size:12px">${a.reason || '—'}</td>
+        <td style="color:var(--text2);max-width:200px;font-size:12px">${a.repayment_plan || '—'}</td>
+        <td class="date-cell">${fmtDate(a.created_at)}</td>
+        <td><button class="btn-action btn-paid" onclick="claimApp(${a.id})">Claim</button></td>
+      </tr>`).join('') : '<tr><td colspan="7" class="table-placeholder">No open applications.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function claimApp(id) {
+    try {
+      await apiFetch(`/api/loan-applications/${id}/claim`, { method: 'POST' });
+      toast('Application claimed! Contact the borrower to arrange the loan.', 'success');
+      loadApplications();
+    } catch(e) { toast(e.message, 'error'); }
+  }
 </script>
 {% endblock %}

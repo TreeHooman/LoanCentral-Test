@@ -66,4 +66,10 @@ def process_unpaid_command(comment):
     except Exception as e:
         logger.error(f"Failed to DM u/{borrower} for unpaid loan {loan_id}: {e}")
 
+    try:
+        from notifications import notify_discord
+        notify_discord(f"⚠️ Loan unpaid: u/{lender} marked loan to u/{borrower} as UNPAID | {result['loan_amount']:.2f} {result['currency']}")
+    except Exception as e:
+        logger.error(f"Discord notify failed for unpaid {loan_id}: {e}")
+
     logger.info(f"Loan {loan_id} marked unpaid by {lender}")

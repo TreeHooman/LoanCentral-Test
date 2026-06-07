@@ -66,6 +66,50 @@
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
 
+<!-- Loan Applications -->
+<div class="section-header" style="margin-top:32px">
+  <span class="section-title">Request a Loan</span>
+  <button class="btn-primary" onclick="openLoanAppModal()">+ New Request</button>
+</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>ID</th><th>Amount</th><th>Status</th><th>Lender</th><th>Posted</th><th>Action</th></tr></thead>
+    <tbody id="myAppsBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Available Lenders -->
+<div class="section-header">
+  <span class="section-title">Available Lenders</span>
+  <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadAvailableLenders()">↻ Refresh</button>
+</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Lender</th><th>Loans Made</th><th>Total Lent</th></tr></thead>
+    <tbody id="availLendersBody"><tr><td colspan="3" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Loan Application Modal -->
+<div class="modal-overlay" id="loanAppModal">
+  <div class="modal">
+    <h3>Request a Loan</h3>
+    <div class="modal-error" id="loanAppError"></div>
+    <label>Amount</label>
+    <input type="number" id="appAmount" placeholder="e.g. 100" step="0.01" min="1" />
+    <label>Currency</label>
+    <input type="text" id="appCurrency" placeholder="USD" maxlength="3" value="USD" style="text-transform:uppercase" />
+    <label>Reason (optional)</label>
+    <textarea id="appReason" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Why do you need this loan?"></textarea>
+    <label>Repayment Plan (optional)</label>
+    <textarea id="appPlan" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="When / how do you plan to repay?"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('loanAppModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitLoanApp()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
 <!-- SMS Reminders Settings -->
 <div class="section-header" style="margin-top:32px">
   <span class="section-title">SMS Reminders</span>
@@ -104,7 +148,7 @@
   });
 
   async function loadAll() {
-    await Promise.all([loadProfile(), loadOwing(), loadHistory()]);
+    await Promise.all([loadProfile(), loadOwing(), loadHistory(), loadMyApps(), loadAvailableLenders()]);
   }
 
   async function loadProfile() {
@@ -236,6 +280,73 @@
       closeModal('roleRequestModal');
       toast(data.message || 'Request submitted!', 'success');
     } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function loadMyApps() {
+    try {
+      const apps = await apiFetch(`/api/loan-applications?borrower=${ME}`);
+      const tbody = document.getElementById('myAppsBody');
+      if (!apps.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="table-placeholder">No loan requests yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = apps.map(a => `<tr>
+        <td style="color:var(--muted);font-size:12px">#${a.id}</td>
+        <td><span class="amount">${parseFloat(a.amount).toFixed(2)} ${a.currency}</span></td>
+        <td><span class="badge badge-${a.status === 'open' ? 'confirmed' : a.status}">${a.status}</span></td>
+        <td>${a.lender ? 'u/' + a.lender : '—'}</td>
+        <td class="date-cell">${fmtDate(a.created_at)}</td>
+        <td>${a.status === 'open' ? `<button class="btn-action btn-refund" onclick="cancelApp(${a.id})">Cancel</button>` : '—'}</td>
+      </tr>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadAvailableLenders() {
+    try {
+      const lenders = await apiFetch('/api/lenders/available');
+      const tbody = document.getElementById('availLendersBody');
+      if (!lenders.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="table-placeholder">No lenders marked available right now.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lenders.map(l => `<tr>
+        <td class="username">u/${l.username}</td>
+        <td>${l.loans_as_lender}</td>
+        <td><span class="amount">$${fmt(l.amount_lent)}</span></td>
+      </tr>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  function openLoanAppModal() {
+    document.getElementById('loanAppError').style.display = 'none';
+    document.getElementById('appAmount').value = '';
+    document.getElementById('appCurrency').value = 'USD';
+    document.getElementById('appReason').value = '';
+    document.getElementById('appPlan').value = '';
+    document.getElementById('loanAppModal').classList.add('open');
+  }
+
+  async function submitLoanApp() {
+    const amount   = parseFloat(document.getElementById('appAmount').value);
+    const currency = document.getElementById('appCurrency').value.trim().toUpperCase() || 'USD';
+    const reason   = document.getElementById('appReason').value.trim();
+    const plan     = document.getElementById('appPlan').value.trim();
+    const errEl    = document.getElementById('loanAppError');
+    if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; errEl.style.display = 'block'; return; }
+    try {
+      const r = await apiFetch('/api/loan-applications', { method: 'POST', body: JSON.stringify({ amount, currency, reason, repayment_plan: plan }) });
+      closeModal('loanAppModal');
+      toast(r.message || 'Request submitted!', 'success');
+      loadMyApps();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function cancelApp(id) {
+    try {
+      await apiFetch(`/api/loan-applications/${id}/cancel`, { method: 'POST' });
+      toast('Application cancelled.', 'success');
+      loadMyApps();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   function calcHealth(p) {

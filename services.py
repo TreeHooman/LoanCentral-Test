@@ -33,7 +33,30 @@ def _generate_loan_id():
 # Loan Services
 # ---------------------------------------------------------------------------
 
-def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str):
+def log_action(actor: str, action: str, target: str = None, details: str = None):
+    """Write a non-critical audit log entry. Never raises."""
+    conn = _get_db()
+    if not conn:
+        return
+    cur = None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO audit_log (actor, action, target, details) VALUES (%s, %s, %s, %s)",
+            (actor, action, target, details),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        if cur:
+            try: cur.close()
+            except Exception: pass
+        try: conn.close()
+        except Exception: pass
+
+
+def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str, due_date=None):
     """
     Confirm and save a new loan to the database.
     Returns (loan_db_id, error_message).
@@ -67,10 +90,10 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         cur.execute('''
             INSERT INTO loans
-            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status, due_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed'))
+        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed', due_date))
 
         db_id = cur.fetchone()[0]
 
@@ -96,6 +119,7 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         conn.commit()
         logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
+        log_action(lender, "loan_created", loan_id, f"{amount} {currency} -> u/{borrower}")
         return loan_id, None
 
     except Exception as e:
@@ -195,6 +219,8 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
 
         conn.commit()
         logger.info(f"Repayment recorded: {borrower} paid {amount_paid} {currency} to {lender} (loan {db_id})")
+        log_action(lender, "payment_recorded", str(loan_id),
+                   f"{amount_paid} {currency} from u/{borrower} ({new_status})")
 
         return {
             "db_id": db_id,
@@ -264,6 +290,7 @@ def mark_unpaid(loan_id: str, lender: str):
 
         conn.commit()
         logger.info(f"Loan {db_id} marked unpaid by {lender}")
+        log_action(lender, "loan_unpaid", str(db_id), f"u/{borrower} {loan_amount} {loan_currency}")
 
         return {
             "db_id": db_id,
@@ -400,6 +427,7 @@ def mark_refunded_by_id(loan_id: str, lender: str):
 
         conn.commit()
         logger.info(f"Loan {db_id} refunded by ID: {lender} -> {borrower} {amount} {currency}")
+        log_action(lender, "loan_refunded", str(db_id), f"u/{borrower} {amount} {currency}")
 
         return {"db_id": db_id, "lender": lender, "borrower": borrower, "amount": amount, "currency": currency}, None
 
@@ -644,7 +672,7 @@ def get_user_role(username: str):
         conn.close()
 
 
-def set_user_role(username: str, role: str):
+def set_user_role(username: str, role: str, actor: str = "system"):
     """
     Set or update a user's dashboard role.
     role must be 'mod', 'lender', or 'borrower'.
@@ -664,6 +692,7 @@ def set_user_role(username: str, role: str):
         """, (username.lower(), role, role))
         conn.commit()
         logger.info(f"Role set: {username} -> {role}")
+        log_action(actor, "role_changed", username.lower(), f"-> {role}")
         return True, None
     except Exception as e:
         conn.rollback()
@@ -879,6 +908,176 @@ def get_lender_stats(lender: str):
     except Exception as e:
         logger.error(f"get_lender_stats error: {e}", exc_info=True)
         return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+def get_audit_log(limit: int = 100, offset: int = 0):
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT actor, action, target, details, created_at
+            FROM audit_log ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, (limit, offset))
+        return [
+            {"actor": r[0], "action": r[1], "target": r[2],
+             "details": r[3], "created_at": r[4]}
+            for r in cur.fetchall()
+        ], None
+    except Exception as e:
+        logger.error(f"get_audit_log error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Loan applications
+# ---------------------------------------------------------------------------
+
+def submit_loan_application(borrower: str, amount: Decimal, currency: str,
+                             reason: str = None, repayment_plan: str = None):
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO loan_applications (borrower, amount, currency, reason, repayment_plan)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (borrower.lower(), amount, currency.upper(), reason, repayment_plan))
+        app_id = cur.fetchone()[0]
+        conn.commit()
+        log_action(borrower, "app_submitted", str(app_id), f"{amount} {currency}")
+        return app_id, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"submit_loan_application error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_loan_applications(status: str = None, borrower: str = None,
+                           lender: str = None, limit: int = 50, offset: int = 0):
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        conditions, params = [], []
+        if status:
+            conditions.append("status = %s"); params.append(status)
+        if borrower:
+            conditions.append("borrower = %s"); params.append(borrower.lower())
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        params += [limit, offset]
+        cur.execute(f"""
+            SELECT id, borrower, amount, currency, reason, repayment_plan,
+                   status, lender, created_at, updated_at
+            FROM loan_applications {where}
+            ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, params)
+        return [
+            {"id": r[0], "borrower": r[1], "amount": r[2], "currency": r[3],
+             "reason": r[4], "repayment_plan": r[5], "status": r[6],
+             "lender": r[7], "created_at": r[8], "updated_at": r[9]}
+            for r in cur.fetchall()
+        ], None
+    except Exception as e:
+        logger.error(f"get_loan_applications error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_loan_application(app_id: int, status: str, actor: str, lender: str = None):
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        if lender:
+            cur.execute("""
+                UPDATE loan_applications SET status = %s, lender = %s, updated_at = NOW()
+                WHERE id = %s RETURNING id
+            """, (status, lender.lower(), app_id))
+        else:
+            cur.execute("""
+                UPDATE loan_applications SET status = %s, updated_at = NOW()
+                WHERE id = %s RETURNING id
+            """, (status, app_id))
+        if not cur.fetchone():
+            return None, "Application not found."
+        conn.commit()
+        log_action(actor, f"app_{status}", str(app_id))
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"update_loan_application error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Lender availability
+# ---------------------------------------------------------------------------
+
+def set_lender_availability(username: str, available: bool):
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role, available)
+            VALUES (%s, 'lender', %s)
+            ON CONFLICT (username) DO UPDATE SET available = %s
+        """, (username.lower(), available, available))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"set_lender_availability error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_available_lenders():
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ur.username, COALESCE(u.loans_as_lender, 0), COALESCE(u.amount_lent, 0)
+            FROM user_roles ur
+            LEFT JOIN users u ON u.username = ur.username
+            WHERE ur.role IN ('lender', 'mod') AND ur.available = true
+            ORDER BY COALESCE(u.amount_lent, 0) DESC
+        """)
+        return [
+            {"username": r[0], "loans_as_lender": r[1], "amount_lent": float(r[2])}
+            for r in cur.fetchall()
+        ], None
+    except Exception as e:
+        logger.error(f"get_available_lenders error: {e}", exc_info=True)
+        return [], str(e)
     finally:
         cur.close()
         conn.close()

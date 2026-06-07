@@ -51,4 +51,12 @@ def process_paid_command(comment):
     )
 
     comment.reply(response)
+
+    try:
+        from notifications import notify_discord
+        status_note = " ✅ FULLY REPAID" if result['new_status'] == 'repaid' else ""
+        notify_discord(f"💳 Payment: u/{result['borrower']} paid {amount_paid:.2f} {result['currency']} to u/{result['lender']}{status_note} | Loan {loan_id}")
+    except Exception as e:
+        logger.error(f"Discord notify failed for payment on {loan_id}: {e}")
+
     logger.info(f"Payment recorded on loan {loan_id} by lender {lender}")

@@ -935,6 +935,118 @@ def resolve_role_request(username):
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+@app.route("/api/audit-log", methods=["GET"])
+@require_mod_api
+def get_audit_log():
+    from services import get_audit_log as _get_audit_log
+    limit  = min(int(request.args.get("limit", 100)), 500)
+    offset = max(int(request.args.get("offset", 0)), 0)
+    rows, error = _get_audit_log(limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(rows)
+
+
+# ---------------------------------------------------------------------------
+# Loan applications
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loan-applications", methods=["POST"])
+@login_required
+def create_loan_application():
+    from services import submit_loan_application
+    data = request.get_json() or {}
+    try:
+        amount = Decimal(str(data.get("amount", 0)))
+    except Exception:
+        return _json({"error": "Invalid amount."}, 400)
+    if amount <= 0:
+        return _json({"error": "Amount must be greater than zero."}, 400)
+    currency = (data.get("currency") or "USD").upper()
+    reason   = (data.get("reason") or "").strip()[:500]
+    plan     = (data.get("repayment_plan") or "").strip()[:500]
+    app_id, error = submit_loan_application(session["username"], amount, currency, reason, plan)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "id": app_id, "message": "Application submitted. Lenders will be notified."})
+
+
+@app.route("/api/loan-applications", methods=["GET"])
+@require_auth
+def list_loan_applications():
+    from services import get_loan_applications
+    status   = request.args.get("status")
+    borrower = request.args.get("borrower")
+    limit    = min(int(request.args.get("limit", 50)), 200)
+    offset   = max(int(request.args.get("offset", 0)), 0)
+    if session.get("role") not in ("mod", "lender") and not borrower:
+        borrower = session.get("username")
+    apps, error = get_loan_applications(status=status, borrower=borrower, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(apps)
+
+
+@app.route("/api/loan-applications/<int:app_id>/claim", methods=["POST"])
+@require_auth
+def claim_loan_application(app_id):
+    from services import update_loan_application
+    if session.get("role") not in ("mod", "lender"):
+        return _json({"error": "Only lenders can claim applications."}, 403)
+    ok, error = update_loan_application(app_id, "claimed", session["username"], lender=session["username"])
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "message": "Application claimed. Contact the borrower to arrange the loan."})
+
+
+@app.route("/api/loan-applications/<int:app_id>/cancel", methods=["POST"])
+@login_required
+def cancel_loan_application(app_id):
+    from services import get_loan_applications, update_loan_application
+    apps, _ = get_loan_applications()
+    app_record = next((a for a in apps if a["id"] == app_id), None)
+    if not app_record:
+        return _json({"error": "Application not found."}, 404)
+    if session["username"] != app_record["borrower"] and session.get("role") != "mod":
+        return _json({"error": "You can only cancel your own applications."}, 403)
+    ok, error = update_loan_application(app_id, "cancelled", session["username"])
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"ok": True, "message": "Application cancelled."})
+
+
+# ---------------------------------------------------------------------------
+# Lender availability
+# ---------------------------------------------------------------------------
+
+@app.route("/api/users/me/availability", methods=["POST"])
+@login_required
+def set_availability():
+    from services import set_lender_availability
+    if session.get("role") not in ("mod", "lender"):
+        return _json({"error": "Only lenders can toggle availability."}, 403)
+    data      = request.get_json() or {}
+    available = bool(data.get("available", True))
+    ok, error = set_lender_availability(session["username"], available)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "available": available})
+
+
+@app.route("/api/lenders/available", methods=["GET"])
+@require_auth
+def list_available_lenders():
+    from services import get_available_lenders
+    lenders, error = get_available_lenders()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(lenders)
+
+
 if __name__ == "__main__":
     port  = int(os.getenv("API_PORT", 5000))
     debug = IS_DEV

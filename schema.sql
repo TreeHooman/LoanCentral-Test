@@ -59,6 +59,40 @@ ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS phone_number TEXT;
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS last_reminder_sent TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_loans_reminder ON loans(last_reminder_sent);
 
+-- Due dates on loans
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS due_date TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_due_date ON loans(due_date);
+
+-- Lender availability flag
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS available BOOLEAN DEFAULT true;
+
+-- Audit log: tracks all significant mod/lender actions
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+
+-- Loan applications: borrowers post requests, lenders claim them
+CREATE TABLE IF NOT EXISTS loan_applications (
+    id SERIAL PRIMARY KEY,
+    borrower TEXT NOT NULL,
+    amount NUMERIC NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    reason TEXT,
+    repayment_plan TEXT,
+    status TEXT NOT NULL DEFAULT 'open',  -- 'open', 'claimed', 'funded', 'cancelled'
+    lender TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_loan_apps_borrower ON loan_applications(borrower);
+CREATE INDEX IF NOT EXISTS idx_loan_apps_status ON loan_applications(status);
+
 -- Migration: add date_repaid column (safe to re-run)
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS date_repaid TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_loans_date_repaid ON loans(date_repaid);

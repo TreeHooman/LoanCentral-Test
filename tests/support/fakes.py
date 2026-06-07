@@ -188,7 +188,7 @@ class FakeDb:
             return None
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
-    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status):
+    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status, due_date=None):
         db_id = self.next_id
         self.next_id += 1
         self.loans.append(
@@ -203,6 +203,7 @@ class FakeDb:
                 "date_created": date_created,
                 "original_thread": original_thread,
                 "status": status,
+                "due_date": due_date,
             }
         )
         return db_id
@@ -568,6 +569,39 @@ class FakeCursor:
                 )
                 for uname, udata in candidates[:5]
             ]
+            return
+
+        # No-ops for tables tests don't exercise directly
+        if normalized.startswith("insert into audit_log"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into user_roles"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into loan_applications"):
+            self.last_result = (1,)
+            return
+
+        if normalized.startswith("update loan_applications"):
+            self.last_result = (1,)
+            return
+
+        if normalized.startswith("select") and "from audit_log" in normalized:
+            self.last_result = []
+            return
+
+        if normalized.startswith("select") and "from loan_applications" in normalized:
+            self.last_result = []
+            return
+
+        if normalized.startswith("select") and "from user_roles" in normalized:
+            self.last_result = None
+            return
+
+        if normalized.startswith("update loans set last_reminder_sent"):
+            self.last_result = None
             return
 
         raise AssertionError(f"FakeCursor does not support query: {query}")

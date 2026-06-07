@@ -126,6 +126,27 @@
 
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* MOBILE */
+    @media (max-width: 768px) {
+      nav { padding: 0 12px; height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+      .nav-links { display: none; }
+      .nav-right { gap: 6px; flex-wrap: wrap; }
+      .nav-user { display: none; }
+      main { padding: 12px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat-value { font-size: 20px; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 600px; }
+      th, td { padding: 8px 10px; font-size: 12px; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .toolbar .tabs { flex-wrap: wrap; }
+      .search-wrap { min-width: unset; }
+      .modal { width: 95vw; padding: 16px; }
+      .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .btn-primary, .btn-logout { font-size: 12px; padding: 6px 10px; }
+      #toast { bottom: 12px; right: 12px; left: 12px; max-width: unset; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>

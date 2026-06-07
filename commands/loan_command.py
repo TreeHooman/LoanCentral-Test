@@ -1,21 +1,40 @@
 import re
 import logging
 from decimal import Decimal
+from datetime import datetime, timedelta
 
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$loan"
 
 
+def _parse_due_date(due_str):
+    """Parse '30d', '2w', '1m' into a future datetime."""
+    if not due_str:
+        return None
+    m = re.match(r'^(\d+)([dwm])$', due_str.lower())
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2)
+    if unit == 'd':
+        return datetime.now() + timedelta(days=n)
+    if unit == 'w':
+        return datetime.now() + timedelta(weeks=n)
+    if unit == 'm':
+        return datetime.now() + timedelta(days=n * 30)
+    return None
+
+
 def process_loan_command(comment):
     """
-    $loan [amount] [currency] u/[borrower]
+    $loan [amount] [currency] u/[borrower] [due:30d]
     Lender records a loan immediately — no borrower confirmation needed.
+    Optional: due:Nd / due:Nw / due:Nm sets a due date.
     """
     from services import create_loan
 
     match = re.search(
-        r'\$loan\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+u?/?([\w-]+)',
+        r'\$loan\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+u?/?([\w-]+)(?:\s+due:(\d+[dwm]))?',
         comment.body,
         re.IGNORECASE,
     )
@@ -26,6 +45,7 @@ def process_loan_command(comment):
     amount = Decimal(match.group(1))
     currency = match.group(2).upper()
     borrower = match.group(3).lower()
+    due_date = _parse_due_date(match.group(4))
 
     if lender == borrower:
         comment.reply("Error: You cannot lend to yourself.")
@@ -54,7 +74,7 @@ def process_loan_command(comment):
         return
 
     thread_url = f"https://www.reddit.com{comment.submission.permalink}"
-    db_id, error = create_loan(lender, borrower, amount, currency, thread_url)
+    db_id, error = create_loan(lender, borrower, amount, currency, thread_url, due_date=due_date)
 
     if error:
         comment.reply(f"Error: {error}")
@@ -96,5 +116,12 @@ def process_loan_command(comment):
         logger.info(f"DM sent to u/{borrower} for new loan {db_id}")
     except Exception as e:
         logger.error(f"Failed to DM u/{borrower} for loan {db_id}: {e}")
+
+    try:
+        from notifications import notify_discord
+        due_note = f" (due {due_date.strftime('%Y-%m-%d')})" if due_date else ""
+        notify_discord(f"💰 New loan: u/{lender} → u/{borrower} {amount:.2f} {currency}{due_note} | ID: {db_id}")
+    except Exception as e:
+        logger.error(f"Discord notify failed for loan {db_id}: {e}")
 
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")
