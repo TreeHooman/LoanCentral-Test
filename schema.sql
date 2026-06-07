@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS loans (
     currency TEXT NOT NULL,
     date_created TIMESTAMP NOT NULL,
     original_thread TEXT NOT NULL,
-    status TEXT DEFAULT 'active',
+    status TEXT DEFAULT 'confirmed',  -- confirmed, partially_repaid, repaid, unpaid, refunded, disputed
     amount_repaid NUMERIC DEFAULT 0,
     last_updated TIMESTAMP
 );

@@ -59,6 +59,10 @@ class FakeComment:
         self.replies.append(body)
         return body
 
+    @property
+    def reply_text(self):
+        return self.replies[0] if self.replies else None
+
     def parent(self):
         return self._parent_comment
 
@@ -526,6 +530,36 @@ class FakeCursor:
             ]
             return
 
+        # update_last_login upsert — write path, no result needed
+        if "insert into user_roles" in normalized and "last_login" in normalized:
+            self.last_result = None
+            return
+
+        # dispute_loan SELECT — borrower lookup by loan_id/id
+        if normalized.startswith("select id, lender, amount, currency, status"):
+            loan_lookup, _loan_lookup_again, borrower = params
+            loan = self.fake_db.find_loan(loan_lookup)
+            if loan and loan.get("borrower") != borrower:
+                loan = None
+            self.last_result = None if not loan else (
+                loan["id"],
+                loan["lender"],
+                loan["amount"],
+                loan["currency"],
+                loan["status"],
+            )
+            return
+
+        # dispute_loan update — just mark disputed
+        if "update loans set status = 'disputed'" in normalized:
+            db_id = params[-1]  # params = (last_updated, db_id)
+            for loan in self.fake_db.loans:
+                if loan["id"] == db_id:
+                    loan["status"] = "disputed"
+                    break
+            self.last_result = None
+            return
+
         raise AssertionError(f"FakeCursor does not support query: {query}")
 
     def fetchone(self):
@@ -566,6 +600,9 @@ def loan_record(
         "status": status,
         "original_thread": original_thread,
     }
+
+
+FakeDB = FakeDb  # alias for newer tests
 
 
 def fake_utils_module(fake_db, reddit=None):

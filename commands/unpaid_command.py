@@ -6,12 +6,15 @@ logger = logging.getLogger("LoanCentral")
 COMMAND_TRIGGER = "$unpaid"
 
 
+DASHBOARD_URL = "https://loancentral.app"
+
+
 def process_unpaid_command(comment):
     """
     $unpaid [loan_id]
     Lender marks a loan as unpaid. Borrower is looked up from the loan record.
     """
-    from services import mark_unpaid
+    from services import mark_unpaid, update_last_login
 
     match = re.search(r'\$unpaid\s+(\w+)', comment.body, re.IGNORECASE)
     if not match:
@@ -19,6 +22,7 @@ def process_unpaid_command(comment):
 
     loan_id = match.group(1)
     lender = comment.author.name.lower()
+    update_last_login(lender)
 
     result, error = mark_unpaid(loan_id, lender)
 
@@ -37,7 +41,8 @@ def process_unpaid_command(comment):
         f"|{result['amount_repaid']:.2f} {result['currency']}|\n\n"
         f"[Submit unpaid post](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true"
         f"&title=UNPAID:%20/u/{borrower}%20{result['loan_amount']}%20{result['currency']})\n\n"
-        f"If this is in error, please contact the moderators."
+        f"If this is in error, u/{borrower} can comment `$dispute {loan_id}` to flag for mod review.\n\n"
+        f"*Manage this at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
     )
 
     comment.reply(response)

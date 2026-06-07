@@ -6,12 +6,15 @@ logger = logging.getLogger("LoanCentral")
 COMMAND_TRIGGER = "$refunded"
 
 
+DASHBOARD_URL = "https://loancentral.app"
+
+
 def process_refund_command(comment):
     """
     $refunded [loan_id]
     Lender cancels a loan by ID. Reverses stats and notifies mods.
     """
-    from services import mark_refunded_by_id
+    from services import mark_refunded_by_id, update_last_login
 
     match = re.search(r'\$refunded\s+(\w+)', comment.body, re.IGNORECASE)
     if not match:
@@ -19,6 +22,7 @@ def process_refund_command(comment):
 
     loan_id = match.group(1)
     lender = comment.author.name.lower()
+    update_last_login(lender)
 
     result, error = mark_refunded_by_id(loan_id, lender)
 
@@ -50,6 +54,7 @@ def process_refund_command(comment):
     comment.reply(
         f"Loan `{loan_id}` marked as refunded.\n\n"
         f"The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} "
-        f"has been removed from both users' statistics."
+        f"has been removed from both users' statistics.\n\n"
+        f"---\n*View loan history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
     )
     logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")

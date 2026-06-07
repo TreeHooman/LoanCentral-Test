@@ -20,9 +20,12 @@ def _parse_paid(text):
     return None
 
 
+DASHBOARD_URL = "https://loancentral.app"
+
+
 def process_paid_command(comment):
     """Process $paid_with_id command - lender records a repayment."""
-    from services import mark_repaid
+    from services import mark_repaid, update_last_login
 
     parsed = _parse_paid(comment.body)
     if not parsed:
@@ -30,6 +33,7 @@ def process_paid_command(comment):
 
     loan_id, amount_paid, currency = parsed
     lender = comment.author.name.lower()
+    update_last_login(lender)
 
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")
 
@@ -47,5 +51,6 @@ def process_paid_command(comment):
         f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}"
     )
 
+    response += f"\n\n---\n*View full history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
     comment.reply(response)
     logger.info(f"Payment recorded on loan {loan_id} by lender {lender}")

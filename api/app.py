@@ -414,6 +414,20 @@ def set_loan_refunded(loan_id):
     return _json(result)
 
 
+@app.route("/api/loans/<loan_id>/dispute", methods=["POST"])
+@require_auth
+def set_loan_disputed(loan_id):
+    from services import dispute_loan
+    data     = request.get_json() or {}
+    borrower = data.get("borrower", session.get("username", "")).strip().lower()
+    if not borrower:
+        return _json({"error": "borrower is required"}, 400)
+    result, error = dispute_loan(loan_id, borrower)
+    if error:
+        return _json({"error": error}, 400)
+    return _json(result)
+
+
 @app.route("/api/loans/<loan_id>/paid", methods=["POST"])
 @require_auth
 def set_loan_paid(loan_id):
@@ -477,6 +491,7 @@ def get_stats():
                 COUNT(*) FILTER (WHERE status = 'unpaid')                   AS unpaid,
                 COUNT(*) FILTER (WHERE status = 'repaid')                   AS repaid,
                 COUNT(*) FILTER (WHERE status = 'refunded')                 AS refunded,
+                COUNT(*) FILTER (WHERE status = 'disputed')                 AS disputed,
                 COALESCE(SUM(amount), 0)                                    AS total_volume,
                 COALESCE(SUM(amount_repaid), 0)                             AS total_repaid,
                 COALESCE(SUM(amount) FILTER (
@@ -488,8 +503,9 @@ def get_stats():
             "total_loans":    row[0], "active_loans":  row[1],
             "partial_loans":  row[2], "unpaid_loans":  row[3],
             "repaid_loans":   row[4], "refunded_loans": row[5],
-            "total_volume":   row[6], "total_repaid":  row[7],
-            "outstanding":    row[8],
+            "disputed_loans": row[6],
+            "total_volume":   row[7], "total_repaid":  row[8],
+            "outstanding":    row[9],
         })
     finally:
         cur.close()

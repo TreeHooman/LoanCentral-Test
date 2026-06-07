@@ -5,6 +5,7 @@ from decimal import Decimal
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$loan"
+DASHBOARD_URL = "https://loancentral.app"  # update when domain is live
 
 
 def process_loan_command(comment):
@@ -53,6 +54,10 @@ def process_loan_command(comment):
         comment.reply("Error: Unable to verify your flair status. Please contact the moderators.")
         return
 
+    from services import update_last_login
+    update_last_login(lender)
+    update_last_login(borrower)
+
     thread_url = f"https://www.reddit.com{comment.submission.permalink}"
     db_id, error = create_loan(lender, borrower, amount, currency, thread_url)
 
@@ -70,6 +75,8 @@ def process_loan_command(comment):
         f"**Lender commands:**\n"
         f"- Record repayment: `$paid_with_id {db_id} [amount] {currency}`\n"
         f"- Mark unpaid: `$unpaid {db_id}`\n"
-        f"- Cancel loan: `$refunded {db_id}`"
+        f"- Cancel loan: `$refunded {db_id}`\n\n"
+        f"---\n"
+        f"*Track loans, view history & manage everything at [{DASHBOARD_URL}]({DASHBOARD_URL}) — sign in with Reddit.*"
     )
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")

@@ -662,6 +662,46 @@ def update_last_login(username: str):
         conn.close()
 
 
+def dispute_loan(loan_id: str, borrower: str):
+    """
+    Borrower flags a loan as disputed — puts it in mod review queue.
+    Returns (loan_dict, error_message)
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, lender, amount, currency, status
+            FROM loans
+            WHERE (id::text = %s OR loan_id = %s) AND borrower = %s
+            ORDER BY id DESC LIMIT 1
+        ''', (loan_id, loan_id, borrower))
+        result = cur.fetchone()
+        if not result:
+            return None, f"No loan {loan_id} found where you are the borrower."
+        db_id, lender, amount, currency, status = result
+        if status in ('repaid', 'refunded'):
+            return None, "This loan is already closed and cannot be disputed."
+        if status == 'disputed':
+            return None, "This loan is already marked as disputed."
+        cur.execute('''
+            UPDATE loans SET status = 'disputed', last_updated = %s WHERE id = %s
+        ''', (datetime.now(), db_id))
+        conn.commit()
+        logger.info(f"Loan {db_id} disputed by {borrower}")
+        return {"db_id": db_id, "lender": lender, "borrower": borrower,
+                "amount": Decimal(amount), "currency": currency}, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"dispute_loan error: {e}", exc_info=True)
+        return None, "Database error while flagging dispute."
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_lender_stats(lender: str):
     """
     Get lending stats for a specific lender.

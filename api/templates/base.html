@@ -84,6 +84,7 @@
     .badge-repaid           { background: rgba(46,204,113,0.15); color: var(--green); }
     .badge-unpaid           { background: rgba(231,76,60,0.15);  color: var(--red); }
     .badge-refunded         { background: rgba(136,145,170,0.15); color: var(--muted); }
+    .badge-disputed         { background: rgba(243,156,18,0.2);  color: var(--orange); }
     .table-placeholder { text-align: center; padding: 48px; color: var(--muted); }
     .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -280,7 +281,7 @@
   }
 
   function statusLabel(s) {
-    return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded' }[s] || s;
+    return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded', disputed: 'Disputed' }[s] || s;
   }
   function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
