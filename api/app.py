@@ -697,6 +697,13 @@ def get_stats():
         cur.execute("SELECT COUNT(*) FROM role_requests WHERE status = 'pending'")
         pending_requests = cur.fetchone()[0]
 
+        cur.execute("""
+            SELECT COUNT(*) FROM loans
+            WHERE due_date IS NOT NULL AND due_date < NOW()
+              AND status NOT IN ('repaid', 'refunded', 'unpaid')
+        """)
+        overdue_loans = cur.fetchone()[0]
+
         return _json({
             "total_loans":       row[0], "active_loans":    row[1],
             "partial_loans":     row[2], "unpaid_loans":    row[3],
@@ -705,6 +712,7 @@ def get_stats():
             "outstanding":       row[8],
             "open_disputes":     open_disputes,
             "pending_requests":  pending_requests,
+            "overdue_loans":     overdue_loans,
         })
     finally:
         cur.close()
@@ -1157,6 +1165,49 @@ def resolve_role_request(username):
     finally:
         cur.close()
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Admin: trigger SMS reminders
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/send-reminders", methods=["POST"])
+@require_mod_api
+def trigger_reminders():
+    """Manually trigger the SMS reminder job. Returns counts sent."""
+    from services import get_loans_for_reminder, mark_reminder_sent, send_due_reminders
+    from notifications import send_sms
+
+    loans, error = get_loans_for_reminder()
+    periodic_sent = 0
+    if error:
+        logger.warning(f"send-reminders: could not fetch periodic loans: {error}")
+    else:
+        DASHBOARD = os.getenv("DASHBOARD_URL", "")
+        for loan in loans:
+            try:
+                if loan.get("reminder_type") == "unpaid":
+                    msg = (
+                        f"LoanCentral URGENT: Your loan of {loan['amount']:.2f} {loan['currency']} "
+                        f"from u/{loan['lender']} (#{loan['loan_id']}) is marked UNPAID. "
+                        f"Contact your lender to resolve. {DASHBOARD}"
+                    )
+                else:
+                    msg = (
+                        f"LoanCentral reminder: Outstanding loan of {loan['amount']:.2f} {loan['currency']} "
+                        f"from u/{loan['lender']} (#{loan['loan_id']}). Arrange repayment. {DASHBOARD}"
+                    )
+                send_sms(loan["phone"], msg)
+                mark_reminder_sent(loan["db_id"])
+                periodic_sent += 1
+            except Exception as e:
+                logger.error(f"SMS reminder failed for loan {loan['loan_id']}: {e}")
+
+    due_sent, due_error = send_due_reminders()
+    if due_error:
+        logger.warning(f"send-reminders: due-date reminders error: {due_error}")
+
+    return _json({"ok": True, "periodic_sent": periodic_sent, "due_sent": due_sent or 0})
 
 
 # ---------------------------------------------------------------------------

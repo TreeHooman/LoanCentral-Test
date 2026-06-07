@@ -43,6 +43,16 @@ def process_report_command(comment):
             f"*If this is urgent, please also send a modmail directly.*"
         )
         logger.info(f"u/{reporter} reported u/{reported}: {reason}")
+
+        try:
+            from notifications import notify_discord
+            reason_short = (reason[:120] + "…") if len(reason) > 120 else reason
+            notify_discord(
+                f"🚨 **Report Filed** — u/{reporter} reported u/{reported}: {reason_short}"
+            )
+        except Exception as _e:
+            logger.warning(f"Discord notify failed for report: {_e}")
+
     except Exception as e:
         logger.error(f"Failed to send report from {reporter}: {e}")
         comment.reply("Error submitting report. Please contact the mods via modmail directly.")

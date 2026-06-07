@@ -75,3 +75,13 @@ def process_apply_command(comment):
         f"Only lend/borrow with users you trust.*"
     )
     logger.info(f"Loan application #{app_id} submitted by u/{borrower}: {amount} {currency}")
+
+    try:
+        from notifications import notify_discord
+        reason_short = (reason[:80] + "…") if reason and len(reason) > 80 else (reason or "no reason")
+        notify_discord(
+            f"📝 **Loan Request** — u/{borrower} is seeking {amount:.2f} {currency} "
+            f"(#{app_id}). Reason: {reason_short}"
+        )
+    except Exception as _e:
+        logger.warning(f"Discord notify failed for application #{app_id}: {_e}")

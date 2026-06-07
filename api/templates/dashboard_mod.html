@@ -12,6 +12,7 @@
   <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
   <div class="stat-card" style="cursor:pointer" onclick="showTab('disputes')"><div class="stat-label">Open Disputes</div><div class="stat-value c-orange" id="s-disputes">—</div></div>
   <div class="stat-card" style="cursor:pointer" onclick="showTab('requests')"><div class="stat-label">Pending Requests</div><div class="stat-value c-accent" id="s-requests">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('overdue')"><div class="stat-label">Overdue Loans</div><div class="stat-value c-red" id="s-overdue">—</div><div class="stat-sub">past due date</div></div>
 </div>
 
 <!-- Loans tab -->
@@ -43,7 +44,9 @@
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('audit')">📋 Audit Log</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('disputes')" id="disputesBtn">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="showTab('overdue')" id="overdueBtn">⏰ Overdue <span id="overdueBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
+    <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
   </div>
   <!-- Advanced filters panel -->
   <div id="filtersPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
@@ -214,6 +217,24 @@
     </table>
   </div>
 </div>
+<!-- Overdue Loans tab -->
+<div id="tab-overdue" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Overdue Loans</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="loadOverdue()">↻ Refresh</button>
+      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back to Loans</button>
+    </div>
+  </div>
+  <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Active loans where the borrower has not repaid by the due date.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Status</th><th>Due Date</th><th>Days Overdue</th><th>Actions</th></tr></thead>
+      <tbody id="overdueBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Set Password Modal -->
 <div class="modal-overlay" id="setPwModal">
   <div class="modal">
@@ -243,9 +264,9 @@
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans(); loadRequestsBadge(); loadDisputesBadge();
+    loadStats(); loadLoans(); loadRequestsBadge(); loadDisputesBadge(); loadOverdueBadge();
     // Auto-refresh stats and badges every 60 seconds
-    setInterval(() => { loadStats(); loadRequestsBadge(); loadDisputesBadge(); }, 60000);
+    setInterval(() => { loadStats(); loadRequestsBadge(); loadDisputesBadge(); loadOverdueBadge(); }, 60000);
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -282,6 +303,11 @@
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
       if (s.open_disputes    != null) document.getElementById('s-disputes').textContent  = s.open_disputes;
       if (s.pending_requests != null) document.getElementById('s-requests').textContent  = s.pending_requests;
+      if (s.overdue_loans    != null) {
+        document.getElementById('s-overdue').textContent = s.overdue_loans;
+        const badge = document.getElementById('overdueBadge');
+        if (s.overdue_loans > 0) { badge.textContent = s.overdue_loans; badge.style.display = 'inline'; }
+      }
     } catch(e) { console.error(e); }
   }
 
@@ -393,7 +419,7 @@
   function loadData() { loadLoans(); loadStats(); }
 
   function showTab(name) {
-    ['loans','roles','requests','analytics','audit','disputes'].forEach(t =>
+    ['loans','roles','requests','analytics','audit','disputes','overdue'].forEach(t =>
       document.getElementById('tab-' + t).style.display = name === t ? '' : 'none'
     );
     if (name === 'roles')     loadRoles();
@@ -401,6 +427,65 @@
     if (name === 'analytics') loadAnalytics();
     if (name === 'audit')     { auditOffset = 0; loadAudit(); }
     if (name === 'disputes')  loadDisputes();
+    if (name === 'overdue')   loadOverdue();
+  }
+
+  async function loadDisputesBadge() {
+    try {
+      const rows = await apiFetch('/api/disputes?status=open&limit=1');
+      const badge = document.getElementById('disputesBadge');
+      if (rows.length) { badge.textContent = '!'; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadOverdueBadge() {
+    try {
+      const rows = await apiFetch('/api/loans/overdue');
+      const badge = document.getElementById('overdueBadge');
+      const stat  = document.getElementById('s-overdue');
+      if (stat) stat.textContent = rows.length;
+      if (rows.length) { badge.textContent = rows.length; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadOverdue() {
+    const tbody = document.getElementById('overdueBody');
+    tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr>';
+    try {
+      const loans = await apiFetch('/api/loans/overdue');
+      if (!loans.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder">No overdue loans. 🎉</td></tr>';
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const id = loan.loan_id || loan.db_id;
+        const days = loan.days_overdue || 0;
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username">u/${loan.lender}</td>
+          <td class="username">u/${loan.borrower}</td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell" style="color:var(--red);font-weight:600">${fmtDate(loan.due_date)}</td>
+          <td style="color:var(--red);font-weight:600">${days}d overdue</td>
+          <td><div class="actions">
+            <button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function sendReminders() {
+    const btn = document.getElementById('remindersBtn');
+    btn.disabled = true; btn.textContent = '📲 Sending...';
+    try {
+      const r = await apiFetch('/api/admin/send-reminders', { method: 'POST' });
+      toast(`Reminders sent: ${r.periodic_sent} periodic, ${r.due_sent} due-date.`, 'success');
+    } catch(e) { toast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '📲 Send Reminders'; }
   }
 
   let auditOffset = 0;

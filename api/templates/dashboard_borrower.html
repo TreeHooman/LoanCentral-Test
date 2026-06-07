@@ -31,6 +31,8 @@
   <div class="stat-card"><div class="stat-label">Total Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div></div>
   <div class="stat-card"><div class="stat-label">Unpaid Loans</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Repaid Loans</div><div class="stat-value c-green" id="s-repaid-count">—</div></div>
+  <div class="stat-card"><div class="stat-label">Overdue</div><div class="stat-value c-red" id="s-overdue">—</div><div class="stat-sub">past due date</div></div>
   <div class="stat-card"><div class="stat-label">Health Score</div><div class="stat-value" id="s-health" style="font-size:22px">—</div><div class="stat-sub" id="s-health-label"></div></div>
 </div>
 
@@ -166,16 +168,12 @@
   });
 
   async function loadAll() {
-    await Promise.all([loadProfile(), loadOwing(), loadHistory(), loadMyApps(), loadAvailableLenders()]);
+    await Promise.all([loadProfile(), loadBorrowerStats(), loadOwing(), loadHistory(), loadMyApps(), loadAvailableLenders()]);
   }
 
   async function loadProfile() {
     try {
       const p = await apiFetch(`/api/users/${ME}`);
-      document.getElementById('s-borrowed').textContent    = '$' + fmt(p.amount_borrowed);
-      document.getElementById('s-repaid').textContent      = '$' + fmt(p.amount_repaid);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(p.active_amount || 0);
-      document.getElementById('s-unpaid').textContent      = p.unpaid_loans;
       const score = calcHealth(p);
       const el = document.getElementById('s-health');
       el.textContent = score + '/100';
@@ -184,6 +182,20 @@
       document.getElementById('s-health-label').textContent =
         healthLabel(score) + (tier.label ? ' — ' + tier.label : '');
       if (p.phone_number) document.getElementById('phoneInput').value = p.phone_number;
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadBorrowerStats() {
+    try {
+      const s = await apiFetch(`/api/stats/borrower/${ME}`);
+      document.getElementById('s-borrowed').textContent    = '$' + fmt(s.total_borrowed);
+      document.getElementById('s-repaid').textContent      = '$' + fmt(s.total_repaid);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
+      document.getElementById('s-unpaid').textContent      = s.unpaid_loans;
+      document.getElementById('s-repaid-count').textContent = s.repaid_loans;
+      const overdueEl = document.getElementById('s-overdue');
+      overdueEl.textContent = s.overdue_loans;
+      if (s.overdue_loans > 0) overdueEl.style.color = 'var(--red)';
     } catch(e) { console.error(e); }
   }
 

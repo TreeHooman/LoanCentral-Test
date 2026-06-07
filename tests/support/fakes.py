@@ -617,6 +617,10 @@ class FakeCursor:
             self.last_result = (0,)
             return
 
+        if normalized.startswith("select count(*)") and "from loans" in normalized and "due_date" in normalized:
+            self.last_result = (0,)
+            return
+
         if normalized.startswith("select") and "from disputes" in normalized:
             self.last_result = []
             return
