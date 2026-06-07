@@ -823,7 +823,7 @@ def _notify_mods_of_role_request(username, requested_role, reason):
             client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
             username=os.getenv("REDDIT_USERNAME"),
             password=os.getenv("REDDIT_PASSWORD"),
-            user_agent=os.getenv("REDDIT_USER_AGENT", "LoanCentral/1.0"),
+            user_agent=os.getenv("REDDIT_USER_AGENT", f"LoanCentral/1.0 by u/{os.getenv('REDDIT_USERNAME', 'LoanBot')}"),
         )
         for sub in [s.strip() for s in os.getenv("SUBREDDITS", "").split(",") if s.strip()]:
             reddit.subreddit(sub).message(
