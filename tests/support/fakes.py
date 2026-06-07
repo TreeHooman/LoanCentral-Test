@@ -109,9 +109,10 @@ class FakeRedditor:
 
 
 class FakeDb:
-    def __init__(self, loans=None, users=None):
+    def __init__(self, loans=None, users=None, bans=None):
         self.loans = deepcopy(loans or [])
         self.users = deepcopy(users or {})
+        self.bans  = deepcopy(bans or {})
         self.next_id = max([loan["id"] for loan in self.loans], default=0) + 1
 
     def connection(self):
@@ -188,7 +189,7 @@ class FakeDb:
             return None
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
-    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status):
+    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status, due_date=None):
         db_id = self.next_id
         self.next_id += 1
         self.loans.append(
@@ -203,6 +204,7 @@ class FakeDb:
                 "date_created": date_created,
                 "original_thread": original_thread,
                 "status": status,
+                "due_date": due_date,
             }
         )
         return db_id
@@ -239,8 +241,12 @@ class FakeCursor:
         params = params or ()
 
         if normalized.startswith("select id, loan_id, lender, borrower") and "id::text = %s" in normalized:
-            # Single-loan lookup (mark_repaid): WHERE id::text = %s OR loan_id = %s
+            # Single-loan lookup (mark_repaid OR forgive): WHERE id::text = %s OR loan_id = %s [AND lender = %s]
             loan = self.fake_db.find_loan(params[0])
+            if loan and len(params) == 3:
+                # forgive: also check lender matches
+                if loan.get("lender") != params[2]:
+                    loan = None
             self.last_result = None if not loan else (
                 loan["id"],
                 loan["loan_id"],
@@ -358,11 +364,14 @@ class FakeCursor:
             return
 
         if normalized.startswith("update loans set amount_repaid"):
-            amount_repaid, status, _last_updated, db_id = params
+            amount_repaid, status, _last_updated, _date_repaid, db_id = params
             loan = self.fake_db.find_loan(db_id)
             if loan:
                 loan["amount_repaid"] = amount_repaid
                 loan["status"] = status
+                if status == "repaid" and not loan.get("date_repaid"):
+                    from datetime import datetime as _dt
+                    loan["date_repaid"] = _dt.now()
             self.last_result = None
             return
 
@@ -375,7 +384,8 @@ class FakeCursor:
             return
 
         if normalized.startswith("update loans set status = 'refunded'"):
-            _last_updated, db_id = params
+            # mark_refunded uses (last_updated, db_id), forgive uses (db_id,)
+            db_id = params[0] if len(params) == 1 else params[1]
             loan = self.fake_db.find_loan(db_id)
             if loan:
                 loan["status"] = "refunded"
@@ -394,6 +404,19 @@ class FakeCursor:
             user = self.fake_db.users.setdefault(username, {})
             user["unpaid_loans"] = user.get("unpaid_loans", 0) + 1
             user["unpaid_amount"] = user.get("unpaid_amount", Decimal("0")) + unpaid_amount
+            self.last_result = None
+            return
+
+        if normalized.startswith("update users set unpaid_loans = greatest"):
+            if "last_updated = now()" in normalized:
+                # forgive command: params = (remaining_amount, borrower)
+                remaining, username = params[0], params[1]
+            else:
+                # mark_repaid unpaid clear: params = (amount_paid, last_updated, borrower)
+                remaining, _, username = params[0], params[1], params[2]
+            user = self.fake_db.users.setdefault(username, {})
+            user["unpaid_loans"] = max(user.get("unpaid_loans", 0) - 1, 0)
+            user["unpaid_amount"] = max(user.get("unpaid_amount", Decimal("0")) - remaining, Decimal("0"))
             self.last_result = None
             return
 
@@ -455,32 +478,37 @@ class FakeCursor:
             return
 
         if normalized.startswith("select count(*), coalesce(sum(amount - amount_repaid)"):
-            borrower = params[0]
-            active = [
-                loan for loan in self.fake_db.loans
-                if loan["borrower"] == borrower and loan["status"] == "confirmed"
-            ]
+            user = params[0]
+            active_statuses = ("confirmed", "partially_repaid")
+            if "lender = %s" in normalized:
+                active = [l for l in self.fake_db.loans if l["lender"] == user and l["status"] in active_statuses]
+            else:
+                active = [l for l in self.fake_db.loans if l["borrower"] == user and l["status"] in active_statuses]
             count = len(active)
             total = sum(loan["amount"] - loan["amount_repaid"] for loan in active)
             self.last_result = (count, total)
             return
 
+        if normalized.startswith("select count(*) from loans where lender = %s and status = 'unpaid'"):
+            lender = params[0]
+            count = sum(1 for l in self.fake_db.loans if l["lender"] == lender and l["status"] == "unpaid")
+            self.last_result = (count,)
+            return
+
         # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
+        # limit is always params[-2], offset always params[-1], regardless of search params
         if normalized.startswith("select id, loan_id, lender, borrower, amount, amount_repaid") and "id::text" not in normalized and "limit %s" in normalized:
             username = params[0]
-            if "borrower = %s or lender = %s" in normalized:
-                # "both" role: params are (username, username, limit)
-                username2 = params[1]
-                limit = params[2]
+            limit = params[-2]
+            # Determine which role based on WHERE clause
+            if "borrower = %s or lender = %s" in normalized or "(borrower = %s or lender = %s)" in normalized:
                 matches = [
                     loan for loan in self.fake_db.loans
-                    if loan["borrower"] == username or loan["lender"] == username2
+                    if loan["borrower"] == username or loan["lender"] == username
                 ]
             elif "borrower = %s" in normalized:
-                limit = params[1]
                 matches = [loan for loan in self.fake_db.loans if loan["borrower"] == username]
             else:
-                limit = params[1]
                 matches = [loan for loan in self.fake_db.loans if loan["lender"] == username]
 
             matches = sorted(matches, key=lambda l: l.get("date_created", 0), reverse=True)[:limit]
@@ -496,13 +524,20 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("date_repaid"),
+                    loan.get("due_date"),
                 )
                 for loan in matches
             ]
             return
 
+        # JOIN queries from send_due_reminders / complex multi-table queries (no positional params)
+        if normalized.startswith("select l.id, l.loan_id") and "join user_roles" in normalized:
+            self.last_result = []
+            return
+
         # Active loans query (get_active_loans): fetchall path
-        if "status in ('confirmed', 'partially_repaid')" in normalized:
+        if "borrower = %s" in normalized and "status in ('confirmed', 'partially_repaid')" in normalized:
             username = params[0]
             matches = [
                 loan for loan in self.fake_db.loans
@@ -521,8 +556,207 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("date_repaid"),
                 )
                 for loan in matches
+            ]
+            return
+
+        if normalized.startswith("select username, loans_as_lender"):
+            # Top lenders leaderboard query
+            candidates = [
+                (uname, udata)
+                for uname, udata in self.fake_db.users.items()
+                if udata.get("loans_as_lender", 0) > 0
+            ]
+            candidates.sort(key=lambda x: x[1].get("amount_lent", Decimal("0")), reverse=True)
+            self.last_result = [
+                (uname, udata.get("loans_as_lender", 0), udata.get("amount_lent", Decimal("0")))
+                for uname, udata in candidates[:5]
+            ]
+            return
+
+        if normalized.startswith("select username, loans_as_borrower, amount_borrowed, amount_repaid"):
+            # Top borrowers by repayment rate leaderboard query
+            candidates = [
+                (uname, udata)
+                for uname, udata in self.fake_db.users.items()
+                if udata.get("loans_as_borrower", 0) >= 2 and udata.get("amount_borrowed", Decimal("0")) > 0
+            ]
+            candidates.sort(
+                key=lambda x: (
+                    float(x[1].get("amount_repaid", Decimal("0"))) /
+                    float(x[1].get("amount_borrowed", Decimal("1")))
+                ),
+                reverse=True,
+            )
+            self.last_result = [
+                (
+                    uname,
+                    udata.get("loans_as_borrower", 0),
+                    udata.get("amount_borrowed", Decimal("0")),
+                    udata.get("amount_repaid", Decimal("0")),
+                )
+                for uname, udata in candidates[:5]
+            ]
+            return
+
+        # No-ops for tables tests don't exercise directly
+        if normalized.startswith("insert into audit_log"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into user_roles"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select count(*)") and "from loan_applications" in normalized:
+            self.last_result = (0,)
+            return
+
+        # get_borrower_stats: multiple COUNT(*) FILTER on loans WHERE borrower = %s
+        if normalized.startswith("select") and "count(*) filter" in normalized and "from loans where borrower" in normalized:
+            self.last_result = (0, 0, 0, 0, 0, 0, 0, 0)
+            return
+
+        if normalized.startswith("insert into loan_applications"):
+            self.last_result = (1,)
+            return
+
+        if normalized.startswith("update loan_applications"):
+            self.last_result = (1,)
+            return
+
+        if normalized.startswith("select") and "from audit_log" in normalized:
+            self.last_result = []
+            return
+
+        if normalized.startswith("select") and "from loan_applications" in normalized:
+            self.last_result = []
+            return
+
+        if normalized.startswith("select count(*)") and "from disputes" in normalized:
+            self.last_result = (0,)
+            return
+
+        if normalized.startswith("select count(*)") and "from role_requests" in normalized:
+            self.last_result = (0,)
+            return
+
+        if normalized.startswith("select count(*)") and "from loans" in normalized and "due_date" in normalized:
+            self.last_result = (0,)
+            return
+
+        # $status quick stats: SELECT COUNT(*), COUNT(*) FILTER (WHERE status IN ...) FROM loans
+        if normalized.startswith("select count(*), count(*) filter") and "from loans" in normalized:
+            total  = len(self.fake_db.loans)
+            active = sum(1 for l in self.fake_db.loans if l["status"] in ("confirmed", "partially_repaid"))
+            self.last_result = (total, active)
+            return
+
+        # $outstanding: active loans for a lender
+        if normalized.startswith("select loan_id, borrower, amount, amount_repaid, currency, status, due_date") and "lender = %s" in normalized:
+            lender = params[0]
+            matches = [
+                l for l in self.fake_db.loans
+                if l["lender"] == lender and l["status"] in ("confirmed", "partially_repaid")
+            ]
+            self.last_result = [
+                (l["loan_id"], l["borrower"], l["amount"], l["amount_repaid"],
+                 l["currency"], l["status"], l.get("due_date"))
+                for l in matches
+            ]
+            return
+
+        if normalized.startswith("select id from disputes where loan_id"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into disputes"):
+            self.fake_db._next_dispute_id = getattr(self.fake_db, '_next_dispute_id', 0) + 1
+            self.last_result = (self.fake_db._next_dispute_id,)
+            return
+
+        if normalized.startswith("select id, status, borrower from loans where id::text"):
+            loan = self.fake_db.find_loan(params[0])
+            self.last_result = None if not loan else (loan["id"], loan["status"], loan["borrower"])
+            return
+
+        if normalized.startswith("select") and "from disputes" in normalized:
+            self.last_result = []
+            return
+
+        if normalized.startswith("select") and "from user_roles" in normalized:
+            self.last_result = None
+            return
+
+        if normalized.startswith("update loans set last_reminder_sent"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select lender from loans where id::text"):
+            # Used by _get_lender_for_id / bulk_loan_action
+            loan = self.fake_db.find_loan(params[0])
+            self.last_result = None if not loan else (loan["lender"],)
+            return
+
+        if normalized.startswith("insert into bot_status"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("update bot_status"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select") and "from bot_status" in normalized:
+            self.last_result = None
+            return
+
+        if normalized.startswith("insert into role_requests"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("update role_requests"):
+            self.last_result = None
+            return
+
+        if normalized.startswith("select") and "from role_requests" in normalized:
+            self.last_result = None
+            return
+
+        # Mod notes queries
+        if normalized.startswith("insert into mod_notes"):
+            self.fake_db._next_note_id = getattr(self.fake_db, '_next_note_id', 0) + 1
+            self.last_result = (self.fake_db._next_note_id,)
+            return
+
+        if normalized.startswith("select id, note, added_by, created_at from mod_notes"):
+            self.last_result = []
+            return
+
+        # Ban system queries
+        if normalized.startswith("select reason from banned_users where username"):
+            username = params[0]
+            ban = self.fake_db.bans.get(username)
+            self.last_result = (ban["reason"],) if ban else None
+            return
+
+        if normalized.startswith("insert into banned_users"):
+            username, reason, banned_by = params[0], params[1], params[2]
+            self.fake_db.bans[username] = {"username": username, "reason": reason, "banned_by": banned_by}
+            self.last_result = None
+            return
+
+        if normalized.startswith("delete from banned_users where username"):
+            username = params[0]
+            removed = self.fake_db.bans.pop(username, None)
+            self.last_result = (username,) if removed else None
+            return
+
+        if normalized.startswith("select username, reason, banned_by, banned_at from banned_users"):
+            self.last_result = [
+                (b["username"], b.get("reason"), b.get("banned_by"), None)
+                for b in self.fake_db.bans.values()
             ]
             return
 

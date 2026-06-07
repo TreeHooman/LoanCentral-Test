@@ -20,12 +20,26 @@ reddit = praw.Reddit(
 
 # PostgreSQL connection
 def get_db_connection():
-    """Get database connection"""
+    """Get database connection.
+
+    Prefers DATABASE_URL when set (Render/Heroku style).  psycopg2 requires
+    the scheme to be 'postgresql://' rather than 'postgres://', so the prefix
+    is normalised before connecting.  Falls back to individual DB_* variables
+    when DATABASE_URL is not present.
+    """
     try:
-        # Determine SSL mode based on host
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            # Render (and some other providers) emit 'postgres://' but psycopg2
+            # only accepts 'postgresql://'.
+            if database_url.startswith("postgres://"):
+                database_url = "postgresql://" + database_url[len("postgres://"):]
+            return psycopg2.connect(database_url, sslmode="require")
+
+        # Fall back to individual connection parameters
         host = os.getenv("DB_HOST", "localhost")
         ssl_mode = "require" if "render.com" in host or "amazonaws.com" in host or "heroku.com" in host else "prefer"
-        
+
         return psycopg2.connect(
             host=host,
             port=os.getenv("DB_PORT"),

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}u/{{ target }} — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:22px">u/{{ target }}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <div style="color:var(--muted);font-size:13px">Public loan profile</div>
+      {% if score >= 90 %}
+        <span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green)">⭐ Trusted Borrower</span>
+      {% elif score >= 70 %}
+        <span class="badge" style="background:rgba(91,110,245,0.2);color:var(--accent-h)">✓ Good Standing</span>
+      {% elif score >= 50 %}
+        <span class="badge" style="background:rgba(241,196,15,0.15);color:var(--yellow)">Fair Standing</span>
+      {% elif score >= 25 %}
+        <span class="badge" style="background:rgba(243,156,18,0.15);color:var(--orange)">⚠ At Risk</span>
+      {% elif profile.loans_as_borrower > 0 %}
+        <span class="badge" style="background:rgba(231,76,60,0.15);color:var(--red)">⛔ High Risk</span>
+      {% else %}
+        <span class="badge" style="background:rgba(136,145,170,0.15);color:var(--muted)">New Member</span>
+      {% endif %}
+    </div>
+  </div>
+  <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;text-decoration:none;">← Back</a>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:24px">
+  <div class="stat-card">
+    <div class="stat-label">Health Score</div>
+    <div class="stat-value {% if score >= 90 %}c-green{% elif score >= 70 %}c-accent{% elif score >= 50 %}c-yellow{% elif score >= 25 %}c-orange{% else %}c-red{% endif %}">
+      {{ score }}/100
+    </div>
+    <div class="stat-sub">{{ score_label }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Loans</div>
+    <div class="stat-value c-accent">{{ profile.loans_as_borrower }}</div>
+    <div class="stat-sub">as borrower</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Unpaid</div>
+    <div class="stat-value {% if profile.unpaid_loans > 0 %}c-red{% else %}c-green{% endif %}">
+      {{ profile.unpaid_loans }}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Borrowed</div>
+    <div class="stat-value c-yellow">${{ "%.2f"|format(profile.amount_borrowed|float) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Repaid</div>
+    <div class="stat-value c-green">${{ "%.2f"|format(profile.amount_repaid|float) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Outstanding</div>
+    <div class="stat-value c-orange">${{ "%.2f"|format(profile.active_amount|float) }}</div>
+    <div class="stat-sub">{{ profile.active_loans }} active</div>
+  </div>
+</div>
+
+{% if profile.unpaid_loans > 0 %}
+<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red);">
+  ⚠️ u/{{ target }} has <strong>{{ profile.unpaid_loans }} unpaid loan(s)</strong> totalling ${{ "%.2f"|format(profile.unpaid_amount|float) }}.
+</div>
+{% endif %}
+
+<!-- Loan history -->
+<div class="section-header" style="margin-bottom:12px">
+  <span class="section-title">Recent Loan History</span>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Loan ID</th>
+        <th>Role</th>
+        <th>Counterparty</th>
+        <th>Amount</th>
+        <th>Repaid</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th>Thread</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if loans %}
+        {% for loan in loans %}
+        <tr>
+          <td><span class="loan-id">{{ loan.loan_id or loan.db_id }}</span></td>
+          <td>
+            {% if loan.borrower == target %}
+              <span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green)">Borrower</span>
+            {% else %}
+              <span class="badge" style="background:rgba(91,110,245,0.2);color:var(--accent-h)">Lender</span>
+            {% endif %}
+          </td>
+          <td class="username">
+            {% if loan.borrower == target %}
+              <a href="{{ url_for('user_profile', username=loan.lender) }}">u/{{ loan.lender }}</a>
+            {% else %}
+              <a href="{{ url_for('user_profile', username=loan.borrower) }}">u/{{ loan.borrower }}</a>
+            {% endif %}
+          </td>
+          <td><span class="amount">{{ "%.2f"|format(loan.amount|float) }} {{ loan.currency }}</span></td>
+          <td>{{ "%.2f"|format(loan.amount_repaid|float) }}</td>
+          <td><span class="badge badge-{{ loan.status }}">
+            {{ {"confirmed":"Active","partially_repaid":"Partial","repaid":"Repaid","unpaid":"Unpaid","refunded":"Refunded"}.get(loan.status, loan.status) }}
+          </span></td>
+          <td class="date-cell">{{ loan.date_created.strftime('%Y-%m-%d') if loan.date_created else '—' }}</td>
+          <td>
+            {% if loan.original_thread %}
+              <a class="thread-link" href="{{ loan.original_thread }}" target="_blank">↗</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="8" class="table-placeholder">No loan history found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_mod %}
+<!-- Mod-only panel: ban status + notes -->
+<div style="margin-top:24px;border:1px solid rgba(231,76,60,0.3);border-radius:10px;padding:20px;background:rgba(231,76,60,0.04)">
+  <div class="section-header" style="margin-bottom:14px">
+    <span class="section-title" style="font-size:15px;color:var(--red)">🔒 Mod Panel — u/{{ target }}</span>
+    <div style="display:flex;gap:8px">
+      {% if is_banned %}
+        <form method="POST" action="/api/admin/bans/{{ target }}" onsubmit="return confirm('Unban u/{{ target }}?')">
+          <input type="hidden" name="_method" value="DELETE">
+          <button type="button" onclick="unbanUser('{{ target }}')" class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)">✓ Unban</button>
+        </form>
+      {% else %}
+        <button onclick="openBanModal('{{ target }}')" class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)">🔨 Ban</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if is_banned %}
+  <div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--red)">
+    ⛔ <strong>Bot-banned</strong> — {{ ban_reason }}
+  </div>
+  {% endif %}
+
+  <!-- Notes -->
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Mod Notes</div>
+    <div id="modNotesDiv">
+      {% if mod_notes %}
+        {% for n in mod_notes %}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:8px;font-size:13px">
+          <div style="color:var(--text)">{{ n.note }}</div>
+          <div style="color:var(--muted);font-size:11px;margin-top:4px">— u/{{ n.added_by }} &nbsp;·&nbsp; {{ n.created_at.strftime('%Y-%m-%d') if n.created_at else '' }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">No notes yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Add note -->
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <input type="text" id="newNoteInput" placeholder="Add a note…"
+           style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;outline:none" />
+    <button onclick="submitNote('{{ target }}')" class="btn-primary">Add Note</button>
+  </div>
+  <p id="noteMsg" style="margin:8px 0 0;font-size:13px;min-height:16px"></p>
+</div>
+
+<!-- Ban modal (reuse pattern) -->
+<div class="modal-overlay" id="profileBanModal" style="display:none">
+  <div class="modal">
+    <h3 id="profileBanTitle">Ban User</h3>
+    <div class="modal-error" id="profileBanError"></div>
+    <label>Reason</label>
+    <input type="text" id="profileBanReason" placeholder="Optional reason" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('profileBanModal').style.display='none'">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitProfileBan()">Ban</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _banTarget = '';
+function openBanModal(u) {
+  _banTarget = u;
+  document.getElementById('profileBanTitle').textContent = 'Ban u/' + u;
+  document.getElementById('profileBanReason').value = '';
+  document.getElementById('profileBanError').textContent = '';
+  document.getElementById('profileBanModal').style.display = 'flex';
+}
+async function submitProfileBan() {
+  const reason = document.getElementById('profileBanReason').value.trim();
+  const r = await fetch(`/api/admin/bans/${_banTarget}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({reason})
+  });
+  if (r.ok) { location.reload(); }
+  else { const d = await r.json(); document.getElementById('profileBanError').textContent = d.error; }
+}
+async function unbanUser(u) {
+  if (!confirm('Unban u/' + u + '?')) return;
+  const r = await fetch(`/api/admin/bans/${u}`, { method: 'DELETE' });
+  if (r.ok) location.reload();
+}
+async function submitNote(u) {
+  const note = document.getElementById('newNoteInput').value.trim();
+  const msg  = document.getElementById('noteMsg');
+  if (!note) { msg.style.color = 'var(--red)'; msg.textContent = 'Note cannot be empty.'; return; }
+  const r = await fetch(`/api/admin/notes/${u}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({note})
+  });
+  if (r.ok) {
+    msg.style.color = 'var(--green)'; msg.textContent = 'Note saved.';
+    document.getElementById('newNoteInput').value = '';
+    setTimeout(() => location.reload(), 800);
+  } else {
+    const d = await r.json(); msg.style.color = 'var(--red)'; msg.textContent = d.error;
+  }
+}
+</script>
+{% endif %}
+
+{% endblock %}

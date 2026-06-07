@@ -10,10 +10,21 @@
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
   <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('disputes')"><div class="stat-label">Open Disputes</div><div class="stat-value c-orange" id="s-disputes">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('requests')"><div class="stat-label">Pending Requests</div><div class="stat-value c-accent" id="s-requests">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('overdue')"><div class="stat-label">Overdue Loans</div><div class="stat-value c-red" id="s-overdue">—</div><div class="stat-sub">past due date</div></div>
 </div>
 
 <!-- Loans tab -->
 <div id="tab-loans">
+  <!-- Bulk action bar (visible when loans checked) -->
+  <div id="bulkBar" style="display:none;background:rgba(91,110,245,0.1);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+    <span id="bulkCount" style="font-weight:600;color:var(--accent-h)">0 selected</span>
+    <button class="btn-action btn-unpaid" onclick="bulkAction('unpaid')">Mark Unpaid</button>
+    <button class="btn-action btn-refund" onclick="bulkAction('refunded')">Refund</button>
+    <button class="btn-action" style="background:rgba(136,145,170,0.15);color:var(--muted)" onclick="clearSelection()">Clear</button>
+  </div>
+
   <div class="toolbar">
     <div class="tabs">
       <button class="tab active" data-status="">All</button>
@@ -26,15 +37,168 @@
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
     </div>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="toggleFilters()">⚙ Filters</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('audit')">📋 Audit Log</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('disputes')" id="disputesBtn">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="showTab('overdue')" id="overdueBtn">⏰ Overdue <span id="overdueBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
+    <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
+    <div style="display:flex;gap:0;align-items:stretch">
+      <input type="text" id="userLookupInput" placeholder="Look up user…"
+             style="background:var(--bg);border:1px solid var(--border);border-right:none;color:var(--text);padding:6px 10px;border-radius:6px 0 0 6px;font-size:13px;outline:none;width:140px"
+             onkeydown="if(event.key==='Enter')goToUser()" />
+      <button onclick="goToUser()" class="btn-primary" style="border-radius:0 6px 6px 0;padding:6px 10px">→</button>
+    </div>
+  </div>
+  <!-- Advanced filters panel -->
+  <div id="filtersPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Date From</label>
+        <input type="date" id="filterDateFrom" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Date To</label>
+        <input type="date" id="filterDateTo" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Min Amount</label>
+        <input type="number" id="filterAmtMin" placeholder="0.00" step="0.01" min="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Max Amount</label>
+        <input type="number" id="filterAmtMax" placeholder="any" step="0.01" min="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px" onchange="loadLoans()" />
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);width:100%" onclick="clearFilters()">Clear Filters</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="cursor:pointer"></th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+      <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
+</div>
+
+<!-- Role requests tab -->
+<div id="tab-requests" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Pending Lender Role Requests</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-      <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+      <thead><tr><th>Username</th><th>Requested</th><th>Reason</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody id="requestsBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
+</div>
+
+<!-- Analytics tab -->
+<div id="tab-analytics" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Analytics</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="stats-grid" style="margin-bottom:20px">
+    <div class="stat-card"><div class="stat-label">Recovery Rate</div><div class="stat-value c-green" id="a-recovery">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Repayment</div><div class="stat-value c-accent" id="a-avgdays">—</div><div class="stat-sub">days from loan to repaid</div></div>
+    <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="a-lent">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Recovered</div><div class="stat-value c-green" id="a-recovered">—</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="table-wrap" style="padding:20px">
+      <div class="section-title" style="margin-bottom:16px;font-size:14px">Monthly Loan Volume — Last 12 Months</div>
+      <canvas id="monthlyChart" height="110"></canvas>
+    </div>
+    <div class="table-wrap" style="padding:20px">
+      <div class="section-title" style="margin-bottom:16px;font-size:14px">Status Breakdown</div>
+      <canvas id="statusChart"></canvas>
+    </div>
+  </div>
+  <div class="section-header"><span class="section-title">Top 5 Lenders by Volume</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Lender</th><th>Loans</th><th>Total Volume</th></tr></thead>
+      <tbody id="topLendersBody"><tr><td colspan="4" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Disputes tab -->
+<div id="tab-disputes" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Loan Disputes</span>
+    <div style="display:flex;gap:8px">
+      <select id="disputeStatusFilter" onchange="loadDisputes()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+        <option value="open">Open</option>
+        <option value="resolved">Resolved</option>
+        <option value="dismissed">Dismissed</option>
+      </select>
+      <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Borrower</th><th>Lender</th><th>Amount</th><th>Reason</th><th>Filed</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="disputesBody"><tr><td colspan="8" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Dispute Resolve Modal -->
+<div class="modal-overlay" id="resolveDisputeModal">
+  <div class="modal">
+    <h3>Resolve Dispute</h3>
+    <div class="modal-error" id="resolveDisputeError"></div>
+    <input type="hidden" id="resolveDisputeId" />
+    <input type="hidden" id="resolveDisputeAction" />
+    <label>Resolution note (optional)</label>
+    <textarea id="resolveDisputeNote" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="e.g. Borrower provided proof of payment..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('resolveDisputeModal')">Cancel</button>
+      <button class="btn-confirm" id="resolveDisputeConfirmBtn" onclick="submitResolveDispute()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Note Modal -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal">
+    <h3>Mod Note</h3>
+    <div class="modal-error" id="noteError"></div>
+    <input type="hidden" id="noteLoanId" />
+    <label>Note (leave blank to clear)</label>
+    <textarea id="noteText" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Internal note visible only to mods..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('noteModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitNote()">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Audit log tab -->
+<div id="tab-audit" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Audit Log</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+      <tbody id="auditBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <button class="btn-primary" id="auditMoreBtn" style="display:none;margin-top:12px" onclick="loadMoreAudit()">Load More</button>
 </div>
 
 <!-- Role management tab -->
@@ -60,28 +224,112 @@
     </table>
   </div>
 </div>
+<!-- Overdue Loans tab -->
+<div id="tab-overdue" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Overdue Loans</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="loadOverdue()">↻ Refresh</button>
+      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back to Loans</button>
+    </div>
+  </div>
+  <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Active loans where the borrower has not repaid by the due date.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Status</th><th>Due Date</th><th>Days Overdue</th><th>Actions</th></tr></thead>
+      <tbody id="overdueBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tab-bans" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Banned Users</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="loadBans()">↻ Refresh</button>
+      <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="openBanModal()">🔨 Ban User</button>
+      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Reason</th><th>Banned By</th><th>Banned At</th><th>Actions</th></tr></thead>
+      <tbody id="bansBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Ban User Modal -->
+<div class="modal-overlay" id="banModal">
+  <div class="modal">
+    <h3>Ban User from Bot Commands</h3>
+    <div class="modal-error" id="banModalError"></div>
+    <label>Reddit Username</label>
+    <input type="text" id="banUsername" placeholder="e.g. someuser (no u/)" />
+    <label>Reason</label>
+    <input type="text" id="banReason" placeholder="Optional reason" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('banModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitBan()">Ban User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Set Password Modal -->
+<div class="modal-overlay" id="setPwModal">
+  <div class="modal">
+    <h3>Set Dashboard Password</h3>
+    <div class="modal-error" id="setPwError"></div>
+    <input type="hidden" id="setPwUsername" />
+    <label>User</label>
+    <input type="text" id="setPwUsernameDisplay" readonly style="opacity:.6" />
+    <label>New Password</label>
+    <input type="password" id="setPwPassword" placeholder="Min. 8 characters" />
+    <label>Confirm Password</label>
+    <input type="password" id="setPwConfirm" placeholder="Repeat password" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('setPwModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitSetPassword()">Set Password</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
   let currentStatus = '';
+  let offset = 0;
   let searchTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans();
+    loadStats(); loadLoans(); loadRequestsBadge(); loadDisputesBadge(); loadOverdueBadge();
+    // Auto-refresh stats and badges every 60 seconds
+    setInterval(() => { loadStats(); loadRequestsBadge(); loadDisputesBadge(); loadOverdueBadge(); }, 60000);
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        offset = 0;
         loadLoans();
       });
     });
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
+      offset = 0;
       searchTimer = setTimeout(loadLoans, 400);
     });
   });
+
+  async function loadRequestsBadge() {
+    try {
+      const reqs = await apiFetch('/api/role-requests');
+      const badge = document.getElementById('requestsBadge');
+      if (reqs.length) { badge.textContent = reqs.length; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
 
   async function loadStats() {
     try {
@@ -93,31 +341,439 @@
       document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
       document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      if (s.open_disputes    != null) document.getElementById('s-disputes').textContent  = s.open_disputes;
+      if (s.pending_requests != null) document.getElementById('s-requests').textContent  = s.pending_requests;
+      if (s.overdue_loans    != null) {
+        document.getElementById('s-overdue').textContent = s.overdue_loans;
+        const badge = document.getElementById('overdueBadge');
+        if (s.overdue_loans > 0) { badge.textContent = s.overdue_loans; badge.style.display = 'inline'; }
+      }
     } catch(e) { console.error(e); }
+  }
+
+  function _buildLoanUrl(extraOffset) {
+    const search   = document.getElementById('searchInput').value.trim();
+    const dateFrom = document.getElementById('filterDateFrom')?.value || '';
+    const dateTo   = document.getElementById('filterDateTo')?.value || '';
+    const amtMin   = document.getElementById('filterAmtMin')?.value || '';
+    const amtMax   = document.getElementById('filterAmtMax')?.value || '';
+    let url = `/api/loans?limit=50&offset=${extraOffset}`;
+    if (currentStatus) url += `&status=${currentStatus}`;
+    if (search)   url += `&search=${encodeURIComponent(search)}`;
+    if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
+    if (dateTo)   url += `&date_to=${encodeURIComponent(dateTo + 'T23:59:59')}`;
+    if (amtMin)   url += `&amount_min=${encodeURIComponent(amtMin)}`;
+    if (amtMax)   url += `&amount_max=${encodeURIComponent(amtMax)}`;
+    return url;
   }
 
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true; btn.textContent = '↻ Loading...';
-    const search = document.getElementById('searchInput').value.trim();
-    let url = `/api/loans?limit=200`;
-    if (currentStatus) url += `&status=${currentStatus}`;
-    if (search) url += `&search=${encodeURIComponent(search)}`;
+    clearSelection();
     try {
-      const loans = await apiFetch(url);
+      const loans = await apiFetch(_buildLoanUrl(offset));
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="12" class="table-placeholder">No loans found.</td></tr>';
+      document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
+      attachCheckboxListeners();
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="12" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  async function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.disabled = true; btn.textContent = 'Loading...';
+    offset += 50;
+    try {
+      const loans = await apiFetch(_buildLoanUrl(offset));
+      const tbody = document.getElementById('loansBody');
+      if (loans.length) {
+        tbody.insertAdjacentHTML('beforeend', loans.map(loanRow).join(''));
+        attachCheckboxListeners();
+      }
+      btn.style.display = loans.length === 50 ? '' : 'none';
+    } catch(e) {
+      offset -= 50;
+      btn.style.display = '';
+    } finally { btn.disabled = false; btn.textContent = 'Load More'; }
+  }
+
+  function toggleFilters() {
+    const p = document.getElementById('filtersPanel');
+    p.style.display = p.style.display === 'none' ? '' : 'none';
+  }
+
+  function clearFilters() {
+    ['filterDateFrom','filterDateTo','filterAmtMin','filterAmtMax'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    offset = 0;
+    loadLoans();
+  }
+
+  // --- Bulk selection ---
+  function attachCheckboxListeners() {
+    document.querySelectorAll('.loan-check').forEach(cb => {
+      cb.onchange = updateBulkBar;
+    });
+  }
+
+  function toggleSelectAll(masterCb) {
+    document.querySelectorAll('.loan-check').forEach(cb => cb.checked = masterCb.checked);
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const checked = document.querySelectorAll('.loan-check:checked');
+    const bar = document.getElementById('bulkBar');
+    document.getElementById('bulkCount').textContent = `${checked.length} selected`;
+    bar.style.display = checked.length ? 'flex' : 'none';
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.loan-check').forEach(cb => cb.checked = false);
+    const sa = document.getElementById('selectAll');
+    if (sa) sa.checked = false;
+    const bar = document.getElementById('bulkBar');
+    if (bar) bar.style.display = 'none';
+  }
+
+  async function bulkAction(action) {
+    const ids = [...document.querySelectorAll('.loan-check:checked')]
+      .map(cb => cb.dataset.id);
+    if (!ids.length) return;
+    const label = action === 'unpaid' ? 'mark unpaid' : 'refund';
+    if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} ${ids.length} loan(s)?`)) return;
+    try {
+      const r = await apiFetch('/api/loans/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
+      toast(`Done: ${r.success} succeeded, ${r.failed} failed.`, r.failed ? 'error' : 'success');
+      clearSelection();
+      loadLoans();
+      loadStats();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   function loadData() { loadLoans(); loadStats(); }
 
   function showTab(name) {
-    document.getElementById('tab-loans').style.display = name === 'loans' ? '' : 'none';
-    document.getElementById('tab-roles').style.display = name === 'roles' ? '' : 'none';
-    if (name === 'roles') loadRoles();
+    ['loans','roles','requests','analytics','audit','disputes','overdue','bans'].forEach(t =>
+      document.getElementById('tab-' + t).style.display = name === t ? '' : 'none'
+    );
+    if (name === 'roles')     loadRoles();
+    if (name === 'requests')  loadRequests();
+    if (name === 'analytics') loadAnalytics();
+    if (name === 'audit')     { auditOffset = 0; loadAudit(); }
+    if (name === 'disputes')  loadDisputes();
+    if (name === 'overdue')   loadOverdue();
+    if (name === 'bans')      loadBans();
+  }
+
+  async function loadDisputesBadge() {
+    try {
+      const rows = await apiFetch('/api/disputes?status=open&limit=1');
+      const badge = document.getElementById('disputesBadge');
+      if (rows.length) { badge.textContent = '!'; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadOverdueBadge() {
+    try {
+      const rows = await apiFetch('/api/loans/overdue');
+      const badge = document.getElementById('overdueBadge');
+      const stat  = document.getElementById('s-overdue');
+      if (stat) stat.textContent = rows.length;
+      if (rows.length) { badge.textContent = rows.length; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadOverdue() {
+    const tbody = document.getElementById('overdueBody');
+    tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr>';
+    try {
+      const loans = await apiFetch('/api/loans/overdue');
+      if (!loans.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder">No overdue loans. 🎉</td></tr>';
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const id = loan.loan_id || loan.db_id;
+        const days = loan.days_overdue || 0;
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
+          <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td class="date-cell" style="color:var(--red);font-weight:600">${fmtDate(loan.due_date)}</td>
+          <td style="color:var(--red);font-weight:600">${days}d overdue</td>
+          <td><div class="actions">
+            <button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function sendReminders() {
+    const btn = document.getElementById('remindersBtn');
+    btn.disabled = true; btn.textContent = '📲 Sending...';
+    try {
+      const r = await apiFetch('/api/admin/send-reminders', { method: 'POST' });
+      toast(`Reminders sent: ${r.periodic_sent} periodic, ${r.due_sent} due-date.`, 'success');
+    } catch(e) { toast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '📲 Send Reminders'; }
+  }
+
+  function goToUser() {
+    const u = document.getElementById('userLookupInput').value.trim().replace(/^u\//i, '').toLowerCase();
+    if (u) window.location.href = '/u/' + u;
+  }
+
+  async function loadBans() {
+    try {
+      const data = await apiFetch('/api/admin/bans');
+      const tbody = document.getElementById('bansBody');
+      const rows = data.banned || [];
+      tbody.innerHTML = rows.length ? rows.map(r => `<tr>
+        <td class="username">u/${r.username}</td>
+        <td style="color:var(--text2);font-size:13px">${r.reason || '—'}</td>
+        <td class="username">u/${r.banned_by}</td>
+        <td class="date-cell">${fmtDate(r.banned_at)}</td>
+        <td><button class="btn-action btn-refund" onclick="unbanUser('${r.username}')">Unban</button></td>
+      </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No banned users.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function openBanModal() {
+    document.getElementById('banUsername').value = '';
+    document.getElementById('banReason').value = '';
+    document.getElementById('banModalError').textContent = '';
+    document.getElementById('banModal').style.display = 'flex';
+  }
+
+  async function submitBan() {
+    const username = document.getElementById('banUsername').value.trim();
+    const reason   = document.getElementById('banReason').value.trim();
+    const errEl    = document.getElementById('banModalError');
+    if (!username) { errEl.textContent = 'Username is required.'; return; }
+    errEl.textContent = '';
+    try {
+      await apiFetch(`/api/admin/bans/${username}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({reason}) });
+      closeModal('banModal');
+      toast(`u/${username} banned.`, 'success');
+      loadBans();
+    } catch(e) { errEl.textContent = e.message; }
+  }
+
+  async function unbanUser(username) {
+    if (!confirm(`Unban u/${username}?`)) return;
+    try {
+      await apiFetch(`/api/admin/bans/${username}`, { method: 'DELETE' });
+      toast(`u/${username} unbanned.`, 'success');
+      loadBans();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  let auditOffset = 0;
+
+  async function loadAudit() {
+    try {
+      const rows = await apiFetch(`/api/audit-log?limit=100&offset=${auditOffset}`);
+      const tbody = document.getElementById('auditBody');
+      const html = rows.length ? rows.map(r => `<tr>
+        <td class="date-cell">${fmtDate(r.created_at)} ${r.created_at ? r.created_at.split('T')[1]?.slice(0,5) : ''}</td>
+        <td class="username">u/${r.actor}</td>
+        <td style="color:var(--accent-h);font-family:monospace;font-size:12px">${r.action}</td>
+        <td style="font-family:monospace;font-size:12px">${r.target || '—'}</td>
+        <td style="color:var(--text2);font-size:12px">${r.details || '—'}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No audit entries yet.</td></tr>';
+      if (auditOffset === 0) tbody.innerHTML = html;
+      else tbody.insertAdjacentHTML('beforeend', html);
+      document.getElementById('auditMoreBtn').style.display = rows.length === 100 ? '' : 'none';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function loadMoreAudit() {
+    auditOffset += 100;
+    await loadAudit();
+  }
+
+  async function loadDisputesBadge() {
+    try {
+      const rows = await apiFetch('/api/disputes?status=open&limit=1');
+      const badge = document.getElementById('disputesBadge');
+      if (Array.isArray(rows) && rows.length) { badge.textContent = '!'; badge.style.display = 'inline'; }
+    } catch(e) {}
+  }
+
+  async function loadDisputes() {
+    const status = document.getElementById('disputeStatusFilter').value;
+    try {
+      const rows = await apiFetch(`/api/disputes?status=${status}&limit=50`);
+      const badge = document.getElementById('disputesBadge');
+      if (status === 'open') {
+        if (rows.length) { badge.textContent = rows.length; badge.style.display = 'inline'; }
+        else badge.style.display = 'none';
+      }
+      const tbody = document.getElementById('disputesBody');
+      tbody.innerHTML = rows.length ? rows.map(d => `<tr>
+        <td style="color:var(--muted);font-size:12px">#${d.id}</td>
+        <td class="username">u/${d.borrower}</td>
+        <td class="username">u/${d.lender}</td>
+        <td><span class="amount">${parseFloat(d.loan_amount).toFixed(2)} ${d.loan_currency}</span></td>
+        <td style="color:var(--text2);font-size:12px;max-width:220px">${d.reason || '—'}</td>
+        <td class="date-cell">${fmtDate(d.created_at)}</td>
+        <td><span class="badge" style="background:${d.status==='open'?'rgba(91,110,245,0.2)':d.status==='resolved'?'rgba(46,204,113,0.15)':'rgba(136,145,170,0.15)'};color:${d.status==='open'?'var(--accent-h)':d.status==='resolved'?'var(--green)':'var(--muted)'}">${d.status}</span></td>
+        <td><div class="actions">
+          ${d.status === 'open' ? `
+            <button class="btn-action btn-paid"   onclick="openResolveDispute(${d.id},'accept')">Accept</button>
+            <button class="btn-action btn-unpaid" onclick="openResolveDispute(${d.id},'dismiss')">Dismiss</button>
+          ` : `<span style="color:var(--muted);font-size:12px">${d.resolution || '—'}</span>`}
+        </div></td>
+      </tr>`).join('') : `<tr><td colspan="8" class="table-placeholder">No ${status} disputes.</td></tr>`;
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function openResolveDispute(id, action) {
+    document.getElementById('resolveDisputeId').value = id;
+    document.getElementById('resolveDisputeAction').value = action;
+    document.getElementById('resolveDisputeNote').value = '';
+    document.getElementById('resolveDisputeError').style.display = 'none';
+    const btn = document.getElementById('resolveDisputeConfirmBtn');
+    btn.textContent = action === 'accept' ? 'Accept (Revert to Active)' : 'Dismiss';
+    btn.style.background = action === 'accept' ? 'var(--green)' : 'var(--red)';
+    document.getElementById('resolveDisputeModal').classList.add('open');
+  }
+
+  async function submitResolveDispute() {
+    const id = document.getElementById('resolveDisputeId').value;
+    const action = document.getElementById('resolveDisputeAction').value;
+    const resolution = document.getElementById('resolveDisputeNote').value.trim();
+    const errEl = document.getElementById('resolveDisputeError');
+    try {
+      await apiFetch(`/api/disputes/${id}/resolve`, { method: 'POST', body: JSON.stringify({ action, resolution }) });
+      closeModal('resolveDisputeModal');
+      toast(action === 'accept' ? 'Dispute accepted — loan reverted to active.' : 'Dispute dismissed.', 'success');
+      loadDisputes();
+      loadDisputesBadge();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  function openNoteModal(loanId, currentNote) {
+    document.getElementById('noteLoanId').value = loanId;
+    document.getElementById('noteText').value = currentNote || '';
+    document.getElementById('noteError').style.display = 'none';
+    document.getElementById('noteModal').classList.add('open');
+  }
+
+  async function submitNote() {
+    const loanId = document.getElementById('noteLoanId').value;
+    const note   = document.getElementById('noteText').value.trim();
+    const errEl  = document.getElementById('noteError');
+    try {
+      await apiFetch(`/api/loans/${loanId}/note`, { method: 'POST', body: JSON.stringify({ note }) });
+      closeModal('noteModal');
+      toast('Note saved.', 'success');
+      loadLoans();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  let _monthlyChart = null, _statusChart = null;
+
+  async function loadAnalytics() {
+    try {
+      const [data, stats] = await Promise.all([apiFetch('/api/analytics'), apiFetch('/api/stats')]);
+
+      document.getElementById('a-recovery').textContent  = data.recovery_rate.toFixed(1) + '%';
+      document.getElementById('a-avgdays').textContent   = data.avg_repayment_days != null ? data.avg_repayment_days : 'N/A';
+      document.getElementById('a-lent').textContent      = '$' + fmt(data.total_lent);
+      document.getElementById('a-recovered').textContent = '$' + fmt(data.total_recovered);
+
+      const chartDefaults = { responsive: true, maintainAspectRatio: true };
+      const gridColor = 'rgba(46,52,72,0.8)';
+      const tickColor = '#8891aa';
+      const legendColor = '#b0b8cc';
+
+      if (_monthlyChart) _monthlyChart.destroy();
+      _monthlyChart = new Chart(document.getElementById('monthlyChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: data.monthly.map(m => m.month),
+          datasets: [
+            { label: 'Volume Lent',  data: data.monthly.map(m => parseFloat(m.volume)),    backgroundColor: 'rgba(91,110,245,0.55)',  borderColor: 'rgba(91,110,245,1)',  borderWidth: 1 },
+            { label: 'Recovered',    data: data.monthly.map(m => parseFloat(m.recovered)), backgroundColor: 'rgba(46,204,113,0.55)',  borderColor: 'rgba(46,204,113,1)',  borderWidth: 1 },
+          ]
+        },
+        options: { ...chartDefaults,
+          plugins: { legend: { labels: { color: legendColor } } },
+          scales: {
+            x: { ticks: { color: tickColor }, grid: { color: gridColor } },
+            y: { ticks: { color: tickColor, callback: v => '$' + v.toLocaleString() }, grid: { color: gridColor } }
+          }
+        }
+      });
+
+      if (_statusChart) _statusChart.destroy();
+      _statusChart = new Chart(document.getElementById('statusChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Active', 'Partial', 'Repaid', 'Unpaid', 'Refunded'],
+          datasets: [{
+            data: [stats.active_loans, stats.partial_loans, stats.repaid_loans, stats.unpaid_loans, stats.refunded_loans],
+            backgroundColor: ['rgba(91,110,245,0.7)','rgba(241,196,15,0.7)','rgba(46,204,113,0.7)','rgba(231,76,60,0.7)','rgba(136,145,170,0.7)'],
+            borderColor:     ['rgba(91,110,245,1)',  'rgba(241,196,15,1)',  'rgba(46,204,113,1)',  'rgba(231,76,60,1)',  'rgba(136,145,170,1)'],
+            borderWidth: 1
+          }]
+        },
+        options: { ...chartDefaults, plugins: { legend: { labels: { color: legendColor }, position: 'bottom' } } }
+      });
+
+      const tbody = document.getElementById('topLendersBody');
+      tbody.innerHTML = data.top_lenders.length
+        ? data.top_lenders.map((l, i) => `<tr>
+            <td style="color:var(--muted)">${i + 1}</td>
+            <td class="username">u/${l.lender}</td>
+            <td>${l.loans}</td>
+            <td><span class="amount">$${fmt(l.volume)}</span></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="table-placeholder">No data yet.</td></tr>';
+    } catch(e) {
+      console.error('Analytics error:', e);
+    }
+  }
+
+  async function loadRequests() {
+    try {
+      const reqs = await apiFetch('/api/role-requests');
+      const badge = document.getElementById('requestsBadge');
+      if (reqs.length) { badge.textContent = reqs.length; badge.style.display = 'inline'; }
+      else { badge.style.display = 'none'; }
+      const tbody = document.getElementById('requestsBody');
+      tbody.innerHTML = reqs.length ? reqs.map(r => `
+        <tr>
+          <td class="username">u/${r.username}</td>
+          <td><span class="badge" style="background:rgba(91,110,245,0.2);color:var(--accent-h)">${r.requested_role}</span></td>
+          <td style="color:var(--text2);max-width:300px">${r.reason || '<span style="color:var(--muted)">No reason given</span>'}</td>
+          <td class="date-cell">${r.created_at ? r.created_at.split('T')[0] : '—'}</td>
+          <td><div class="actions">
+            <button class="btn-action btn-paid" onclick="resolveRequest('${r.username}','approve')">Approve</button>
+            <button class="btn-action btn-unpaid" onclick="resolveRequest('${r.username}','deny')">Deny</button>
+          </div></td>
+        </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No pending requests.</td></tr>';
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function resolveRequest(username, action) {
+    try {
+      await apiFetch(`/api/role-requests/${username}`, { method: 'POST', body: JSON.stringify({ action }) });
+      toast(`u/${username} ${action === 'approve' ? 'approved as lender' : 'denied'}.`, 'success');
+      loadRequests();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function loadRoles() {
@@ -126,7 +782,7 @@
       const tbody = document.getElementById('rolesBody');
       tbody.innerHTML = roles.length ? roles.map(r => `
         <tr>
-          <td class="username">u/${r.username}</td>
+          <td class="username"><a href="/u/${r.username}">u/${r.username}</a></td>
           <td><span class="badge badge-${r.role === 'confirmed' ? 'confirmed' : ''}" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
           <td style="color:var(--muted)">${r.subscription_status}</td>
           <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
@@ -134,6 +790,7 @@
             <button class="btn-action btn-paid" onclick="quickRole('${r.username}','lender')">→ Lender</button>
             <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">→ Mod</button>
+            <button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openSetPwModal('${r.username}')">Set PW</button>
           </div></td>
         </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }
@@ -157,5 +814,28 @@
 
   function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+
+  function openSetPwModal(username) {
+    document.getElementById('setPwUsername').value = username;
+    document.getElementById('setPwUsernameDisplay').value = 'u/' + username;
+    document.getElementById('setPwPassword').value = '';
+    document.getElementById('setPwConfirm').value = '';
+    document.getElementById('setPwError').style.display = 'none';
+    document.getElementById('setPwModal').classList.add('open');
+  }
+
+  async function submitSetPassword() {
+    const username = document.getElementById('setPwUsername').value;
+    const password = document.getElementById('setPwPassword').value;
+    const confirm  = document.getElementById('setPwConfirm').value;
+    const errEl    = document.getElementById('setPwError');
+    if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+    if (password !== confirm) { errEl.textContent = 'Passwords do not match.'; errEl.style.display = 'block'; return; }
+    try {
+      await apiFetch(`/api/admin/users/${username}/password`, { method: 'POST', body: JSON.stringify({ password }) });
+      closeModal('setPwModal');
+      toast(`Password set for u/${username}.`, 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
 </script>
 {% endblock %}

@@ -31,11 +31,19 @@ def process_paid_command(comment):
     loan_id, amount_paid, currency = parsed
     lender = comment.author.name.lower()
 
+    from services import check_ban
+    is_banned, ban_reason = check_ban(lender)
+    if is_banned:
+        comment.reply(f"Your account has been suspended from LoanCentral bot commands. Reason: {ban_reason}")
+        return
+
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")
 
     if error:
         comment.reply(f"Error: {error}")
         return
+
+    from config import DASHBOARD_URL
 
     remaining = result["remaining"]
     response = (
@@ -44,8 +52,37 @@ def process_paid_command(comment):
         f"|:--:|:--:|:--:|:--:|:--:|\n"
         f"|{result['lender']}|{result['borrower']}|{result['loan_amount']:.2f} {result['currency']}"
         f"|{result['new_repaid']:.2f} {result['currency']}|{remaining:.2f} {result['currency']}|\n\n"
-        f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}"
+        f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}\n\n"
+        f"**[View full loan history on LoanCentral Dashboard]({DASHBOARD_URL})**"
     )
 
     comment.reply(response)
+
+    # DM the borrower to confirm their payment has been acknowledged
+    try:
+        from utils import reddit
+        from config import DASHBOARD_URL as _DURL
+        status_msg = "Your loan is now **fully repaid**. 🎉" if result['new_status'] == 'repaid' else \
+                     f"Remaining balance: **{result['remaining']:.2f} {result['currency']}**."
+        reddit.redditor(result['borrower']).message(
+            subject=f"Payment acknowledged — loan {loan_id}",
+            message=(
+                f"Hi u/{result['borrower']},\n\n"
+                f"u/{result['lender']} has recorded your payment of "
+                f"**{amount_paid:.2f} {result['currency']}** on loan `{loan_id}`.\n\n"
+                f"{status_msg}\n\n"
+                f"[View your loan history on LoanCentral Dashboard]({_DURL})"
+            )
+        )
+        logger.info(f"DM sent to u/{result['borrower']} for payment on loan {loan_id}")
+    except Exception as e:
+        logger.error(f"Failed to DM u/{result['borrower']} for payment on {loan_id}: {e}")
+
+    try:
+        from notifications import notify_discord
+        status_note = " ✅ FULLY REPAID" if result['new_status'] == 'repaid' else ""
+        notify_discord(f"💳 Payment: u/{result['borrower']} paid {amount_paid:.2f} {result['currency']} to u/{result['lender']}{status_note} | Loan {loan_id}")
+    except Exception as e:
+        logger.error(f"Discord notify failed for payment on {loan_id}: {e}")
+
     logger.info(f"Payment recorded on loan {loan_id} by lender {lender}")

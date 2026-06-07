@@ -126,6 +126,27 @@
 
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* MOBILE */
+    @media (max-width: 768px) {
+      nav { padding: 0 12px; height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+      .nav-links { display: none; }
+      .nav-right { gap: 6px; flex-wrap: wrap; }
+      .nav-user { display: none; }
+      main { padding: 12px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat-value { font-size: 20px; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 600px; }
+      th, td { padding: 8px 10px; font-size: 12px; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+      .toolbar .tabs { flex-wrap: wrap; }
+      .search-wrap { min-width: unset; }
+      .modal { width: 95vw; padding: 16px; }
+      .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .btn-primary, .btn-logout { font-size: 12px; padding: 6px 10px; }
+      #toast { bottom: 12px; right: 12px; left: 12px; max-width: unset; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -141,8 +162,11 @@
     {% endif %}
   </div>
   <div class="nav-right">
+    <a class="nav-link {% if request.endpoint == 'leaderboard_page' %}active{% endif %}" href="{{ url_for('leaderboard_page') }}">🏆 Leaderboard</a>
     <span class="role-badge role-{{ role }}">{{ role }}</span>
     <span class="nav-user">u/{{ username }}</span>
+    <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">⚙ Settings</a>
+    <a class="btn-logout" href="/privacy" style="margin-right:4px">Privacy</a>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>
 </nav>
@@ -292,23 +316,31 @@
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
+    const dbId = loan.db_id || loan.loan_id;
     const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
     const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
+    const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
+    const noteIcon   = loan.notes ? `<span title="${loan.notes.replace(/"/g,'&quot;')}" style="color:var(--yellow);cursor:help">📝</span> ` : '';
     return `<tr>
-      <td><span class="loan-id">${id}</span></td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
+      <td style="width:36px"><input type="checkbox" class="loan-check" data-id="${dbId}" style="cursor:pointer"></td>
+      <td><span class="loan-id">${id}</span> ${noteIcon}</td>
+      <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
+      <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="date-cell">${repaidDate}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+        ${typeof openNoteModal === 'function' ? `<button class="btn-action" style="background:rgba(91,110,245,0.15);color:var(--accent-h)" onclick="openNoteModal('${dbId}',${JSON.stringify(loan.notes||'')})">Note</button>` : ''}
       </div></td>
     </tr>`;
   }

@@ -1,0 +1,84 @@
+services:
+  - type: web
+    name: loancentral-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api.app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_CLIENT_ID
+        sync: false
+      - key: DASHBOARD_CLIENT_SECRET
+        sync: false
+      - key: DASHBOARD_REDIRECT_URI
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: LOANCENTRAL_ENV
+        value: prod
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: LENDER_FLAIR
+        value: "Verified Lender"
+
+  - type: worker
+    name: loancentral-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_USER_AGENT
+        sync: false
+      - key: SUBREDDITS
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: LENDER_FLAIR
+        value: "Verified Lender"
+
+  - type: cron
+    name: loancentral-reminders
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    schedule: "0 14 * * *"   # 9 AM Eastern / 2 PM UTC daily
+    startCommand: python reminders.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false

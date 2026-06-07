@@ -1,21 +1,83 @@
-STATUS: Dashboard fully built, test data seeded, server runs via run_dev.py
-LAST THING DONE: Login page confirmed working in browser at http://127.0.0.1:5000
+STATUS: Full feature build complete. 64/64 tests passing. Ready to deploy.
+LAST THING DONE: $leaderboard, pagination, $loan DM, rate limiting, error pages,
+                 mod DM on role request, offset API support.
 
-NEXT STEPS (in order):
-1. Test all 3 dashboards - open browser, go to /auth/dev-login, try each username:
-   - testmod    → mod dashboard (all loans, role management)
-   - testlender → lender dashboard (their loans, stats, action buttons)
-   - testborrower → borrower dashboard (what they owe, health score)
-2. Fix anything that looks broken or ugly in the UI
-3. Add dashboard link to every bot reply (funnel users to the site)
-4. Wire up real Reddit OAuth credentials from the test app
+=== ALL FEATURES (complete list) ===
 
-TO RUN THE SERVER:
-1. Open pgAdmin (keep it open)
-2. Open PowerShell in C:\LB drive
-3. Run: python run_dev.py
-4. Go to: http://127.0.0.1:5000
+BOT COMMANDS (7 total):
+- $help           lists all commands + dashboard link
+- $loan           records loan, DMs borrower confirmation, links to dashboard
+- $paid_with_id   records repayment, links to dashboard
+- $unpaid         marks unpaid, DMs borrower warning, links to dashboard
+- $refunded       cancels loan, links to dashboard
+- $check u/name   shows any user's health score + stats (public)
+- $mystats        shows your OWN stats privately
+- $leaderboard    top 5 lenders by volume + top 5 borrowers by repayment rate
+Bot auto-replies to [REQ]/[PRE] posts with borrower profile table + health score.
+Bot rate limits: max 5 commands per user per 60 seconds.
+
+DASHBOARD PAGES:
+- Login page (Reddit OAuth or dev bypass)
+- Mod dashboard: loans, status tabs, search, role management,
+                 role requests (approve/deny), CSV export, Load More pagination
+- Lender dashboard: loans, stats, search by borrower, action buttons, Load More
+- Borrower dashboard: what I owe, health score, history with Load More,
+                      Request Lender Access button
+- Public profile page: /u/<username> — shareable, health score + loan history
+- Error pages: clean 404/403/500
+
+API:
+- All loan endpoints support limit + offset (pagination)
+- CSV export at /api/loans/export.csv (mod only)
+- Role request endpoints (submit/list/approve/deny)
+
+NOTIFICATIONS:
+- $loan → DM borrower when loan recorded
+- $unpaid → DM borrower when marked unpaid
+- Role request → DM subreddit mods via Reddit
+
+DEPLOYMENT:
+- render.yaml: web service + bot worker
+- Procfile, runtime.txt
+- DATABASE_URL support in utils.py
+
+=== NEXT STEPS ===
+
+1. Register Reddit app (reddit.com/prefs/apps → Create App → web app)
+   Redirect URI: http://localhost:5000/auth/callback
+
+2. Fill in .env:
+   REDDIT_CLIENT_ID=        ← bot API creds
+   REDDIT_CLIENT_SECRET=
+   REDDIT_USERNAME=
+   REDDIT_PASSWORD=
+   REDDIT_USER_AGENT=LoanCentral/1.0 by your_username
+   SUBREDDITS=YourSubredditName
+   DASHBOARD_CLIENT_ID=     ← Reddit OAuth for dashboard login
+   DASHBOARD_CLIENT_SECRET=
+   DASHBOARD_REDIRECT_URI=http://localhost:5000/auth/callback
+   DASHBOARD_URL=http://localhost:5000
+   SECRET_KEY=<any random string, e.g. python -c "import secrets; print(secrets.token_hex(32))">
+   API_KEY=<any random string>
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=loancentral
+   DB_USER=
+   DB_PASSWORD=
+
+3. Run schema migration (one time):
+   Open pgAdmin → run schema.sql (adds role_requests table, safe to re-run)
+
+4. Test locally:
+   python run_dev.py → http://127.0.0.1:5000/auth/dev-login
+   Test all 3 dashboards, $check, $mystats, $leaderboard
+
+5. Deploy to Render:
+   - Push this branch to main
+   - Connect repo in Render → render.yaml auto-configures everything
+   - Fill in env vars in Render dashboard
+   - Update DASHBOARD_URL + DASHBOARD_REDIRECT_URI to live Render URL
 
 GITHUB: https://github.com/TreeHooman/LoanCentral-Test
-BRANCH: upgrade/tested-bot-core
-TESTS: 43/43 passing (run: python -m unittest discover -s tests -q)
+BRANCH: claude/current-status-PAl0w
+TESTS: 64/64 passing

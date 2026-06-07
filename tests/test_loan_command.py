@@ -96,6 +96,81 @@ class LoanCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["loans_as_borrower"], 1)
         self.assertEqual(fake_db.users["borrower"]["amount_borrowed"], Decimal("75"))
 
+    def test_valid_due_date_creates_loan(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 100 USD u/borrower due:30d")
+        self.assertEqual(len(fake_db.loans), 1)
+        self.assertIsNotNone(fake_db.loans[0].get("due_date"))
+        self.assertIn("Loan recorded", comment.replies[0])
+
+    def test_due_date_shown_in_reply(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 100 USD u/borrower due:7d")
+        self.assertEqual(len(fake_db.loans), 1)
+        self.assertIn("Due Date", comment.replies[0])
+
+    def test_due_date_weeks(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower due:2w")
+        self.assertEqual(len(fake_db.loans), 1)
+        self.assertIsNotNone(fake_db.loans[0].get("due_date"))
+
+    def test_invalid_due_date_rejected(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower due:abc")
+        # Invalid format — loan should NOT be created
+        self.assertEqual(len(fake_db.loans), 0)
+        self.assertIn("Invalid due date", comment.replies[0])
+
+    def test_zero_due_date_rejected(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower due:0d")
+        self.assertEqual(len(fake_db.loans), 0)
+        self.assertIn("Invalid due date", comment.replies[0])
+
+
+class DueDateParseTests(unittest.TestCase):
+    """Unit tests for _parse_due_date helper."""
+
+    def setUp(self):
+        from commands.loan_command import _parse_due_date
+        self._parse = _parse_due_date
+
+    def test_none_returns_none(self):
+        self.assertIsNone(self._parse(None))
+
+    def test_empty_string_returns_none(self):
+        self.assertIsNone(self._parse(""))
+
+    def test_30d_returns_future_date(self):
+        from datetime import datetime, timedelta
+        result = self._parse("30d")
+        self.assertIsNotNone(result)
+        self.assertGreater(result, datetime.now() + timedelta(days=29))
+
+    def test_2w_returns_future_date(self):
+        from datetime import datetime, timedelta
+        result = self._parse("2w")
+        self.assertIsNotNone(result)
+        self.assertGreater(result, datetime.now() + timedelta(days=13))
+
+    def test_1m_returns_future_date(self):
+        from datetime import datetime, timedelta
+        result = self._parse("1m")
+        self.assertIsNotNone(result)
+        self.assertGreater(result, datetime.now() + timedelta(days=29))
+
+    def test_0d_returns_none(self):
+        self.assertIsNone(self._parse("0d"))
+
+    def test_0w_returns_none(self):
+        self.assertIsNone(self._parse("0w"))
+
+    def test_invalid_format_returns_none(self):
+        self.assertIsNone(self._parse("abc"))
+        self.assertIsNone(self._parse("30"))
+        self.assertIsNone(self._parse("30x"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,25 @@
     <div class="section-title" style="font-size:20px">My Loan Overview</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="openRoleRequestModal()">Request Lender Access</button>
+    <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/auth/change-password">⚙ Settings</a>
+  </div>
+</div>
+
+<!-- Role request modal -->
+<div class="modal-overlay" id="roleRequestModal">
+  <div class="modal">
+    <h3>Request Lender Access</h3>
+    <div class="modal-error" id="roleReqError"></div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">Tell the mods why you'd like Verified Lender status. Include any relevant history.</p>
+    <label>Reason (optional)</label>
+    <textarea id="roleReqReason" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="e.g. I've been lending on this sub for 6 months..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('roleRequestModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitRoleRequest()">Submit Request</button>
+    </div>
+  </div>
 </div>
 
 <!-- Stats -->
@@ -15,6 +34,8 @@
   <div class="stat-card"><div class="stat-label">Total Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div></div>
   <div class="stat-card"><div class="stat-label">Unpaid Loans</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Repaid Loans</div><div class="stat-value c-green" id="s-repaid-count">—</div></div>
+  <div class="stat-card"><div class="stat-label">Overdue</div><div class="stat-value c-red" id="s-overdue">—</div><div class="stat-sub">past due date</div></div>
   <div class="stat-card"><div class="stat-label">Health Score</div><div class="stat-value" id="s-health" style="font-size:22px">—</div><div class="stat-sub" id="s-health-label"></div></div>
 </div>
 
@@ -26,8 +47,8 @@
 
 <div class="table-wrap" style="margin-bottom:24px">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th></tr></thead>
-    <tbody id="owingBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th><th>Due</th><th>Action</th></tr></thead>
+    <tbody id="owingBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -44,9 +65,89 @@
 
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th><th>Thread</th></tr></thead>
-    <tbody id="historyBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Thread</th></tr></thead>
+    <tbody id="historyBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
+</div>
+<button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
+
+<!-- Loan Applications -->
+<div class="section-header" style="margin-top:32px">
+  <span class="section-title">Request a Loan</span>
+  <button class="btn-primary" onclick="openLoanAppModal()">+ New Request</button>
+</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>ID</th><th>Amount</th><th>Status</th><th>Lender</th><th>Posted</th><th>Action</th></tr></thead>
+    <tbody id="myAppsBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Available Lenders -->
+<div class="section-header">
+  <span class="section-title">Available Lenders</span>
+  <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadAvailableLenders()">↻ Refresh</button>
+</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Lender</th><th>Loans Made</th><th>Total Lent</th></tr></thead>
+    <tbody id="availLendersBody"><tr><td colspan="3" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Loan Application Modal -->
+<div class="modal-overlay" id="loanAppModal">
+  <div class="modal">
+    <h3>Request a Loan</h3>
+    <div class="modal-error" id="loanAppError"></div>
+    <label>Amount</label>
+    <input type="number" id="appAmount" placeholder="e.g. 100" step="0.01" min="1" />
+    <label>Currency</label>
+    <input type="text" id="appCurrency" placeholder="USD" maxlength="3" value="USD" style="text-transform:uppercase" />
+    <label>Reason (optional)</label>
+    <textarea id="appReason" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Why do you need this loan?"></textarea>
+    <label>Repayment Plan (optional)</label>
+    <textarea id="appPlan" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="When / how do you plan to repay?"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('loanAppModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitLoanApp()">Submit Request</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dispute Modal -->
+<div class="modal-overlay" id="disputeModal">
+  <div class="modal">
+    <h3>File a Dispute</h3>
+    <div class="modal-error" id="disputeError"></div>
+    <input type="hidden" id="disputeLoanId" />
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+      If you believe a loan has been incorrectly marked unpaid, file a dispute and a mod will review it.
+    </p>
+    <label>Reason (optional)</label>
+    <textarea id="disputeReason" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:12px;outline:none;" placeholder="Explain why you believe this is incorrect..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('disputeModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--red)" onclick="submitDispute()">File Dispute</button>
+    </div>
+  </div>
+</div>
+
+<!-- SMS Reminders Settings -->
+<div class="section-header" style="margin-top:32px">
+  <span class="section-title">SMS Reminders</span>
+</div>
+<div class="table-wrap" style="padding:24px;max-width:480px">
+  <p style="color:var(--text2);font-size:13px;margin-bottom:16px;line-height:1.6">
+    Add your phone number to receive SMS reminders for active loans (every 7 days) and urgent notices when a loan is marked unpaid. Completely optional.
+  </p>
+  <div style="display:flex;gap:10px;align-items:center">
+    <input type="tel" id="phoneInput" placeholder="+1 555 123 4567"
+           style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:6px;font-size:14px;outline:none" />
+    <button class="btn-primary" onclick="savePhone()">Save</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--red)" onclick="removePhone()">Remove</button>
+  </div>
+  <p style="color:var(--muted);font-size:11px;margin-top:8px">US &amp; Canada: enter 10 digits (e.g. 5551234567) or include +1. US/Canada only.</p>
 </div>
 {% endblock %}
 
@@ -54,6 +155,7 @@
 <script>
   const ME = '{{ username }}';
   let historyStatus = '';
+  let offset = 0;
 
   document.addEventListener('DOMContentLoaded', () => {
     loadAll();
@@ -62,28 +164,59 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         historyStatus = tab.dataset.status;
+        offset = 0;
         loadHistory();
       });
     });
   });
 
   async function loadAll() {
-    await Promise.all([loadProfile(), loadOwing(), loadHistory()]);
+    await Promise.all([loadProfile(), loadBorrowerStats(), loadOwing(), loadHistory(), loadMyApps(), loadAvailableLenders()]);
   }
 
   async function loadProfile() {
     try {
       const p = await apiFetch(`/api/users/${ME}`);
-      document.getElementById('s-borrowed').textContent    = '$' + fmt(p.amount_borrowed);
-      document.getElementById('s-repaid').textContent      = '$' + fmt(p.amount_repaid);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(p.active_amount || 0);
-      document.getElementById('s-unpaid').textContent      = p.unpaid_loans;
       const score = calcHealth(p);
       const el = document.getElementById('s-health');
       el.textContent = score + '/100';
       el.className = 'stat-value ' + healthColor(score);
-      document.getElementById('s-health-label').textContent = healthLabel(score);
+      const tier = p.credit_tier || {};
+      document.getElementById('s-health-label').textContent =
+        healthLabel(score) + (tier.label ? ' — ' + tier.label : '');
+      if (p.phone_number) document.getElementById('phoneInput').value = p.phone_number;
     } catch(e) { console.error(e); }
+  }
+
+  async function loadBorrowerStats() {
+    try {
+      const s = await apiFetch(`/api/stats/borrower/${ME}`);
+      document.getElementById('s-borrowed').textContent    = '$' + fmt(s.total_borrowed);
+      document.getElementById('s-repaid').textContent      = '$' + fmt(s.total_repaid);
+      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
+      document.getElementById('s-unpaid').textContent      = s.unpaid_loans;
+      document.getElementById('s-repaid-count').textContent = s.repaid_loans;
+      const overdueEl = document.getElementById('s-overdue');
+      overdueEl.textContent = s.overdue_loans;
+      if (s.overdue_loans > 0) overdueEl.style.color = 'var(--red)';
+    } catch(e) { console.error(e); }
+  }
+
+  async function savePhone() {
+    const phone = document.getElementById('phoneInput').value.trim();
+    if (!phone) { toast('Enter a phone number first.', 'error'); return; }
+    try {
+      const r = await apiFetch('/api/users/me/phone', { method: 'POST', body: JSON.stringify({ phone }) });
+      toast(r.message || 'Phone number saved!', 'success');
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function removePhone() {
+    document.getElementById('phoneInput').value = '';
+    try {
+      const r = await apiFetch('/api/users/me/phone', { method: 'POST', body: JSON.stringify({ phone: '' }) });
+      toast(r.message || 'Phone number removed.', 'success');
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function loadOwing() {
@@ -94,12 +227,14 @@
       const all = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
       const tbody = document.getElementById('owingBody');
       if (!all.length) {
-        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
         return;
       }
       tbody.innerHTML = all.map(loan => {
         const owe = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
         const id = loan.loan_id || loan.db_id;
+        const dueDate = loan.due_date ? fmtDate(loan.due_date) : '—';
+        const duePast = loan.due_date && new Date(loan.due_date) < new Date();
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
@@ -108,39 +243,167 @@
           <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td class="date-cell" style="${duePast?'color:var(--red);font-weight:600':''}">${dueDate}</td>
+          <td>${loan.status === 'unpaid' ? `<button class="btn-action btn-unpaid" onclick="openDisputeModal('${id}')">Dispute</button>` : '—'}</td>
         </tr>`;
       }).join('');
     } catch(e) {
-      document.getElementById('owingBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('owingBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
   }
 
+  function buildHistoryRow(loan) {
+    const id = loan.loan_id || loan.db_id;
+    const thread     = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+    const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
+    const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
+    return `<tr>
+      <td><span class="loan-id">${id}</span></td>
+      <td class="username">u/${loan.lender}</td>
+      <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="date-cell">${fmtDate(loan.date_created)}</td>
+      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="date-cell">${repaidDate}</td>
+      <td>${thread}</td>
+    </tr>`;
+  }
+
   async function loadHistory() {
-    let url = `/api/loans?borrower=${ME}&limit=100`;
+    let url = `/api/loans?borrower=${ME}&limit=50&offset=${offset}`;
     if (historyStatus) url += `&status=${historyStatus}`;
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('historyBody');
       if (!loans.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="table-placeholder">No loan history found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="table-placeholder">No loan history found.</td></tr>';
+        document.getElementById('loadMoreBtn').style.display = 'none';
         return;
       }
-      tbody.innerHTML = loans.map(loan => {
-        const id = loan.loan_id || loan.db_id;
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
-        return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-          <td class="date-cell">${fmtDate(loan.date_created)}</td>
-          <td>${thread}</td>
-        </tr>`;
-      }).join('');
+      tbody.innerHTML = loans.map(buildHistoryRow).join('');
+      document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
-      document.getElementById('historyBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('historyBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
+  }
+
+  async function loadMore() {
+    const btn = document.getElementById('loadMoreBtn');
+    btn.disabled = true; btn.textContent = 'Loading...';
+    offset += 50;
+    let url = `/api/loans?borrower=${ME}&limit=50&offset=${offset}`;
+    if (historyStatus) url += `&status=${historyStatus}`;
+    try {
+      const loans = await apiFetch(url);
+      const tbody = document.getElementById('historyBody');
+      if (loans.length) tbody.insertAdjacentHTML('beforeend', loans.map(buildHistoryRow).join(''));
+      btn.style.display = loans.length === 50 ? '' : 'none';
+    } catch(e) {
+      offset -= 50;
+      btn.style.display = '';
+    } finally { btn.disabled = false; btn.textContent = 'Load More'; }
+  }
+
+  function openDisputeModal(loanId) {
+    document.getElementById('disputeLoanId').value = loanId;
+    document.getElementById('disputeReason').value = '';
+    document.getElementById('disputeError').style.display = 'none';
+    document.getElementById('disputeModal').classList.add('open');
+  }
+
+  async function submitDispute() {
+    const loanId = document.getElementById('disputeLoanId').value;
+    const reason = document.getElementById('disputeReason').value.trim();
+    const errEl  = document.getElementById('disputeError');
+    try {
+      const r = await apiFetch(`/api/loans/${loanId}/dispute`, { method: 'POST', body: JSON.stringify({ reason }) });
+      closeModal('disputeModal');
+      toast(r.message || 'Dispute filed!', 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  function openRoleRequestModal() {
+    document.getElementById('roleReqError').style.display = 'none';
+    document.getElementById('roleReqReason').value = '';
+    document.getElementById('roleRequestModal').classList.add('open');
+  }
+
+  async function submitRoleRequest() {
+    const reason = document.getElementById('roleReqReason').value.trim();
+    const errEl = document.getElementById('roleReqError');
+    try {
+      const data = await apiFetch('/api/role-requests', { method: 'POST', body: JSON.stringify({ role: 'lender', reason }) });
+      closeModal('roleRequestModal');
+      toast(data.message || 'Request submitted!', 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function loadMyApps() {
+    try {
+      const apps = await apiFetch(`/api/loan-applications?borrower=${ME}`);
+      const tbody = document.getElementById('myAppsBody');
+      if (!apps.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="table-placeholder">No loan requests yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = apps.map(a => `<tr>
+        <td style="color:var(--muted);font-size:12px">#${a.id}</td>
+        <td><span class="amount">${parseFloat(a.amount).toFixed(2)} ${a.currency}</span></td>
+        <td><span class="badge badge-${a.status === 'open' ? 'confirmed' : a.status}">${a.status}</span></td>
+        <td>${a.lender ? 'u/' + a.lender : '—'}</td>
+        <td class="date-cell">${fmtDate(a.created_at)}</td>
+        <td>${a.status === 'open' ? `<button class="btn-action btn-refund" onclick="cancelApp(${a.id})">Cancel</button>` : '—'}</td>
+      </tr>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadAvailableLenders() {
+    try {
+      const lenders = await apiFetch('/api/lenders/available');
+      const tbody = document.getElementById('availLendersBody');
+      if (!lenders.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="table-placeholder">No lenders marked available right now.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lenders.map(l => `<tr>
+        <td class="username">u/${l.username}</td>
+        <td>${l.loans_as_lender}</td>
+        <td><span class="amount">$${fmt(l.amount_lent)}</span></td>
+      </tr>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  function openLoanAppModal() {
+    document.getElementById('loanAppError').style.display = 'none';
+    document.getElementById('appAmount').value = '';
+    document.getElementById('appCurrency').value = 'USD';
+    document.getElementById('appReason').value = '';
+    document.getElementById('appPlan').value = '';
+    document.getElementById('loanAppModal').classList.add('open');
+  }
+
+  async function submitLoanApp() {
+    const amount   = parseFloat(document.getElementById('appAmount').value);
+    const currency = document.getElementById('appCurrency').value.trim().toUpperCase() || 'USD';
+    const reason   = document.getElementById('appReason').value.trim();
+    const plan     = document.getElementById('appPlan').value.trim();
+    const errEl    = document.getElementById('loanAppError');
+    if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; errEl.style.display = 'block'; return; }
+    try {
+      const r = await apiFetch('/api/loan-applications', { method: 'POST', body: JSON.stringify({ amount, currency, reason, repayment_plan: plan }) });
+      closeModal('loanAppModal');
+      toast(r.message || 'Request submitted!', 'success');
+      loadMyApps();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function cancelApp(id) {
+    try {
+      await apiFetch(`/api/loan-applications/${id}/cancel`, { method: 'POST' });
+      toast('Application cancelled.', 'success');
+      loadMyApps();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   function calcHealth(p) {

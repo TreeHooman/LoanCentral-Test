@@ -40,6 +40,108 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
 
+-- Role requests table (borrowers requesting lender access)
+CREATE TABLE IF NOT EXISTS role_requests (
+    username TEXT PRIMARY KEY,
+    requested_role TEXT NOT NULL DEFAULT 'lender',
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 'approved', 'denied'
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_requests_status ON role_requests(status);
+
+-- Password login support (no Reddit OAuth required)
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+-- SMS reminders
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS phone_number TEXT;
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS last_reminder_sent TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_reminder ON loans(last_reminder_sent);
+
+-- Due dates on loans
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS due_date TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_due_date ON loans(due_date);
+
+-- Lender availability flag
+ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS available BOOLEAN DEFAULT true;
+
+-- Audit log: tracks all significant mod/lender actions
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+
+-- Loan applications: borrowers post requests, lenders claim them
+CREATE TABLE IF NOT EXISTS loan_applications (
+    id SERIAL PRIMARY KEY,
+    borrower TEXT NOT NULL,
+    amount NUMERIC NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    reason TEXT,
+    repayment_plan TEXT,
+    status TEXT NOT NULL DEFAULT 'open',  -- 'open', 'claimed', 'funded', 'cancelled'
+    lender TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_loan_apps_borrower ON loan_applications(borrower);
+CREATE INDEX IF NOT EXISTS idx_loan_apps_status ON loan_applications(status);
+
+-- Migration: add date_repaid column (safe to re-run)
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS date_repaid TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_loans_date_repaid ON loans(date_repaid);
+
+-- Mod notes on individual loans
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Dispute system: borrowers can dispute an unpaid mark
+CREATE TABLE IF NOT EXISTS disputes (
+    id SERIAL PRIMARY KEY,
+    loan_id INTEGER NOT NULL,
+    borrower TEXT NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'open',   -- 'open', 'resolved', 'dismissed'
+    resolution TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    resolved_at TIMESTAMP,
+    resolved_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_disputes_status  ON disputes(status);
+CREATE INDEX IF NOT EXISTS idx_disputes_loan_id ON disputes(loan_id);
+
+-- Bot heartbeat: single-row table for liveness tracking
+CREATE TABLE IF NOT EXISTS bot_status (
+    id             INT PRIMARY KEY DEFAULT 1,
+    started_at     TIMESTAMP DEFAULT NOW(),
+    last_heartbeat TIMESTAMP,
+    comment_count  BIGINT DEFAULT 0
+);
+INSERT INTO bot_status (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Mod notes on users (internal, not visible to users)
+CREATE TABLE IF NOT EXISTS mod_notes (
+    id         SERIAL PRIMARY KEY,
+    username   TEXT NOT NULL,
+    note       TEXT NOT NULL,
+    added_by   TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mod_notes_username ON mod_notes(username);
+
+CREATE TABLE IF NOT EXISTS banned_users (
+    id         SERIAL PRIMARY KEY,
+    username   TEXT NOT NULL UNIQUE,
+    reason     TEXT,
+    banned_by  TEXT NOT NULL,
+    banned_at  TIMESTAMP DEFAULT NOW()
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);

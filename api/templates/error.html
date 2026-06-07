@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — LoanCentral{% endblock %}
+
+{% block content %}
+<div style="text-align:center;padding:80px 24px">
+  <div style="font-size:64px;font-weight:800;color:var(--border);margin-bottom:16px">{{ code }}</div>
+  <div style="font-size:20px;font-weight:600;color:var(--text);margin-bottom:8px">
+    {% if code == 404 %}Page Not Found{% elif code == 403 %}Access Denied{% else %}Server Error{% endif %}
+  </div>
+  <div style="font-size:14px;color:var(--muted);margin-bottom:32px">{{ message }}</div>
+  <a href="{{ url_for('home') }}" class="btn-primary" style="text-decoration:none;display:inline-block">
+    ← Back to Dashboard
+  </a>
+</div>
+{% endblock %}

@@ -179,6 +179,25 @@ def init_database_fallback(conn):
         cur.close()
         conn.close()
 
+# Simple in-memory rate limiter: max 5 commands per user per 60 seconds
+_rate_limit_window = 60
+_rate_limit_max = 5
+_user_command_times: dict = {}
+
+# Comments processed counter — flushed to DB by keep_alive()
+_processed_count: int = 0
+
+def _is_rate_limited(username: str) -> bool:
+    now = time.time()
+    times = _user_command_times.get(username, [])
+    times = [t for t in times if now - t < _rate_limit_window]
+    if len(times) >= _rate_limit_max:
+        return True
+    times.append(now)
+    _user_command_times[username] = times
+    return False
+
+
 # Dynamic command loading system
 class CommandManager:
     def __init__(self):
@@ -239,13 +258,47 @@ class CommandManager:
     
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
-        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME").lower():
+        global _processed_count
+        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME", "").lower():
             return
-        
+
         body_lower = comment.body.lower()
-        
-        # Check each command trigger
-        for trigger, command_func in self.commands.items():
+
+        # Quick check: does the body contain any command trigger at all?
+        has_trigger = any(trigger in body_lower for trigger in self.commands)
+        if not has_trigger:
+            return
+
+        _processed_count += 1
+        username = comment.author.name.lower()
+
+        # Global ban check — checked once before any command dispatch
+        # $ban, $unban, $help, $status are always allowed even for banned users
+        ALLOWED_BANNED = {"$ban", "$unban", "$help", "$status"}
+        triggered = next(
+            (t for t in sorted(self.commands, key=lambda x: -len(x)) if t in body_lower), None
+        )
+        if triggered and triggered not in ALLOWED_BANNED:
+            try:
+                from services import check_ban
+                is_banned, ban_reason = check_ban(username)
+                if is_banned:
+                    comment.reply(
+                        f"Your account has been suspended from LoanCentral bot commands. "
+                        f"Reason: {ban_reason}"
+                    )
+                    logger.info(f"Blocked banned user u/{username} from command {triggered}")
+                    return
+            except Exception as _be:
+                logger.warning(f"Ban check failed for {username}: {_be}")
+
+        # Rate limiting
+        if _is_rate_limited(username):
+            logger.warning(f"Rate limit hit for u/{username} on {triggered} — skipping")
+            return
+
+        # Check each command trigger — sorted longest-first to avoid prefix collisions
+        for trigger, command_func in sorted(self.commands.items(), key=lambda x: -len(x[0])):
             if trigger in body_lower:
                 try:
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
@@ -278,39 +331,59 @@ def handle_new_post(post):
 
 # Generate loan history information for a user
 def generate_user_info(username):
-    """Generate loan history information for a user."""
-    from services import get_user_profile
+    """Generate loan history summary posted on [REQ]/[PRE] threads."""
+    from services import get_user_profile, calculate_health_score
+    from config import DASHBOARD_URL
 
     profile, error = get_user_profile(username)
     if error or not profile:
-        return f"Could not retrieve information for u/{username}"
-
-    response = [f"Here is my information on u/{username}:"]
+        return f"Could not retrieve information for u/{username}."
 
     if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
-        response.append(f"u/{username} has no loan history.")
-        return "\n\n".join(response)
+        return (
+            f"**LoanCentral record for u/{username}:**\n\n"
+            f"No loan history found in this system.\n\n"
+            f"[View on LoanCentral Dashboard]({DASHBOARD_URL})"
+        )
 
-    response.append(f"u/{username} has {profile['loans_as_borrower']} loans paid as a borrower, for a total of ${profile['amount_repaid']:.2f}")
-    response.append(f"u/{username} has {profile['loans_as_lender']} loans paid as a lender, for a total of ${profile['amount_lent']:.2f}")
+    score, label = calculate_health_score(profile)
+    borrowed = float(profile["amount_borrowed"])
+    repaid = float(profile["amount_repaid"])
+    repay_pct = round(repaid / borrowed * 100, 1) if borrowed > 0 else 100.0
+
+    lines = [
+        f"**LoanCentral record for u/{username}:**\n",
+        f"|Health Score|Loans as Borrower|Repaid|Unpaid|",
+        f"|:--:|:--:|:--:|:--:|",
+        f"|**{score}/100** ({label})|{profile['loans_as_borrower']}|"
+        f"{profile['loans_as_borrower'] - profile['unpaid_loans']}|{profile['unpaid_loans']}|\n",
+        f"|Total Borrowed|Total Repaid|Repayment Rate|Active Loans|",
+        f"|:--:|:--:|:--:|:--:|",
+        f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|{profile['active_loans']}|\n",
+    ]
 
     if profile["unpaid_loans"] > 0:
-        response.append(f"u/{username} has {profile['unpaid_loans']} loans currently marked unpaid, for a total of ${profile['unpaid_amount']:.2f}")
-    else:
-        response.append(f"u/{username} has not received any loans which are currently marked unpaid")
+        lines.append(
+            f"⚠️ u/{username} has **{profile['unpaid_loans']} unpaid loan(s)** "
+            f"totalling ${float(profile['unpaid_amount']):.2f}.\n"
+        )
 
-    if profile["active_loans"] > 0:
-        response.append(f"u/{username} has {profile['active_loans']} outstanding loans as a borrower, for a total of ${profile['active_amount']:.2f}")
-    else:
-        response.append(f"u/{username} does not have any outstanding loans as a borrower")
-
-    return "\n\n".join(response)
+    lines.append(f"[Full profile on LoanCentral Dashboard]({DASHBOARD_URL})")
+    return "\n".join(lines)
 
 # Function to keep the bot alive
 def keep_alive():
+    global _processed_count
     while True:
         try:
             logger.info("Keep-alive heartbeat")
+            try:
+                from services import update_bot_heartbeat
+                delta = _processed_count
+                _processed_count = 0
+                update_bot_heartbeat(delta)
+            except Exception as hb_err:
+                logger.error(f"Heartbeat update failed: {hb_err}")
             time.sleep(300)  # 5-minute heartbeat
         except Exception as e:
             logger.error(f"Error in keep_alive: {e}")
@@ -365,6 +438,19 @@ def post_monitor():
 if __name__ == "__main__":
     if not init_database():
         sys.exit("Failed to initialize database, exiting")
+
+    # Startup heartbeat + Discord ping
+    try:
+        from services import update_bot_heartbeat
+        update_bot_heartbeat(0)
+    except Exception as _e:
+        logger.warning(f"Initial heartbeat failed: {_e}")
+
+    try:
+        from notifications import notify_discord
+        notify_discord(f"\U0001f7e2 **LoanCentral bot started** — watching r/{subreddit_str}")
+    except Exception as _e:
+        logger.warning(f"Startup Discord ping failed: {_e}")
 
     # Start all threads
     threading.Thread(target=post_monitor, daemon=False).start()
