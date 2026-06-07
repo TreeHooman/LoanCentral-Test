@@ -241,22 +241,27 @@ class FakeCursor:
         params = params or ()
 
         if normalized.startswith("select id, loan_id, lender, borrower") and "id::text = %s" in normalized:
-            # Single-loan lookup (mark_repaid OR forgive): WHERE id::text = %s OR loan_id = %s [AND lender = %s]
+            # Single-loan lookup (mark_repaid / forgive / remind)
             loan = self.fake_db.find_loan(params[0])
             if loan and len(params) == 3:
-                # forgive: also check lender matches
+                # forgive/remind: also check lender matches
                 if loan.get("lender") != params[2]:
                     loan = None
-            self.last_result = None if not loan else (
-                loan["id"],
-                loan["loan_id"],
-                loan["lender"],
-                loan["borrower"],
-                loan["amount"],
-                loan["amount_repaid"],
-                loan["currency"],
-                loan["status"],
-            )
+            if loan is None:
+                self.last_result = None
+            elif "due_date" in normalized:
+                # $remind needs due_date as 9th column
+                self.last_result = (
+                    loan["id"], loan["loan_id"], loan["lender"], loan["borrower"],
+                    loan["amount"], loan["amount_repaid"], loan["currency"],
+                    loan["status"], loan.get("due_date"),
+                )
+            else:
+                self.last_result = (
+                    loan["id"], loan["loan_id"], loan["lender"], loan["borrower"],
+                    loan["amount"], loan["amount_repaid"], loan["currency"],
+                    loan["status"],
+                )
             return
 
         if normalized.startswith("select id from loans where lender") and "status = 'confirmed'" in normalized:
