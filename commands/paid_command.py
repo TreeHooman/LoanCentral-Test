@@ -52,6 +52,26 @@ def process_paid_command(comment):
 
     comment.reply(response)
 
+    # DM the borrower to confirm their payment has been acknowledged
+    try:
+        from utils import reddit
+        from config import DASHBOARD_URL as _DURL
+        status_msg = "Your loan is now **fully repaid**. 🎉" if result['new_status'] == 'repaid' else \
+                     f"Remaining balance: **{result['remaining']:.2f} {result['currency']}**."
+        reddit.redditor(result['borrower']).message(
+            subject=f"Payment acknowledged — loan {loan_id}",
+            message=(
+                f"Hi u/{result['borrower']},\n\n"
+                f"u/{result['lender']} has recorded your payment of "
+                f"**{amount_paid:.2f} {result['currency']}** on loan `{loan_id}`.\n\n"
+                f"{status_msg}\n\n"
+                f"[View your loan history on LoanCentral Dashboard]({_DURL})"
+            )
+        )
+        logger.info(f"DM sent to u/{result['borrower']} for payment on loan {loan_id}")
+    except Exception as e:
+        logger.error(f"Failed to DM u/{result['borrower']} for payment on {loan_id}: {e}")
+
     try:
         from notifications import notify_discord
         status_note = " ✅ FULLY REPAID" if result['new_status'] == 'repaid' else ""

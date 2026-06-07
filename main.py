@@ -411,6 +411,19 @@ if __name__ == "__main__":
     if not init_database():
         sys.exit("Failed to initialize database, exiting")
 
+    # Startup heartbeat + Discord ping
+    try:
+        from services import update_bot_heartbeat
+        update_bot_heartbeat(0)
+    except Exception as _e:
+        logger.warning(f"Initial heartbeat failed: {_e}")
+
+    try:
+        from notifications import notify_discord
+        notify_discord(f"\U0001f7e2 **LoanCentral bot started** — watching r/{subreddit_str}")
+    except Exception as _e:
+        logger.warning(f"Startup Discord ping failed: {_e}")
+
     # Start all threads
     threading.Thread(target=post_monitor, daemon=False).start()
     threading.Thread(target=keep_alive, daemon=False).start()

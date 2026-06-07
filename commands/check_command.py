@@ -54,7 +54,7 @@ def process_check_command(comment):
         f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
         f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
         f"|Total Borrowed|Total Repaid|Repayment Rate|Outstanding|\n"
-        f"|:--:|:--:|:--:|\n"
+        f"|:--:|:--:|:--:|:--:|\n"
         f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|\n\n"
         f"[View full profile on LoanCentral Dashboard]({DASHBOARD_URL})"
     )

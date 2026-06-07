@@ -58,3 +58,12 @@ def process_request_command(comment):
         f"[LoanCentral Dashboard]({DASHBOARD_URL})."
     )
     logger.info(f"Lender role request submitted by u/{username}: {reason[:50] if reason else '(no reason)'}")
+
+    try:
+        from notifications import notify_discord
+        notify_discord(
+            f"\U0001f514 **Lender Request** — u/{username} requested lender access. "
+            f"Reason: {reason[:100] if reason else 'none'}"
+        )
+    except Exception as _e:
+        logger.error(f"Discord notify failed for role request: {_e}")

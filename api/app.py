@@ -606,6 +606,35 @@ def get_me():
     return redirect(url_for("get_user", username=session["username"]))
 
 
+@app.route("/api/users/search", methods=["GET"])
+@require_auth
+def search_users():
+    """Autocomplete endpoint — returns usernames matching query."""
+    q = request.args.get("q", "").strip()[:50]
+    if len(q) < 2:
+        return _json([])
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json([])
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT username FROM user_roles WHERE username ILIKE %s "
+            "UNION "
+            "SELECT username FROM users WHERE username ILIKE %s "
+            "ORDER BY 1 LIMIT 10",
+            (f"%{q}%", f"%{q}%"),
+        )
+        return _json([r[0] for r in cur.fetchall()])
+    except Exception:
+        return _json([])
+    finally:
+        try: cur.close()
+        except Exception: pass
+        conn.close()
+
+
 @app.route("/api/users/me/phone", methods=["POST"])
 @login_required
 def update_phone():
@@ -661,12 +690,21 @@ def get_stats():
             FROM loans
         """)
         row = cur.fetchone()
+
+        cur.execute("SELECT COUNT(*) FROM disputes WHERE status = 'open'")
+        open_disputes = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM role_requests WHERE status = 'pending'")
+        pending_requests = cur.fetchone()[0]
+
         return _json({
-            "total_loans":    row[0], "active_loans":  row[1],
-            "partial_loans":  row[2], "unpaid_loans":  row[3],
-            "repaid_loans":   row[4], "refunded_loans": row[5],
-            "total_volume":   row[6], "total_repaid":  row[7],
-            "outstanding":    row[8],
+            "total_loans":       row[0], "active_loans":    row[1],
+            "partial_loans":     row[2], "unpaid_loans":    row[3],
+            "repaid_loans":      row[4], "refunded_loans":  row[5],
+            "total_volume":      row[6], "total_repaid":    row[7],
+            "outstanding":       row[8],
+            "open_disputes":     open_disputes,
+            "pending_requests":  pending_requests,
         })
     finally:
         cur.close()
@@ -913,6 +951,23 @@ def _notify_mods_of_role_request(username, requested_role, reason):
     except Exception as e:
         import logging
         logging.getLogger("LoanCentral").error(f"Failed to notify mods of role request: {e}")
+
+    # Discord + email (fire-and-forget)
+    try:
+        from notifications import notify_discord, notify_email
+        from config import DASHBOARD_URL
+        notify_discord(
+            f"\U0001f514 **Lender Request** — u/{username} requested {requested_role} access. "
+            f"Reason: {reason[:120] if reason else 'none'}"
+        )
+        notify_email(
+            f"New {requested_role} request from u/{username}",
+            f"u/{username} requested {requested_role} access.\n\nReason: {reason or 'none'}\n\n"
+            f"Review: {DASHBOARD_URL}/dashboard/mod"
+        )
+    except Exception as _e:
+        import logging
+        logging.getLogger("LoanCentral").warning(f"Role request notification failed: {_e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1272,6 +1327,23 @@ def file_dispute(loan_id):
     dispute_id, error = submit_dispute(loan_id, session["username"], reason)
     if error:
         return _json({"error": error}, 400)
+
+    # Notify mods
+    try:
+        from notifications import notify_discord, notify_email
+        from config import DASHBOARD_URL
+        notify_discord(
+            f"⚖️ **Dispute #{dispute_id} Filed** — u/{session['username']} "
+            f"disputed loan #{loan_id}"
+        )
+        notify_email(
+            f"Dispute #{dispute_id} filed on loan #{loan_id}",
+            f"u/{session['username']} filed a dispute on loan #{loan_id}.\n\n"
+            f"Reason: {reason or 'none'}\n\nReview: {DASHBOARD_URL}/dashboard/mod"
+        )
+    except Exception:
+        pass
+
     return _json({"ok": True, "id": dispute_id,
                   "message": "Dispute filed. A mod will review it shortly."})
 
@@ -1298,9 +1370,20 @@ def resolve_dispute_route(dispute_id):
     resolution = (data.get("resolution") or "").strip()[:500]
     if action not in ("accept", "dismiss"):
         return _json({"error": "action must be 'accept' or 'dismiss'"}, 400)
-    ok, error = resolve_dispute(dispute_id, action, session.get("username", "mod"), resolution)
+    actor = session.get("username", "mod")
+    ok, error = resolve_dispute(dispute_id, action, actor, resolution)
     if error:
         return _json({"error": error}, 400)
+
+    try:
+        from notifications import notify_discord
+        verb = "Accepted" if action == "accept" else "Dismissed"
+        notify_discord(
+            f"⚖️ **Dispute #{dispute_id} {verb}** by mod u/{actor}"
+        )
+    except Exception:
+        pass
+
     return _json({"ok": True, "action": action})
 
 

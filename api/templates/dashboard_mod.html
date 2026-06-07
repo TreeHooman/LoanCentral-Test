@@ -10,6 +10,8 @@
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
   <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('disputes')"><div class="stat-label">Open Disputes</div><div class="stat-value c-orange" id="s-disputes">—</div></div>
+  <div class="stat-card" style="cursor:pointer" onclick="showTab('requests')"><div class="stat-label">Pending Requests</div><div class="stat-value c-accent" id="s-requests">—</div></div>
 </div>
 
 <!-- Loans tab -->
@@ -242,6 +244,8 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans(); loadRequestsBadge(); loadDisputesBadge();
+    // Auto-refresh stats and badges every 60 seconds
+    setInterval(() => { loadStats(); loadRequestsBadge(); loadDisputesBadge(); }, 60000);
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -276,6 +280,8 @@
       document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
       document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      if (s.open_disputes    != null) document.getElementById('s-disputes').textContent  = s.open_disputes;
+      if (s.pending_requests != null) document.getElementById('s-requests').textContent  = s.pending_requests;
     } catch(e) { console.error(e); }
   }
 

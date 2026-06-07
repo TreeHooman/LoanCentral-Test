@@ -10,7 +10,7 @@ def process_mystats_command(comment):
     $mystats
     Shows the requesting user's own loan stats and health score.
     """
-    from services import get_user_profile, calculate_health_score
+    from services import get_user_profile, calculate_health_score, credit_tier
     from config import DASHBOARD_URL
 
     if COMMAND_TRIGGER not in comment.body:
@@ -26,6 +26,7 @@ def process_mystats_command(comment):
         return
 
     score, label = calculate_health_score(profile)
+    tier = credit_tier(score)
 
     if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
         comment.reply(
@@ -45,10 +46,10 @@ def process_mystats_command(comment):
     repay_pct = round((repaid / borrowed * 100), 1) if borrowed > 0 else 100.0
 
     reply = (
-        f"**Your loan stats, u/{username}**\n\n"
-        f"|Health Score|Total Loans|Repaid|Unpaid|Active|\n"
-        f"|:--:|:--:|:--:|:--:|:--:|\n"
-        f"|**{score}/100** ({label})|{total}|{paid_count}|{unpaid}|{active}|\n\n"
+        f"**Your loan stats, u/{username}** — *{tier['label']}*\n\n"
+        f"|Health Score|Credit Tier|Total Loans|Repaid|Unpaid|Active|\n"
+        f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
+        f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
         f"|Total Borrowed|Total Repaid|Repayment Rate|Outstanding|\n"
         f"|:--:|:--:|:--:|:--:|\n"
         f"|${borrowed:.2f}|${repaid:.2f}|{repay_pct}%|${active_amt:.2f}|"

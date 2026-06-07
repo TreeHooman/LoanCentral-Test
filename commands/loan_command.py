@@ -82,11 +82,15 @@ def process_loan_command(comment):
 
     from config import DASHBOARD_URL
 
+    due_col  = "|Due Date" if due_date else ""
+    due_sep  = "|:--:"    if due_date else ""
+    due_val  = f"|{due_date.strftime('%Y-%m-%d')}" if due_date else ""
+
     comment.reply(
         f"Loan recorded!\n\n"
-        f"|Loan ID|Lender|Borrower|Amount|Currency|\n"
-        f"|:--:|:--:|:--:|:--:|:--:|\n"
-        f"|**{db_id}**|u/{lender}|u/{borrower}|{amount:.2f}|{currency}|\n\n"
+        f"|Loan ID|Lender|Borrower|Amount|Currency{due_col}|\n"
+        f"|:--:|:--:|:--:|:--:|:--:{due_sep}|\n"
+        f"|**{db_id}**|u/{lender}|u/{borrower}|{amount:.2f}|{currency}{due_val}|\n\n"
         f"u/{borrower} — you have received **{amount:.2f} {currency}** from u/{lender}. "
         f"Use loan ID `{db_id}` for all future references to this loan.\n\n"
         f"**Lender commands:**\n"

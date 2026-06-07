@@ -596,6 +596,18 @@ class FakeCursor:
             self.last_result = []
             return
 
+        if normalized.startswith("select count(*)") and "from disputes" in normalized:
+            self.last_result = (0,)
+            return
+
+        if normalized.startswith("select count(*)") and "from role_requests" in normalized:
+            self.last_result = (0,)
+            return
+
+        if normalized.startswith("select") and "from disputes" in normalized:
+            self.last_result = []
+            return
+
         if normalized.startswith("select") and "from user_roles" in normalized:
             self.last_result = None
             return
