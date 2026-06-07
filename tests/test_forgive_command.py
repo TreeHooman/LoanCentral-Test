@@ -30,7 +30,7 @@ class ForgiveCommandTests(unittest.TestCase):
             from commands.forgive_command import process_forgive_command
             process_forgive_command(comment)
         self.assertEqual(self.fake_db.loans[0]["status"], "refunded")
-        self.assertIn("forgiven", comment.replies[0].lower())
+        self.assertIn("waived", comment.replies[0].lower())
 
     def test_forgive_reply_mentions_borrower(self):
         comment = FakeComment("$forgive LOAN010", author_name="lender1")

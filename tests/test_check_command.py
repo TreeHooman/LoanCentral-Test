@@ -34,7 +34,7 @@ class CheckCommandTests(unittest.TestCase):
         self.assertEqual(len(comment.replies), 1)
         reply = comment.replies[0]
         self.assertIn("borrower", reply)
-        self.assertIn("Health Score", reply)
+        self.assertIn("Repayment Score", reply)
         self.assertIn("LoanCentral Dashboard", reply)
 
     def test_check_with_unpaid_loans(self):

@@ -1351,11 +1351,11 @@ def get_leaderboard():
 
 
 # ---------------------------------------------------------------------------
-# Credit tier (derived from health score)
+# Repayment tier (derived from repayment score)
 # ---------------------------------------------------------------------------
 
 def credit_tier(score: int) -> dict:
-    """Return tier label and color class for a health score."""
+    """Return standing label and color class for a repayment score."""
     if score >= 90:
         return {"label": "Trusted Borrower", "color": "green"}
     if score >= 70:

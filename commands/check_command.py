@@ -51,7 +51,7 @@ def process_check_command(comment):
     reply = (
         f"**Loan history for u/{target}** — *{tier['label']}*\n\n"
         f"**As Borrower**\n\n"
-        f"|Health Score|Credit Tier|Total Loans|Repaid|Unpaid|Active|\n"
+        f"|Repayment Score|Standing|Total Loans|Repaid|Unpaid|Active|\n"
         f"|:--:|:--:|:--:|:--:|:--:|:--:|\n"
         f"|**{score}/100** ({label})|{tier['label']}|{total}|{paid_count}|{unpaid}|{active}|\n\n"
         f"|Total Borrowed|Total Repaid|Repayment Rate|Outstanding|\n"

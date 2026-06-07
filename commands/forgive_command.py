@@ -55,7 +55,7 @@ def process_forgive_command(comment):
         db_id, public_id, _, borrower, amount, amount_repaid, currency, status = row
 
         if status in ("repaid", "refunded"):
-            comment.reply(f"Loan {public_id} is already {status} and cannot be forgiven.")
+            comment.reply(f"Loan {public_id} is already {status} and cannot be waived.")
             return
 
         cur.execute(
@@ -85,14 +85,16 @@ def process_forgive_command(comment):
             conn.close()
         except Exception:
             pass
-        comment.reply("Error processing forgiveness. Please try again later.")
+        comment.reply("Error processing loan waiver. Please try again later.")
         return
 
     remaining = float(amount) - float(amount_repaid)
     comment.reply(
-        f"u/{lender} has forgiven u/{borrower}'s loan of **{float(amount):.2f} {currency}**.\n\n"
-        f"The remaining balance of **{remaining:.2f} {currency}** has been waived.\n\n"
-        f"*This loan has been marked as refunded and removed from active debt.*"
+        f"u/{lender} (lender) has marked this loan as waived.\n\n"
+        f"**Loan:** {public_id} — u/{borrower}, {float(amount):.2f} {currency}\n\n"
+        f"The remaining balance of **{remaining:.2f} {currency}** has been waived by the lender. "
+        f"This loan has been removed from active records.\n\n"
+        f"*LoanCentral records community-submitted information only.*"
     )
     logger.info(f"u/{lender} forgave loan {public_id} to u/{borrower}: {amount} {currency}")
 

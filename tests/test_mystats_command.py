@@ -32,7 +32,7 @@ class MyStatsCommandTests(unittest.TestCase):
         comment = run_mystats_command(fake_db, "$mystats", author_name="borrower")
         self.assertEqual(len(comment.replies), 1)
         reply = comment.replies[0]
-        self.assertIn("Health Score", reply)
+        self.assertIn("Repayment Score", reply)
         self.assertIn("LoanCentral Dashboard", reply)
 
     def test_mystats_no_history(self):

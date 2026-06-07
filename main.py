@@ -353,7 +353,7 @@ def generate_user_info(username):
 
     lines = [
         f"**LoanCentral record for u/{username}:**\n",
-        f"|Health Score|Loans as Borrower|Repaid|Unpaid|",
+        f"|Repayment Score|Loans as Borrower|Repaid|Unpaid|",
         f"|:--:|:--:|:--:|:--:|",
         f"|**{score}/100** ({label})|{profile['loans_as_borrower']}|"
         f"{profile['loans_as_borrower'] - profile['unpaid_loans']}|{profile['unpaid_loans']}|\n",
@@ -369,6 +369,10 @@ def generate_user_info(username):
         )
 
     lines.append(f"[Full profile on LoanCentral Dashboard]({DASHBOARD_URL})")
+    lines.append(
+        f"\n*LoanCentral records community-submitted information only and does not guarantee "
+        f"user behavior or repayment. All loan terms are agreed privately between parties.*"
+    )
     return "\n".join(lines)
 
 # Function to keep the bot alive

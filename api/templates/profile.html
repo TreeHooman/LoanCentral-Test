@@ -25,10 +25,15 @@
   <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;text-decoration:none;">← Back</a>
 </div>
 
+<!-- Disclaimer -->
+<div style="background:rgba(136,145,170,0.08);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--muted);line-height:1.5">
+  LoanCentral records community-submitted information and does not guarantee user behavior or repayment. All loan terms are agreed privately between lender and borrower.
+</div>
+
 <!-- Stats -->
 <div class="stats-grid" style="margin-bottom:24px">
   <div class="stat-card">
-    <div class="stat-label">Health Score</div>
+    <div class="stat-label">Repayment Score</div>
     <div class="stat-value {% if score >= 90 %}c-green{% elif score >= 70 %}c-accent{% elif score >= 50 %}c-yellow{% elif score >= 25 %}c-orange{% else %}c-red{% endif %}">
       {{ score }}/100
     </div>
