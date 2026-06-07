@@ -358,11 +358,14 @@ class FakeCursor:
             return
 
         if normalized.startswith("update loans set amount_repaid"):
-            amount_repaid, status, _last_updated, db_id = params
+            amount_repaid, status, _last_updated, _date_repaid, db_id = params
             loan = self.fake_db.find_loan(db_id)
             if loan:
                 loan["amount_repaid"] = amount_repaid
                 loan["status"] = status
+                if status == "repaid" and not loan.get("date_repaid"):
+                    from datetime import datetime as _dt
+                    loan["date_repaid"] = _dt.now()
             self.last_result = None
             return
 
@@ -496,6 +499,7 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("date_repaid"),
                 )
                 for loan in matches
             ]
@@ -521,6 +525,7 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("date_repaid"),
                 )
                 for loan in matches
             ]

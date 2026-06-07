@@ -296,6 +296,8 @@
     const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
     const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
+    const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
     return `<tr>
       <td><span class="loan-id">${id}</span></td>
       <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
@@ -305,6 +307,8 @@
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="date-cell">${repaidDate}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}

@@ -17,6 +17,7 @@
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div></div>
   <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div><div class="stat-sub" id="s-recovered"></div></div>
+  <div class="stat-card"><div class="stat-label">Recovery Rate</div><div class="stat-value c-green" id="s-recovery">—</div></div>
 </div>
 
 <!-- Loans -->
@@ -37,8 +38,8 @@
 
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-    <tbody id="loansBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+    <tbody id="loansBody"><tr><td colspan="10" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
@@ -79,6 +80,9 @@
       document.getElementById('s-lent').textContent       = '$' + fmt(s.total_lent);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
       document.getElementById('s-recovered').textContent  = '$' + fmt(s.total_recovered) + ' recovered';
+      const lent = parseFloat(s.total_lent || 0);
+      const rec  = parseFloat(s.total_recovered || 0);
+      document.getElementById('s-recovery').textContent   = lent > 0 ? (rec / lent * 100).toFixed(1) + '%' : 'N/A';
     } catch(e) { console.error(e); }
   }
 
@@ -88,7 +92,9 @@
     const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
-    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const thread    = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
+    const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
     return `<tr>
       <td><span class="loan-id">${id}</span></td>
       <td class="username">u/${loan.borrower}</td>
@@ -97,6 +103,8 @@
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="date-cell">${repaidDate}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
@@ -116,14 +124,14 @@
       const loans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
       if (!loans.length) {
-        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
         document.getElementById('loadMoreBtn').style.display = 'none';
         return;
       }
       tbody.innerHTML = loans.map(buildLoanRow).join('');
       document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="10" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
 

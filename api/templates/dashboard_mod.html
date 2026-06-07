@@ -29,12 +29,13 @@
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-      <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+      <tbody id="loansBody"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
   <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
@@ -50,6 +51,37 @@
     <table>
       <thead><tr><th>Username</th><th>Requested</th><th>Reason</th><th>Submitted</th><th>Actions</th></tr></thead>
       <tbody id="requestsBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Analytics tab -->
+<div id="tab-analytics" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Analytics</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <div class="stats-grid" style="margin-bottom:20px">
+    <div class="stat-card"><div class="stat-label">Recovery Rate</div><div class="stat-value c-green" id="a-recovery">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Repayment</div><div class="stat-value c-accent" id="a-avgdays">—</div><div class="stat-sub">days from loan to repaid</div></div>
+    <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="a-lent">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Recovered</div><div class="stat-value c-green" id="a-recovered">—</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="table-wrap" style="padding:20px">
+      <div class="section-title" style="margin-bottom:16px;font-size:14px">Monthly Loan Volume — Last 12 Months</div>
+      <canvas id="monthlyChart" height="110"></canvas>
+    </div>
+    <div class="table-wrap" style="padding:20px">
+      <div class="section-title" style="margin-bottom:16px;font-size:14px">Status Breakdown</div>
+      <canvas id="statusChart"></canvas>
+    </div>
+  </div>
+  <div class="section-header"><span class="section-title">Top 5 Lenders by Volume</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Lender</th><th>Loans</th><th>Total Volume</th></tr></thead>
+      <tbody id="topLendersBody"><tr><td colspan="4" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -80,6 +112,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
   let currentStatus = '';
   let offset = 0;
@@ -134,10 +167,10 @@
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="11" class="table-placeholder">No loans found.</td></tr>';
       document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="11" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
 
@@ -163,11 +196,77 @@
   function loadData() { loadLoans(); loadStats(); }
 
   function showTab(name) {
-    document.getElementById('tab-loans').style.display = name === 'loans' ? '' : 'none';
-    document.getElementById('tab-roles').style.display = name === 'roles' ? '' : 'none';
-    document.getElementById('tab-requests').style.display = name === 'requests' ? '' : 'none';
-    if (name === 'roles') loadRoles();
-    if (name === 'requests') loadRequests();
+    document.getElementById('tab-loans').style.display     = name === 'loans'     ? '' : 'none';
+    document.getElementById('tab-roles').style.display     = name === 'roles'     ? '' : 'none';
+    document.getElementById('tab-requests').style.display  = name === 'requests'  ? '' : 'none';
+    document.getElementById('tab-analytics').style.display = name === 'analytics' ? '' : 'none';
+    if (name === 'roles')     loadRoles();
+    if (name === 'requests')  loadRequests();
+    if (name === 'analytics') loadAnalytics();
+  }
+
+  let _monthlyChart = null, _statusChart = null;
+
+  async function loadAnalytics() {
+    try {
+      const [data, stats] = await Promise.all([apiFetch('/api/analytics'), apiFetch('/api/stats')]);
+
+      document.getElementById('a-recovery').textContent  = data.recovery_rate.toFixed(1) + '%';
+      document.getElementById('a-avgdays').textContent   = data.avg_repayment_days != null ? data.avg_repayment_days : 'N/A';
+      document.getElementById('a-lent').textContent      = '$' + fmt(data.total_lent);
+      document.getElementById('a-recovered').textContent = '$' + fmt(data.total_recovered);
+
+      const chartDefaults = { responsive: true, maintainAspectRatio: true };
+      const gridColor = 'rgba(46,52,72,0.8)';
+      const tickColor = '#8891aa';
+      const legendColor = '#b0b8cc';
+
+      if (_monthlyChart) _monthlyChart.destroy();
+      _monthlyChart = new Chart(document.getElementById('monthlyChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: data.monthly.map(m => m.month),
+          datasets: [
+            { label: 'Volume Lent',  data: data.monthly.map(m => parseFloat(m.volume)),    backgroundColor: 'rgba(91,110,245,0.55)',  borderColor: 'rgba(91,110,245,1)',  borderWidth: 1 },
+            { label: 'Recovered',    data: data.monthly.map(m => parseFloat(m.recovered)), backgroundColor: 'rgba(46,204,113,0.55)',  borderColor: 'rgba(46,204,113,1)',  borderWidth: 1 },
+          ]
+        },
+        options: { ...chartDefaults,
+          plugins: { legend: { labels: { color: legendColor } } },
+          scales: {
+            x: { ticks: { color: tickColor }, grid: { color: gridColor } },
+            y: { ticks: { color: tickColor, callback: v => '$' + v.toLocaleString() }, grid: { color: gridColor } }
+          }
+        }
+      });
+
+      if (_statusChart) _statusChart.destroy();
+      _statusChart = new Chart(document.getElementById('statusChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Active', 'Partial', 'Repaid', 'Unpaid', 'Refunded'],
+          datasets: [{
+            data: [stats.active_loans, stats.partial_loans, stats.repaid_loans, stats.unpaid_loans, stats.refunded_loans],
+            backgroundColor: ['rgba(91,110,245,0.7)','rgba(241,196,15,0.7)','rgba(46,204,113,0.7)','rgba(231,76,60,0.7)','rgba(136,145,170,0.7)'],
+            borderColor:     ['rgba(91,110,245,1)',  'rgba(241,196,15,1)',  'rgba(46,204,113,1)',  'rgba(231,76,60,1)',  'rgba(136,145,170,1)'],
+            borderWidth: 1
+          }]
+        },
+        options: { ...chartDefaults, plugins: { legend: { labels: { color: legendColor }, position: 'bottom' } } }
+      });
+
+      const tbody = document.getElementById('topLendersBody');
+      tbody.innerHTML = data.top_lenders.length
+        ? data.top_lenders.map((l, i) => `<tr>
+            <td style="color:var(--muted)">${i + 1}</td>
+            <td class="username">u/${l.lender}</td>
+            <td>${l.loans}</td>
+            <td><span class="amount">$${fmt(l.volume)}</span></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="table-placeholder">No data yet.</td></tr>';
+    } catch(e) {
+      console.error('Analytics error:', e);
+    }
   }
 
   async function loadRequests() {

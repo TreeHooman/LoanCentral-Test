@@ -60,8 +60,8 @@
 
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th><th>Thread</th></tr></thead>
-    <tbody id="historyBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Thread</th></tr></thead>
+    <tbody id="historyBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 <button class="btn-primary" id="loadMoreBtn" style="display:none;margin-top:12px" onclick="loadMore()">Load More</button>
@@ -136,7 +136,9 @@
 
   function buildHistoryRow(loan) {
     const id = loan.loan_id || loan.db_id;
-    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+    const thread     = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+    const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
+    const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
     return `<tr>
       <td><span class="loan-id">${id}</span></td>
       <td class="username">u/${loan.lender}</td>
@@ -144,6 +146,8 @@
       <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)}</td>
+      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="date-cell">${repaidDate}</td>
       <td>${thread}</td>
     </tr>`;
   }
@@ -155,14 +159,14 @@
       const loans = await apiFetch(url);
       const tbody = document.getElementById('historyBody');
       if (!loans.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="table-placeholder">No loan history found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="table-placeholder">No loan history found.</td></tr>';
         document.getElementById('loadMoreBtn').style.display = 'none';
         return;
       }
       tbody.innerHTML = loans.map(buildHistoryRow).join('');
       document.getElementById('loadMoreBtn').style.display = loans.length === 50 ? '' : 'none';
     } catch(e) {
-      document.getElementById('historyBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('historyBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
   }
 
