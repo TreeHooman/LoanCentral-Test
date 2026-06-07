@@ -124,6 +124,16 @@ CREATE TABLE IF NOT EXISTS bot_status (
 );
 INSERT INTO bot_status (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+-- Mod notes on users (internal, not visible to users)
+CREATE TABLE IF NOT EXISTS mod_notes (
+    id         SERIAL PRIMARY KEY,
+    username   TEXT NOT NULL,
+    note       TEXT NOT NULL,
+    added_by   TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mod_notes_username ON mod_notes(username);
+
 CREATE TABLE IF NOT EXISTS banned_users (
     id         SERIAL PRIMARY KEY,
     username   TEXT NOT NULL UNIQUE,

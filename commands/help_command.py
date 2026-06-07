@@ -21,52 +21,45 @@ All history, health scores, stats, and mod tools are on the **[LoanCentral Dashb
 
 ## Anyone Can Use
 
-**Check your own stats**
-`$mystats`
-
-**Check another user's stats**
-`$check u/[username]`
-
-**Post a loan request (borrowers looking for lenders)**
-`$apply [amount] [currency] [optional reason]`
-Example: `$apply 100 USD need help with rent`
-
-**Cancel a pending loan request**
-`$apply cancel #[id]`
-Example: `$apply cancel #42`
-
-**Community leaderboard**
-`$leaderboard`
-
-**Report a user to mods**
-`$report u/[username] [optional reason]`
-
-**Request lender access**
-`$request lender [optional reason]`
-Example: `$request lender I have been lending on r/borrow for 2 years`
+| Command | Description |
+|:---|:---|
+| `$mystats` | Your own loan stats + health score |
+| `$check u/username` | Another user's stats (borrower + lender history) |
+| `$leaderboard` | Top lenders by volume & top borrowers by repayment rate |
+| `$report u/username [reason]` | Report a user to mods via modmail |
+| `$apply amount CURR [reason]` | Post a loan request (borrowers seeking lenders) |
+| `$apply cancel #id` | Cancel your pending loan request |
+| `$request lender [reason]` | Request Verified Lender flair |
+| `$dispute loan_id [reason]` | Dispute an unpaid mark on your loan |
 
 ---
 
 ## Lender Commands *(Verified Lender flair required)*
 
-**Record a new loan**
-`$loan [amount] [currency] u/[borrower]`
-Optional due date: `$loan 50 USD u/borrower due:30d` *(30d / 2w / 1m)*
-
-**Record a repayment**
-`$paid_with_id [loan_id] [amount] [currency]`
-Alias: `$paid [loan_id] [amount] [currency]`
-
-**Mark a loan as unpaid**
-`$unpaid [loan_id]`
-
-**Cancel / refund a loan**
-`$refunded [loan_id]`
+| Command | Description |
+|:---|:---|
+| `$loan amt CURR u/borrower` | Record a new loan |
+| `$loan … due:30d` | Record with due date (30d, 2w, 1m, etc.) |
+| `$paid_with_id loan_id amt CURR` | Record a repayment |
+| `$paid loan_id amt CURR` | Alias for `$paid_with_id` |
+| `$unpaid loan_id` | Mark a loan as unpaid |
+| `$refunded loan_id` | Mark a loan as refunded/cancelled |
+| `$forgive loan_id` | Forgive/waive a loan (removes debt from borrower's record) |
 
 ---
 
-**Dashboard:** {DASHBOARD_URL} — full history, health scores, SMS reminders, loan applications.
-**Questions?** Contact the moderators.
+## Mod-Only Commands
+
+| Command | Description |
+|:---|:---|
+| `$ban u/username [reason]` | Ban a user from bot commands |
+| `$unban u/username` | Lift a bot ban |
+| `$note u/username [text]` | Add an internal mod note (not visible to users) |
+
+---
+
+**Dashboard:** {DASHBOARD_URL}
+*Full loan history, health scores, CSV export, SMS reminders, overdue tracker, disputes, analytics.*
 """
 
     comment.reply(help_text)

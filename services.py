@@ -1772,3 +1772,51 @@ def list_banned_users():
     finally:
         cur.close()
         conn.close()
+
+
+def add_mod_note(username: str, note: str, added_by: str):
+    """Add a mod note to a user. Returns (note_id, error)."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO mod_notes (username, note, added_by) VALUES (%s, %s, %s) RETURNING id",
+            (username.lower(), note.strip()[:500], added_by.lower())
+        )
+        note_id = cur.fetchone()[0]
+        conn.commit()
+        log_action(added_by, "mod_note_added", username, note[:100])
+        return note_id, None
+    except Exception as e:
+        logger.error(f"add_mod_note error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_mod_notes(username: str):
+    """Get all mod notes for a user. Returns (list, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, note, added_by, created_at FROM mod_notes "
+            "WHERE username = %s ORDER BY created_at DESC",
+            (username.lower(),)
+        )
+        rows = cur.fetchall()
+        return [
+            {"id": r[0], "note": r[1], "added_by": r[2], "created_at": r[3]}
+            for r in rows
+        ], None
+    except Exception as e:
+        logger.error(f"get_mod_notes error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()

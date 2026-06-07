@@ -703,6 +703,16 @@ class FakeCursor:
             self.last_result = None
             return
 
+        # Mod notes queries
+        if normalized.startswith("insert into mod_notes"):
+            self.fake_db._next_note_id = getattr(self.fake_db, '_next_note_id', 0) + 1
+            self.last_result = (self.fake_db._next_note_id,)
+            return
+
+        if normalized.startswith("select id, note, added_by, created_at from mod_notes"):
+            self.last_result = []
+            return
+
         # Ban system queries
         if normalized.startswith("select reason from banned_users where username"):
             username = params[0]

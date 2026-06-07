@@ -1285,6 +1285,35 @@ def trigger_reminders():
 
 
 # ---------------------------------------------------------------------------
+# Mod notes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/notes/<username>", methods=["GET"])
+@require_mod_api
+def get_notes(username):
+    from services import get_mod_notes
+    notes, error = get_mod_notes(username.lower())
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"notes": notes})
+
+
+@app.route("/api/admin/notes/<username>", methods=["POST"])
+@require_mod_api
+def add_note(username):
+    data  = request.get_json(silent=True) or {}
+    note  = (data.get("note") or "").strip()
+    if not note:
+        return _json({"error": "Note text is required."}, 400)
+    actor = session.get("username", "dashboard")
+    from services import add_mod_note
+    note_id, error = add_mod_note(username.lower(), note, actor)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "note_id": note_id})
+
+
+# ---------------------------------------------------------------------------
 # Ban management
 # ---------------------------------------------------------------------------
 
