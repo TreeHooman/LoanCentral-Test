@@ -51,6 +51,7 @@
     <button class="btn-secondary" onclick="exportCSV(allLoans, 'loans.csv')">↓ CSV</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-secondary" onclick="showTab('roles')">Roles</button>
+    <button class="btn-secondary" onclick="promptCheckUser()">Check User</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -233,6 +234,11 @@
       toast(`u/${username} → ${role}`, 'success');
       loadRoles();
     } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function promptCheckUser() {
+    const u = window.prompt('Enter Reddit username to check:');
+    if (u && u.trim()) openUserModal(u.trim().replace(/^u\//i, '').toLowerCase());
   }
 
   function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }

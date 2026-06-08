@@ -418,8 +418,15 @@
     document.getElementById('refundError').style.display = 'none';
     document.getElementById('refundModal').classList.add('open');
   }
-  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-  document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    // Reset any pending confirmations
+    const btn = document.querySelector(`#${id} .btn-confirm`);
+    if (btn && btn.dataset.confirmed) { btn.dataset.confirmed = ''; btn.textContent = btn.dataset.origText || btn.textContent; }
+  }
+  document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); });
+  });
 
   let _barTimer = null;
   function showTopBar() {
@@ -468,6 +475,13 @@
     const lender = document.getElementById('unpaidLender').value.trim().toLowerCase();
     const errEl = document.getElementById('unpaidError');
     if (!lender) { errEl.textContent = 'Lender required.'; errEl.style.display='block'; return; }
+    // Show confirmation in the modal
+    const btn = document.querySelector('#unpaidModal .btn-confirm');
+    if (btn.dataset.confirmed !== 'yes') {
+      btn.textContent = 'Confirm Unpaid'; btn.dataset.confirmed = 'yes';
+      btn.style.background = 'var(--red)'; return;
+    }
+    btn.dataset.confirmed = ''; btn.textContent = 'Mark Unpaid';
     try {
       await apiFetch(`/api/loans/${loanId}/unpaid`, { method: 'POST', body: JSON.stringify({ lender }) });
       closeModal('unpaidModal'); toast('Loan marked unpaid.', 'success');
@@ -480,6 +494,11 @@
     const lender = document.getElementById('refundLender').value.trim().toLowerCase();
     const errEl = document.getElementById('refundError');
     if (!lender) { errEl.textContent = 'Lender required.'; errEl.style.display='block'; return; }
+    const btn = document.querySelector('#refundModal .btn-confirm');
+    if (btn.dataset.confirmed !== 'yes') {
+      btn.textContent = 'Confirm Refund'; btn.dataset.confirmed = 'yes'; return;
+    }
+    btn.dataset.confirmed = ''; btn.textContent = 'Mark Refunded';
     try {
       await apiFetch(`/api/loans/${loanId}/refunded`, { method: 'POST', body: JSON.stringify({ lender }) });
       closeModal('refundModal'); toast('Loan marked refunded.', 'success');

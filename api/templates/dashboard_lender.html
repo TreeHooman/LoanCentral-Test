@@ -1,6 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Lender Dashboard — LoanCentral{% endblock %}
 
+{% block head %}
+<style>
+  .cmd-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  .cmd-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; user-select: none; }
+  .cmd-panel-header:hover { background: rgba(91,110,245,0.05); }
+  .cmd-panel-title { font-size: 13px; font-weight: 600; color: var(--text2); }
+  .cmd-panel-toggle { font-size: 18px; color: var(--muted); transition: transform 0.2s; }
+  .cmd-panel-toggle.open { transform: rotate(180deg); }
+  .cmd-panel-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+  .cmd-panel-body.open { display: block; }
+  .cmd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 12px; }
+  .cmd-item { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: border-color 0.15s; }
+  .cmd-item:hover { border-color: var(--accent); }
+  .cmd-item-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px; }
+  .cmd-item-code { font-family: monospace; font-size: 12px; color: var(--accent-h); word-break: break-all; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="section-header" style="margin-bottom:20px">
   <div>
@@ -34,6 +52,43 @@
     <div class="progress-wrap" id="s-score-bar-wrap" style="display:none">
       <div class="progress-bar" id="s-score-bar"></div>
     </div>
+  </div>
+</div>
+
+<!-- Quick Commands Reference -->
+<div class="cmd-panel" id="cmdPanel">
+  <div class="cmd-panel-header" onclick="toggleCmdPanel()">
+    <span class="cmd-panel-title">Reddit Bot Commands Reference</span>
+    <span class="cmd-panel-toggle" id="cmdToggle">›</span>
+  </div>
+  <div class="cmd-panel-body" id="cmdBody">
+    <div class="cmd-grid" id="cmdGrid">
+      <div class="cmd-item" onclick="copyText('$loan [amount] [currency] u/[borrower]')" title="Copy">
+        <div class="cmd-item-label">Record a loan</div>
+        <div class="cmd-item-code">$loan [amount] [currency] u/[borrower]</div>
+      </div>
+      <div class="cmd-item" onclick="copyText('$paid_with_id [loan_id] [amount] [currency]')" title="Copy">
+        <div class="cmd-item-label">Record repayment</div>
+        <div class="cmd-item-code">$paid_with_id [loan_id] [amount] [currency]</div>
+      </div>
+      <div class="cmd-item" onclick="copyText('$unpaid [loan_id]')" title="Copy">
+        <div class="cmd-item-label">Mark unpaid</div>
+        <div class="cmd-item-code">$unpaid [loan_id]</div>
+      </div>
+      <div class="cmd-item" onclick="copyText('$refunded [loan_id]')" title="Copy">
+        <div class="cmd-item-label">Cancel / refund</div>
+        <div class="cmd-item-code">$refunded [loan_id]</div>
+      </div>
+      <div class="cmd-item" onclick="copyText('$remind u/[borrower]')" title="Copy">
+        <div class="cmd-item-label">Send reminder</div>
+        <div class="cmd-item-code">$remind u/[borrower]</div>
+      </div>
+      <div class="cmd-item" onclick="copyText('$check u/[username]')" title="Copy">
+        <div class="cmd-item-label">Check a user</div>
+        <div class="cmd-item-code">$check u/[username]</div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">Click any command to copy it to clipboard.</p>
   </div>
 </div>
 
@@ -216,6 +271,28 @@
   }
 
   function loadData() { loadLoans(); loadStats(); }
+
+  function toggleCmdPanel() {
+    const body = document.getElementById('cmdBody');
+    const tog = document.getElementById('cmdToggle');
+    body.classList.toggle('open');
+    tog.classList.toggle('open');
+    tog.textContent = body.classList.contains('open') ? '›' : '›';
+    localStorage.setItem('cmdPanelOpen', body.classList.contains('open') ? '1' : '0');
+  }
+  // Restore panel state
+  if (localStorage.getItem('cmdPanelOpen') === '1') {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('cmdBody')?.classList.add('open');
+      document.getElementById('cmdToggle')?.classList.add('open');
+    });
+  }
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied!', 'success');
+    } catch(e) { toast('Copy failed', 'error'); }
+  }
 
   function renderCurrencySummary(loans) {
     // Build per-currency totals for the rendered loans
