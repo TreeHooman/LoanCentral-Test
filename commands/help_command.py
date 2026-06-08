@@ -25,7 +25,9 @@ Track loans, health scores, and history on the **[dashboard](https://loancentral
 | `$paid [loan_id] [amount] [currency]` | Record a repayment (full or partial) |
 | `$unpaid [loan_id]` | Mark loan as unpaid |
 | `$refunded [loan_id]` | Cancel / refund a loan |
+| `$forgive [loan_id]` | Write off remaining balance (no penalty to borrower) |
 | `$remind u/[borrower]` | Send a payment reminder |
+| `$remindall` | Reminder to all active borrowers (max 8) |
 
 ## Borrower
 

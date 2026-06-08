@@ -45,6 +45,10 @@
     <div class="stat-label">This Week</div><div class="stat-value c-accent" id="s-week">—</div>
     <div class="stat-sub">new loans (7d)</div>
   </div>
+  <div class="stat-card clickable" onclick="filterByCard('confirmed,partially_repaid')" title="Active loans older than 30 days with no full repayment">
+    <div class="stat-label">Overdue (30d+)</div><div class="stat-value c-red" id="s-overdue">—</div>
+    <div class="stat-sub">active, no repayment</div>
+  </div>
 </div>
 
 <!-- Loans tab -->
@@ -193,6 +197,7 @@
       animateValue(document.getElementById('s-disputed'),s.disputed_loans, '', '', false);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
       animateValue(document.getElementById('s-week'), s.new_this_week || 0, '', '', false);
+      animateValue(document.getElementById('s-overdue'), s.overdue_30d || 0, '', '', false);
       const settled = (s.repaid_loans||0) + (s.unpaid_loans||0);
       const rate = settled > 0 ? Math.round((s.repaid_loans / settled) * 100) : 100;
       const rateEl = document.getElementById('s-rate');
@@ -213,6 +218,7 @@
       const parts = [];
       if (s.disputed_loans > 0) parts.push(`<strong>${s.disputed_loans}</strong> loan${s.disputed_loans>1?'s':''} need resolution`);
       if (s.unpaid_loans > 0)   parts.push(`<strong>${s.unpaid_loans}</strong> unpaid`);
+      if (s.overdue_30d > 0)    parts.push(`<strong>${s.overdue_30d}</strong> overdue 30d+`);
       const banner = document.getElementById('modAlertBanner');
       if (parts.length && banner) {
         banner.innerHTML = `<div class="alert-banner ${s.disputed_loans>0?'danger':'warn'}">⚠ ${parts.join(' · ')} — <span style="cursor:pointer;text-decoration:underline" onclick="filterByCard('disputed')">view disputed</span></div>`;

@@ -591,11 +591,12 @@
 
   function exportCSV(rows, filename) {
     if (!rows || !rows.length) { toast('No data to export.', 'error'); return; }
-    const cols = ['loan_id','lender','borrower','amount','amount_repaid','currency','status','date_created'];
+    const cols = ['loan_id','lender','borrower','amount','amount_repaid','currency','status','date_created','notes'];
     const header = cols.join(',');
     const body = rows.map(r => cols.map(c => {
       const v = r[c] ?? '';
-      return typeof v === 'string' && v.includes(',') ? `"${v}"` : v;
+      if (typeof v === 'string' && (v.includes(',') || v.includes('"') || v.includes('\n'))) return `"${v.replace(/"/g,'""')}"`;
+      return v;
     }).join(',')).join('\n');
     const blob = new Blob([header + '\n' + body], { type: 'text/csv' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
