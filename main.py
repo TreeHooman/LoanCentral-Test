@@ -7,7 +7,9 @@ import traceback
 import importlib
 import inspect
 from pathlib import Path
+from datetime import datetime
 from dotenv import load_dotenv
+from bot_messages import with_dashboard_link
 from utils import reddit
 
 # Load environment variables
@@ -183,7 +185,25 @@ def init_database_fallback(conn):
 class CommandManager:
     def __init__(self):
         self.commands = {}
+        self.recent_commands = {}
+        self.cooldown_seconds = int(os.getenv("BOT_COMMAND_COOLDOWN_SECONDS", "15"))
         self.load_commands()
+
+    def _is_rate_limited(self, username, trigger):
+        if self.cooldown_seconds <= 0:
+            return False
+        now = time.time()
+        key = (username.lower(), trigger)
+        last = self.recent_commands.get(key, 0)
+        if now - last < self.cooldown_seconds:
+            return True
+        self.recent_commands[key] = now
+        if len(self.recent_commands) > 5000:
+            cutoff = now - 3600
+            self.recent_commands = {
+                k: ts for k, ts in self.recent_commands.items() if ts >= cutoff
+            }
+        return False
     
     def load_commands(self):
         """Load all command modules from the commands directory"""
@@ -239,7 +259,8 @@ class CommandManager:
     
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
-        if comment.author is None or comment.author.name.lower() == os.getenv("REDDIT_USERNAME").lower():
+        bot_username = (os.getenv("REDDIT_USERNAME") or "").lower()
+        if comment.author is None or comment.author.name.lower() == bot_username:
             return
         
         body_lower = comment.body.lower()
@@ -248,6 +269,9 @@ class CommandManager:
         for trigger, command_func in self.commands.items():
             if trigger in body_lower:
                 try:
+                    if self._is_rate_limited(comment.author.name, trigger):
+                        logger.info(f"Rate limited command {trigger} from user {comment.author.name}")
+                        return
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
                     command_func(comment)
                 except Exception as e:
@@ -263,13 +287,46 @@ def handle_new_post(post):
     """Process a new [REQ] or [PRE] post"""
     try:
         logger.info(f"Processing new post: {post.id} - {post.title}")
+        if post.author is None:
+            logger.info(f"Skipping deleted/removed post with no author: {post.id}")
+            return
         
         # Generate loan history information for the poster
         username = post.author.name
         user_info = generate_user_info(username)
+        reply_parts = [user_info]
+
+        if "[req]" in post.title.lower():
+            from services import find_duplicate_open_requests, save_loan_request
+            duplicates, _ = find_duplicate_open_requests(username, exclude_reddit_post_id=getattr(post, "id", None))
+            thread_link = getattr(post, "permalink", "") or ""
+            if thread_link and thread_link.startswith("/"):
+                thread_link = "https://www.reddit.com" + thread_link
+            post_date = datetime.fromtimestamp(getattr(post, "created_utc", time.time()))
+            request_id, error = save_loan_request(
+                borrower=username,
+                title=post.title,
+                thread_link=thread_link,
+                post_date=post_date,
+                reddit_post_id=getattr(post, "id", None),
+            )
+            if request_id:
+                reply_parts.append(
+                    f"LoanCentral request ID: `{request_id}`\n\n"
+                    "Use this ID only after lender and borrower agree to terms on Reddit. "
+                    "LoanCentral is a record-keeping tool and does not handle funds."
+                )
+            elif error:
+                logger.info(f"REQ post {post.id} was not saved as a loan request: {error}")
+
+            if duplicates:
+                duplicate_ids = ", ".join(d["request_id"] for d in duplicates)
+                reply_parts.append(
+                    f"Note for moderators: u/{username} already has open request(s): {duplicate_ids}."
+                )
         
-        # Reply to the post with the user's loan information
-        post.reply(user_info)
+        # Reply once, with history plus any REQ-ID info, to minimize Reddit API calls.
+        post.reply(with_dashboard_link("\n\n---\n\n".join(reply_parts)))
         logger.info(f"Successfully commented on post {post.id} for user {username}")
         
     except Exception as e:

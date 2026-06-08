@@ -2,10 +2,11 @@ import re
 import logging
 from decimal import Decimal
 
+from bot_messages import DASHBOARD_URL, with_dashboard_link
+
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$loan"
-DASHBOARD_URL = "https://loancentral.app"  # update when domain is live
 
 
 def process_loan_command(comment):
@@ -29,11 +30,11 @@ def process_loan_command(comment):
     borrower = match.group(3).lower()
 
     if lender == borrower:
-        comment.reply("Error: You cannot lend to yourself.")
+        comment.reply(with_dashboard_link("Error: You cannot lend to yourself."))
         return
 
     if amount <= 0:
-        comment.reply("Error: Loan amount must be greater than zero.")
+        comment.reply(with_dashboard_link("Error: Loan amount must be greater than zero."))
         return
 
     # Verify lender flair
@@ -44,14 +45,15 @@ def process_loan_command(comment):
             user_flair = flair["flair_text"]
             break
         if not user_flair or "verified lender" not in user_flair.lower():
-            comment.reply(
+            message = with_dashboard_link(
                 f"Error: Only users with 'Verified Lender' flair can issue loans "
                 f"in r/{subreddit.display_name}."
             )
+            comment.reply(message)
             return
     except Exception as e:
         logger.error(f"Error checking flair for {lender}: {e}")
-        comment.reply("Error: Unable to verify your flair status. Please contact the moderators.")
+        comment.reply(with_dashboard_link("Error: Unable to verify your flair status. Please contact the moderators."))
         return
 
     from services import update_last_login
@@ -62,10 +64,10 @@ def process_loan_command(comment):
     db_id, error = create_loan(lender, borrower, amount, currency, thread_url)
 
     if error:
-        comment.reply(f"Error: {error}")
+        comment.reply(with_dashboard_link(f"Error: {error}"))
         return
 
-    comment.reply(
+    comment.reply(with_dashboard_link(
         f"Loan recorded!\n\n"
         f"|Loan ID|Lender|Borrower|Amount|Currency|\n"
         f"|:--:|:--:|:--:|:--:|:--:|\n"
@@ -78,5 +80,5 @@ def process_loan_command(comment):
         f"- Cancel loan: `$refunded {db_id}`\n\n"
         f"---\n"
         f"*Track loans, view history & manage everything at [{DASHBOARD_URL}]({DASHBOARD_URL}) — sign in with Reddit.*"
-    )
+    ))
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")

@@ -12,7 +12,7 @@
       --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --yellow: #f1c40f;
       --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
     }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; -webkit-text-size-adjust: 100%; }
 
     /* NAV */
     nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
@@ -36,6 +36,8 @@
     .flash.error   { background: rgba(231,76,60,0.1);  border: 1px solid rgba(231,76,60,0.3);  color: var(--red); }
     .flash.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); color: var(--green); }
     .flash.info    { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.3); color: var(--accent-h); }
+    .session-warning { display: none; margin: 12px 24px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(243,156,18,0.3); background: rgba(243,156,18,0.09); color: var(--text2); font-size: 13px; line-height: 1.4; }
+    .session-warning strong { color: var(--orange); }
 
     /* MAIN */
     main { max-width: 1400px; margin: 0 auto; padding: 24px; }
@@ -61,6 +63,20 @@
     .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
     .btn-primary:hover { background: var(--accent-h); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
+    .panel-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: 16px; margin-bottom: 22px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+    .panel-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .panel-copy { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .mini-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .mini-stat { background: rgba(255,255,255,0.025); border: 1px solid var(--border); border-radius: 6px; padding: 10px; min-height: 62px; }
+    .mini-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+    .mini-value { color: var(--text); font-size: 18px; font-weight: 700; margin-top: 4px; }
+    .callout { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; }
+    .callout strong { color: var(--text); }
+    .profile-link { color: var(--text); text-decoration: none; font-weight: 600; }
+    .profile-link:hover { color: var(--accent-h); }
 
     /* TABLE */
     .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -100,11 +116,12 @@
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
     .modal-overlay.open { display: flex; }
-    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; max-height: 92vh; overflow-y: auto; }
     .modal h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
     .modal label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
-    .modal input, .modal select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 12px; outline: none; }
-    .modal input:focus, .modal select:focus { border-color: var(--accent); }
+    .modal input, .modal select, .modal textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 12px; outline: none; font-family: inherit; }
+    .modal textarea { resize: vertical; min-height: 86px; }
+    .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: var(--accent); }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
     .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
     .btn-confirm { background: var(--accent); border: none; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
@@ -127,6 +144,201 @@
 
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* DUE DATE */
+    .due-overdue  { color: var(--red);    font-weight: 700; font-size: 11px; }
+    .due-soon     { color: var(--orange); font-weight: 600; font-size: 11px; }
+    .due-ok       { color: var(--muted);  font-size: 11px; }
+
+    /* NOTIFICATION BADGE */
+    .nav-badge { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 4px; vertical-align: middle; }
+
+    /* NOTES & ATTACHMENTS */
+    .notes-preview { font-size: 11px; color: var(--muted); font-style: italic; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .notes-preview:hover { color: var(--accent-h); }
+    .attach-count { font-size: 11px; color: var(--muted); margin-left: 4px; }
+    .attach-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .attach-item { display: flex; align-items: center; justify-content: space-between; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; font-size: 12px; }
+    .attach-item a { color: var(--accent-h); text-decoration: none; }
+    .attach-item a:hover { text-decoration: underline; }
+    .upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; transition: border 0.15s; margin-top: 8px; }
+    .upload-zone:hover { border-color: var(--accent); color: var(--accent-h); }
+    .upload-zone input[type=file] { display: none; }
+    footer { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    @media (max-width: 900px) {
+      nav { padding: 0 14px; }
+      main { padding: 18px 14px; }
+      .panel-grid { grid-template-columns: 1fr; }
+      .mini-grid { grid-template-columns: 1fr; }
+      .tabs { overflow-x: auto; max-width: 100%; }
+      .table-wrap { overflow-x: auto; }
+    }
+
+    @media (max-width: 640px) {
+      body { font-size: 13px; }
+      nav {
+        height: auto;
+        min-height: 56px;
+        padding: 10px 12px;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .nav-brand { font-size: 16px; line-height: 30px; }
+      .nav-links { order: 3; width: 100%; overflow-x: auto; padding-top: 2px; }
+      .nav-right { gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+      .nav-user { max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .role-badge { padding: 3px 7px; }
+      .btn-logout { padding: 5px 9px; }
+      main { padding: 14px 10px 20px; }
+      footer { padding: 0 12px 18px; }
+      .session-warning { margin: 10px 10px 0; font-size: 12px; }
+      .section-header {
+        align-items: flex-start;
+        gap: 8px;
+        flex-direction: column;
+        margin-bottom: 12px !important;
+      }
+      .section-header > div:last-child {
+        width: 100%;
+        display: flex;
+      }
+      .section-header .btn-secondary,
+      .section-header .btn-primary { flex: 1; justify-content: center; text-align: center; }
+      .panel-grid { gap: 10px; margin-bottom: 12px; }
+      .panel { padding: 12px; }
+      .panel-title { font-size: 14px; }
+      .panel-copy, .callout { font-size: 12px; line-height: 1.35; }
+      .panel-copy { margin-bottom: 0; }
+      .mini-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+      .mini-stat { padding: 8px; min-height: 54px; }
+      .mini-label { font-size: 9px; }
+      .mini-value { font-size: 15px; }
+      .stats-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .stat-card { padding: 9px; border-radius: 8px; min-height: 62px; }
+      .stat-label { font-size: 9px; }
+      .stat-value { font-size: 17px; margin-top: 4px; }
+      .stat-sub { font-size: 10px; margin-top: 2px; }
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .toolbar .tabs,
+      .toolbar .search-wrap {
+        grid-column: 1 / -1;
+      }
+      .toolbar .btn-secondary,
+      .toolbar .btn-primary {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+      .tabs {
+        gap: 6px;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+        min-height: 36px;
+        white-space: nowrap;
+      }
+      .search-wrap { min-width: 0; }
+      .search-wrap input { min-height: 40px; font-size: 16px; }
+      .table-wrap {
+        background: transparent;
+        border: 0;
+        overflow: visible;
+        border-radius: 0;
+      }
+      table.mobile-cards,
+      table.mobile-cards thead,
+      table.mobile-cards tbody,
+      table.mobile-cards tr,
+      table.mobile-cards th,
+      table.mobile-cards td {
+        display: block;
+        width: 100%;
+      }
+      table.mobile-cards thead { display: none; }
+      table.mobile-cards tr {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+      table.mobile-cards tr:hover td { background: transparent; }
+      table.mobile-cards td {
+        display: grid;
+        grid-template-columns: minmax(92px, .42fr) minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-height: 36px;
+        padding: 8px 11px;
+        border-bottom: 1px solid rgba(46,50,72,0.72);
+        word-break: break-word;
+      }
+      table.mobile-cards td:last-child { border-bottom: 0; }
+      table.mobile-cards td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .45px;
+        text-transform: uppercase;
+      }
+      table.mobile-cards td.no-label::before { display: none; }
+      table.mobile-cards td.no-label { display: block; }
+      table.mobile-cards .actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      table.mobile-cards .btn-action {
+        min-height: 36px;
+        padding: 7px 8px;
+        font-size: 11px;
+      }
+      .loan-id { font-size: 12px; }
+      .notes-preview { max-width: 100%; white-space: normal; }
+      .badge { width: fit-content; }
+      .modal-overlay {
+        align-items: flex-end;
+        padding: 10px;
+      }
+      .modal {
+        width: 100% !important;
+        max-width: 100%;
+        max-height: 88vh;
+        border-radius: 12px;
+        padding: 18px;
+      }
+      .modal input, .modal select, .modal textarea {
+        font-size: 16px;
+        min-height: 42px;
+      }
+      .modal-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .btn-cancel, .btn-confirm {
+        min-height: 42px;
+      }
+      #toast {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        max-width: none;
+      }
+      .empty-state { padding: 34px 16px; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -158,7 +370,12 @@
   {% endif %}
 {% endwith %}
 
+<div id="sessionWarning" class="session-warning"></div>
+
 <main>{% block content %}{% endblock %}</main>
+<footer>
+  LoanCentral is a record-keeping tool only. Lenders and borrowers make their own agreements on Reddit; LoanCentral does not broker, approve, fund, enforce, or process loans.
+</footer>
 
 <!-- Shared modals -->
 <div class="modal-overlay" id="payModal">
@@ -201,6 +418,99 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('refundModal')">Cancel</button>
       <button class="btn-confirm" style="background:var(--muted);color:var(--bg)" onclick="submitRefund()">Mark Refunded</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="newLoanModal">
+  <div class="modal" style="width:480px">
+    <h3>Record New Loan</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Enter the REQ-ID from a Reddit thread after you and the borrower have already agreed to terms.</p>
+    <div class="modal-error" id="newLoanError"></div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1">
+        <label>Request ID (optional)</label>
+        <input type="text" id="nlReqId" placeholder="e.g. REQ-0042" style="text-transform:uppercase" />
+      </div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:12px">
+        <button class="btn-primary" onclick="lookupRequest()" style="white-space:nowrap">Look Up</button>
+      </div>
+    </div>
+
+    <div id="nlAutoFillBanner" style="display:none;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
+      ✓ Auto-filled from <span id="nlBannerReqId"></span> — review and confirm below
+    </div>
+
+    <div id="nlDuplicateWarning" style="display:none;background:rgba(243,156,18,0.1);border:1px solid rgba(243,156,18,0.35);color:var(--orange);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
+
+    <div id="nlRejectWrap" style="display:none;margin-bottom:12px">
+      <button type="button" class="btn-secondary" style="width:100%;border-color:rgba(231,76,60,0.35);color:var(--red)" onclick="cancelLookedUpRequest()">Cancel This REQ-ID</button>
+    </div>
+
+    <label>Borrower Username</label>
+    <input type="text" id="nlBorrower" placeholder="reddit username (no u/)" />
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label>Amount Requested</label>
+        <input type="number" id="nlAmount" placeholder="e.g. 150.00" step="0.01" min="0.01" />
+      </div>
+      <div>
+        <label>Currency</label>
+        <input type="text" id="nlCurrency" placeholder="USD" maxlength="3" style="text-transform:uppercase" value="USD" />
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label>Agreed Repay Amount <span style="color:var(--red)">*</span></label>
+        <input type="number" id="nlRepayAmount" placeholder="e.g. 200.00" step="0.01" min="0.01" />
+      </div>
+      <div>
+        <label>Due Date <span style="color:var(--red)">*</span></label>
+        <input type="date" id="nlRepayDate" />
+      </div>
+    </div>
+
+    <label>Payment Method</label>
+    <input type="text" id="nlPaymentMethod" placeholder="e.g. PayPal, Venmo" />
+
+    <label>Reddit Thread Link</label>
+    <input type="text" id="nlThreadLink" placeholder="https://reddit.com/r/..." />
+
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn-cancel" onclick="closeModal('newLoanModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitNewLoan()">Record Loan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notes & Attachments Modal -->
+<div class="modal-overlay" id="loanDetailModal">
+  <div class="modal" style="width:520px">
+    <h3>Loan <span id="ldLoanId" style="color:var(--accent-h);font-family:monospace"></span></h3>
+    <div style="display:flex;gap:8px;margin-bottom:16px;font-size:12px;color:var(--muted)" id="ldMeta"></div>
+
+    <label style="font-size:13px;font-weight:600;color:var(--text)">Private Notes</label>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px">Only visible to you and mods — not shown to the borrower.</p>
+    <textarea id="ldNote" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit" placeholder="e.g. Borrower said they'd pay Friday. Sent via PayPal F&F."></textarea>
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;margin-top:6px">
+      <button class="btn-confirm" style="padding:6px 14px;font-size:12px" onclick="saveNote()">Save Note</button>
+    </div>
+
+    <label style="font-size:13px;font-weight:600;color:var(--text)">Attachments</label>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px">Screenshots, receipts, proof of payment. JPG, PNG, PDF, CSV.</p>
+    <div id="ldAttachList" class="attach-list"></div>
+    <div class="upload-zone" onclick="document.getElementById('ldFileInput').click()">
+      <input type="file" id="ldFileInput" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.csv" onchange="uploadFile(this)" />
+      Click to upload a file or photo
+    </div>
+    <div id="ldUploadStatus" style="font-size:12px;color:var(--muted);margin-top:6px;display:none"></div>
+
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-cancel" onclick="closeModal('loanDetailModal')">Close</button>
     </div>
   </div>
 </div>
@@ -278,6 +588,238 @@
       closeModal('refundModal'); toast('Loan marked refunded.', 'success');
       if (typeof loadData === 'function') loadData();
     } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  function openNewLoanModal() {
+    document.getElementById('nlReqId').value = '';
+    document.getElementById('nlBorrower').value = '';
+    document.getElementById('nlAmount').value = '';
+    document.getElementById('nlCurrency').value = 'USD';
+    document.getElementById('nlRepayAmount').value = '';
+    document.getElementById('nlRepayDate').value = '';
+    document.getElementById('nlPaymentMethod').value = '';
+    document.getElementById('nlThreadLink').value = '';
+    document.getElementById('nlAutoFillBanner').style.display = 'none';
+    document.getElementById('nlDuplicateWarning').style.display = 'none';
+    document.getElementById('nlRejectWrap').style.display = 'none';
+    document.getElementById('newLoanError').style.display = 'none';
+    document.getElementById('newLoanModal').classList.add('open');
+  }
+
+  async function lookupRequest() {
+    const reqId = document.getElementById('nlReqId').value.trim().toUpperCase();
+    const errEl = document.getElementById('newLoanError');
+    if (!reqId) { errEl.textContent = 'Enter a Request ID first.'; errEl.style.display = 'block'; return; }
+    try {
+      const r = await apiFetch(`/api/requests/${reqId}`);
+      if (r.status !== 'open') {
+        errEl.textContent = `${reqId} is already ${r.status} — cannot fund again.`;
+        errEl.style.display = 'block'; return;
+      }
+      errEl.style.display = 'none';
+      document.getElementById('nlBorrower').value      = r.borrower || '';
+      document.getElementById('nlAmount').value        = r.amount ? parseFloat(r.amount).toFixed(2) : '';
+      document.getElementById('nlCurrency').value      = r.currency || 'USD';
+      document.getElementById('nlRepayAmount').value   = r.repay_amount ? parseFloat(r.repay_amount).toFixed(2) : '';
+      document.getElementById('nlRepayDate').value     = r.repay_date ? r.repay_date.split('T')[0] : '';
+      document.getElementById('nlPaymentMethod').value = r.payment_method || '';
+      document.getElementById('nlThreadLink').value    = r.thread_link || '';
+      document.getElementById('nlBannerReqId').textContent = reqId;
+      document.getElementById('nlAutoFillBanner').style.display = 'block';
+      document.getElementById('nlRejectWrap').style.display = 'block';
+      const duplicateCount = Number(r.duplicate_open_request_count || 0);
+      const duplicateWarning = document.getElementById('nlDuplicateWarning');
+      if (duplicateCount > 0) {
+        duplicateWarning.textContent = `Warning: this borrower has ${duplicateCount} other open REQ record${duplicateCount === 1 ? '' : 's'} in LoanCentral. Review the Reddit thread before funding.`;
+        duplicateWarning.style.display = 'block';
+      } else {
+        duplicateWarning.style.display = 'none';
+      }
+    } catch(e) {
+      errEl.textContent = e.message; errEl.style.display = 'block';
+    }
+  }
+
+  async function submitNewLoan() {
+    const errEl       = document.getElementById('newLoanError');
+    const reqId       = document.getElementById('nlReqId').value.trim().toUpperCase() || null;
+    const borrower    = document.getElementById('nlBorrower').value.trim().toLowerCase();
+    const amount      = parseFloat(document.getElementById('nlAmount').value);
+    const currency    = document.getElementById('nlCurrency').value.trim().toUpperCase() || 'USD';
+    const repayAmount = parseFloat(document.getElementById('nlRepayAmount').value);
+    const repayDate   = document.getElementById('nlRepayDate').value.trim();
+    const threadLink  = document.getElementById('nlThreadLink').value.trim();
+
+    if (!borrower)           { errEl.textContent = 'Borrower username is required.';  errEl.style.display='block'; return; }
+    if (!amount || amount<=0){ errEl.textContent = 'Amount must be greater than 0.';  errEl.style.display='block'; return; }
+    if (!repayAmount || repayAmount<=0){ errEl.textContent = 'Repay amount is required.'; errEl.style.display='block'; return; }
+    if (!repayDate)          { errEl.textContent = 'Repay date is required.';          errEl.style.display='block'; return; }
+
+    try {
+      if (reqId) {
+        // Fund via request ID
+        await apiFetch(`/api/requests/${reqId}/fund`, {
+          method: 'POST',
+          body: JSON.stringify({ lender: ME || session_user, repay_amount: repayAmount, repay_date: repayDate })
+        });
+      } else {
+        // Manual loan — no request ID
+        await apiFetch('/api/loans/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            borrower,
+            amount,
+            currency,
+            repay_amount: repayAmount,
+            repay_date: repayDate,
+            payment_method: document.getElementById('nlPaymentMethod').value.trim(),
+            thread_link: threadLink
+          })
+        });
+      }
+      closeModal('newLoanModal');
+      toast('Loan recorded successfully!', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function cancelLookedUpRequest() {
+    const reqId = document.getElementById('nlReqId').value.trim().toUpperCase();
+    const errEl = document.getElementById('newLoanError');
+    if (!reqId) { errEl.textContent = 'Enter a Request ID first.'; errEl.style.display = 'block'; return; }
+    if (!confirm(`Cancel ${reqId}? This records that this known request should not be funded from the dashboard.`)) return;
+    try {
+      await apiFetch(`/api/requests/${encodeURIComponent(reqId)}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ note: 'Cancelled from lender dashboard after REQ lookup' })
+      });
+      closeModal('newLoanModal');
+      toast(`${reqId} cancelled.`, 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  // ---- Loan detail (notes + attachments) ----
+  let _currentLoanId = null;
+
+  async function openLoanDetail(loanId, note, metaHtml) {
+    _currentLoanId = loanId;
+    document.getElementById('ldLoanId').textContent  = loanId;
+    document.getElementById('ldMeta').innerHTML      = metaHtml || '';
+    document.getElementById('ldNote').value          = note || '';
+    document.getElementById('ldUploadStatus').style.display = 'none';
+    document.getElementById('loanDetailModal').classList.add('open');
+    await loadAttachments(loanId);
+  }
+
+  async function loadAttachments(loanId) {
+    try {
+      const list = await apiFetch(`/api/loans/${loanId}/attachments`);
+      const el   = document.getElementById('ldAttachList');
+      if (!list.length) { el.innerHTML = '<p style="font-size:12px;color:var(--muted)">No attachments yet.</p>'; return; }
+      el.innerHTML = list.map(a => {
+        const size = a.file_size ? (a.file_size / 1024).toFixed(1) + ' KB' : '';
+        return `<div class="attach-item">
+          <a href="${a.url}" target="_blank">${a.original_name}</a>
+          <span style="color:var(--muted);font-size:11px">${size} · ${a.uploaded_by} · ${a.uploaded_at ? a.uploaded_at.split('T')[0] : ''}</span>
+        </div>`;
+      }).join('');
+    } catch(e) { document.getElementById('ldAttachList').innerHTML = `<p style="color:var(--red);font-size:12px">${e.message}</p>`; }
+  }
+
+  async function saveNote() {
+    if (!_currentLoanId) return;
+    const note = document.getElementById('ldNote').value.trim();
+    try {
+      await apiFetch(`/api/loans/${_currentLoanId}/notes`, { method: 'POST', body: JSON.stringify({ note }) });
+      toast('Note saved.', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function uploadFile(input) {
+    if (!input.files.length || !_currentLoanId) return;
+    const status = document.getElementById('ldUploadStatus');
+    status.textContent = 'Uploading...'; status.style.display = 'block';
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+      const res = await fetch(`/api/loans/${_currentLoanId}/attachments`, {
+        method: 'POST', credentials: 'same-origin', body: fd
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      status.textContent = '✓ Uploaded: ' + data.original_name;
+      input.value = '';
+      await loadAttachments(_currentLoanId);
+    } catch(e) { status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)'; }
+  }
+
+  // ---- Due date helpers ----
+  function parseLocalDate(value) {
+    if (!value) return null;
+    const raw = String(value).split('T')[0];
+    const parts = raw.split('-').map(Number);
+    if (parts.length === 3 && parts.every(Number.isFinite)) {
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    return new Date(value);
+  }
+
+  function dueLabel(repayDate) {
+    if (!repayDate) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due   = parseLocalDate(repayDate); due.setHours(0,0,0,0);
+    const days  = Math.round((due - today) / 86400000);
+    if (days < 0)  return `<span class="due-overdue">${Math.abs(days)}d overdue</span>`;
+    if (days === 0) return `<span class="due-overdue">Due today</span>`;
+    if (days <= 3)  return `<span class="due-soon">Due in ${days}d</span>`;
+    return `<span class="due-ok">Due ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>`;
+  }
+
+  // ---- Notification badge ----
+  async function loadNotificationBadge() {
+    try {
+      const loans = await apiFetch('/api/loans?status=unpaid&limit=1');
+      const n = Array.isArray(loans) ? loans.length : 0;
+      const existing = document.getElementById('unpaidBadge');
+      if (existing) existing.remove();
+      const btn = document.querySelector('[onclick*="showTab(\'unpaid\')"]');
+      if (btn && n > 0) {
+        const badge = document.createElement('span');
+        badge.id = 'unpaidBadge';
+        badge.className = 'nav-badge';
+        badge.textContent = n;
+        btn.appendChild(badge);
+      }
+    } catch(e) {}
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('[onclick*="showTab(\'unpaid\')"]')) {
+      loadNotificationBadge();
+      setInterval(loadNotificationBadge, 60000);
+    }
+    checkSessionExpiry();
+  });
+
+  async function checkSessionExpiry() {
+    const el = document.getElementById('sessionWarning');
+    if (!el) return;
+    try {
+      const info = await apiFetch('/api/session');
+      const remaining = Number(info.seconds_remaining || 0);
+      if (remaining > 0 && remaining <= 24 * 60 * 60) {
+        const hours = Math.max(1, Math.ceil(remaining / 3600));
+        el.innerHTML = `<strong>Session expires soon:</strong> about ${hours} hour${hours === 1 ? '' : 's'} remaining. Save any work before it expires.`;
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+      }
+    } catch(e) {}
   }
 
   function statusLabel(s) {

@@ -1,5 +1,7 @@
 import logging
 
+from bot_messages import with_dashboard_link
+
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$help"
@@ -55,5 +57,5 @@ $dispute [loan_id]
 **Need help?** Contact the moderators.
 """
 
-    comment.reply(help_text)
+    comment.reply(with_dashboard_link(help_text))
     logger.info(f"Help sent to u/{comment.author.name}")

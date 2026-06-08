@@ -1,14 +1,13 @@
 STATUS: Dashboard fully built, test data seeded, server runs via run_dev.py
-LAST THING DONE: Login page confirmed working in browser at http://127.0.0.1:5000
+LAST THING DONE: Dashboard route/API smoke checks passed for testmod, testlender, and testborrower; bot replies now include dashboard links.
 
 NEXT STEPS (in order):
-1. Test all 3 dashboards - open browser, go to /auth/dev-login, try each username:
-   - testmod    → mod dashboard (all loans, role management)
-   - testlender → lender dashboard (their loans, stats, action buttons)
-   - testborrower → borrower dashboard (what they owe, health score)
-2. Fix anything that looks broken or ugly in the UI
-3. Add dashboard link to every bot reply (funnel users to the site)
-4. Wire up real Reddit OAuth credentials from the test app
+1. Visual-test all 3 dashboards in a real browser - open /auth/dev-login and try each username:
+   - testmod -> mod dashboard (all loans, role management)
+   - testlender -> lender dashboard (their loans, stats, action buttons)
+   - testborrower -> borrower dashboard (what they owe, health score)
+2. Fix anything that looks broken or ugly in the UI.
+3. Wire up real Reddit OAuth credentials from the test app.
 
 TO RUN THE SERVER:
 1. Open pgAdmin (keep it open)
@@ -18,4 +17,5 @@ TO RUN THE SERVER:
 
 GITHUB: https://github.com/TreeHooman/LoanCentral-Test
 BRANCH: upgrade/tested-bot-core
-TESTS: 43/43 passing (run: python -m unittest discover -s tests -q)
+TESTS: 48/48 passing (run: python -m unittest discover -s tests -q)
+NOTE: In-app browser automation was blocked by Windows sandbox setup; HTTP route/API smoke checks passed instead.

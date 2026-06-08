@@ -1,52 +1,205 @@
 {% extends "base.html" %}
-{% block title %}Lender Dashboard — LoanCentral{% endblock %}
+{% block title %}Lender Dashboard - LoanCentral{% endblock %}
 
 {% block content %}
 <div class="section-header" style="margin-bottom:20px">
   <div>
-    <div class="section-title" style="font-size:20px">My Lending Dashboard</div>
+    <div class="section-title" style="font-size:20px">Lender Dashboard</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn-secondary" onclick="exportCsv()">Export CSV</button>
+    <button class="btn-secondary" onclick="openVerificationModal()">Apply Verification</button>
+    <button class="btn-primary" onclick="openNewLoanModal()" style="font-size:14px;padding:9px 20px">Record Loan</button>
   </div>
 </div>
 
-<!-- Stats -->
-<div class="stats-grid" id="statsGrid">
-  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
-  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
-  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div></div>
-  <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div><div class="stat-sub" id="s-recovered"></div></div>
+<section class="due-alert-panel" id="dueAlertPanel" style="display:none">
+  <div class="due-alert-head">
+    <div>
+      <div class="panel-title">Needs Attention</div>
+      <div class="due-alert-sub" id="dueAlertSub">Loans closest to due date appear first.</div>
+    </div>
+    <button class="btn-secondary" onclick="showDueSoon()">View Due Soon</button>
+  </div>
+  <div class="due-alert-list" id="dueAlertList"></div>
+  <div class="due-alert-sub" id="reminderQueueMeta" style="margin-top:10px"></div>
+</section>
+
+<div class="panel-grid">
+  <section class="panel">
+    <div class="panel-title">Portfolio Snapshot</div>
+    <p class="panel-copy">Track loans you already agreed to on Reddit. This dashboard records the agreement, due date, payments, notes, and proof files.</p>
+    <div class="mini-grid">
+      <div class="mini-stat"><div class="mini-label">Outstanding</div><div class="mini-value c-orange" id="m-outstanding">-</div></div>
+      <div class="mini-stat"><div class="mini-label">Recovered</div><div class="mini-value c-green" id="m-recovered">-</div></div>
+      <div class="mini-stat"><div class="mini-label">At Risk</div><div class="mini-value c-red" id="m-risk">-</div></div>
+    </div>
+  </section>
+
+  <aside class="callout">
+    <strong>Safe REQ flow:</strong> find and agree to terms on Reddit first, then paste the bot's REQ-ID into Record Loan. LoanCentral logs what happened; it does not match lenders with borrowers.
+  </aside>
 </div>
 
-<!-- Loans -->
+<div class="callout" id="schemaWarning" style="display:none;margin-bottom:16px;border-color:rgba(243,156,18,0.35);background:rgba(243,156,18,0.08)">
+  <strong>Database migration needed:</strong> the dashboard is running in compatibility mode. New fields like repay amount, due date, and notes may be limited until migrations run.
+</div>
+
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">-</div></div>
+  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">-</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">-</div></div>
+  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">-</div></div>
+  <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">-</div></div>
+  <div class="stat-card"><div class="stat-label">Due Back</div><div class="stat-value c-orange" id="s-dueback">-</div><div class="stat-sub" id="s-duecount"></div></div>
+</div>
+
 <div class="toolbar">
   <div class="tabs">
-    <button class="tab active" data-status="">All My Loans</button>
+    <button class="tab active" data-status="">All</button>
     <button class="tab" data-status="confirmed">Active</button>
     <button class="tab" data-status="partially_repaid">Partial</button>
     <button class="tab" data-status="unpaid">Unpaid</button>
     <button class="tab" data-status="repaid">Repaid</button>
     <button class="tab" data-status="refunded">Refunded</button>
   </div>
-  <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+  <div class="search-wrap">
+    <input id="loanSearch" type="search" placeholder="Filter by borrower, loan ID, status, notes..." oninput="renderLoans()" />
+  </div>
+  <button class="btn-secondary" onclick="setRelevanceSort()">Most Relevant</button>
+  <button class="btn-secondary" onclick="showDueSoon()">Due Soon</button>
+  <button class="btn-secondary" onclick="showOverdueOnly()">Overdue</button>
+  <button class="btn-secondary" onclick="showNeedsAction()">Needs Action</button>
+  <button class="btn-secondary" id="refreshBtn" onclick="loadLoans()">Refresh</button>
+  <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Selected Paid</button>
 </div>
 
 <div class="table-wrap">
-  <table>
-    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-    <tbody id="loansBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  <table class="mobile-cards lender-loans-table">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAllLoans" onchange="toggleAllLoans(this.checked)" /></th>
+        <th><button class="sort-head" onclick="setSort('id')">Loan</button></th>
+        <th><button class="sort-head" onclick="setSort('borrower')">Borrower</button></th>
+        <th><button class="sort-head" onclick="setSort('amount')">Lent</button></th>
+        <th><button class="sort-head" onclick="setSort('repay_amount')">Due Back</button></th>
+        <th><button class="sort-head" onclick="setSort('amount_repaid')">Repaid</button></th>
+        <th><button class="sort-head" onclick="setSort('remaining')">Remaining</button></th>
+        <th><button class="sort-head" onclick="setSort('status')">Status</button></th>
+        <th><button class="sort-head" onclick="setSort('repay_date')">Due</button></th>
+        <th><button class="sort-head" onclick="setSort('days_funded')">Days Funded</button></th>
+        <th>Notes</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
+</div>
+
+<div class="modal-overlay" id="termsModal">
+  <div class="modal">
+    <h3>Edit Loan Terms</h3>
+    <div class="modal-error" id="termsError"></div>
+    <input type="hidden" id="termsLoanId" />
+    <label>Loan ID</label>
+    <input type="text" id="termsLoanIdDisplay" readonly style="opacity:.6" />
+    <label>Agreed Repay Amount</label>
+    <input type="number" id="termsRepayAmount" step="0.01" min="0.01" />
+    <label>Due Date</label>
+    <input type="date" id="termsRepayDate" />
+    <label>Private Note</label>
+    <textarea id="termsNotes" rows="3" placeholder="Optional lender note"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('termsModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitTermsEdit()">Save Terms</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="verificationModal">
+  <div class="modal">
+    <h3>Lender Verification Application</h3>
+    <div class="modal-error" id="verificationError"></div>
+    <p style="color:var(--muted);font-size:12px;line-height:1.45;margin-bottom:12px">
+      This creates a private dashboard review item for mods. It does not change Reddit flair yet.
+    </p>
+    <label>Public Summary</label>
+    <textarea id="verificationPublicNote" rows="3" placeholder="Short factual summary mods can reference"></textarea>
+    <label>Private Review Note</label>
+    <textarea id="verificationPrivateNote" rows="4" placeholder="Anything mods should review privately"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('verificationModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitVerificationApplication()">Submit</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .sort-head { background:none;border:0;color:var(--muted);font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;padding:0;text-align:left; }
+  .sort-head:hover { color:var(--text); }
+  tr.row-overdue td { background:rgba(231,76,60,0.055); }
+  tr.row-due-soon td { background:rgba(243,156,18,0.055); }
+  .due-alert-panel { margin: 0 0 16px; padding: 18px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; }
+  .due-alert-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+  .due-alert-sub { color:var(--muted); font-size:12px; margin-top:4px; }
+  .due-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .due-alert-item { border:1px solid var(--border); border-radius:8px; padding:12px; background:rgba(255,255,255,0.025); color:var(--text); text-align:left; cursor:pointer; font:inherit; }
+  .due-alert-item:hover { border-color:rgba(91,110,245,0.42); transform:translateY(-1px); }
+  .due-alert-item.urgent { border-color:rgba(231,76,60,0.38); background:rgba(231,76,60,0.08); }
+  .due-alert-item.soon { border-color:rgba(243,156,18,0.35); background:rgba(243,156,18,0.08); }
+  .due-alert-top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .due-alert-user { font-weight:700; }
+  .due-alert-money { color:var(--orange); font-weight:700; white-space:nowrap; }
+  .due-alert-meta { color:var(--muted); font-size:12px; margin-top:8px; display:flex; justify-content:space-between; gap:8px; }
+  @media (max-width: 640px) {
+    .due-alert-panel { padding:12px; margin-bottom:10px; }
+    .due-alert-head { align-items:stretch; flex-direction:column; }
+    .due-alert-head .btn-secondary { width:100%; min-height:38px; }
+    .due-alert-list { grid-template-columns:1fr; gap:8px; }
+    .due-alert-item { padding:10px; }
+    .due-alert-item:nth-child(n+3) { display:none; }
+    .due-alert-meta { margin-top:6px; }
+    .panel-grid { display:none; }
+    .lender-loans-table td[data-label="Select"] {
+      display: flex;
+      justify-content: flex-end;
+      min-height: 32px;
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+    .lender-loans-table td[data-label="Select"]::before { content: "Select for bulk paid"; margin-right: auto; }
+    .lender-loans-table td[data-label="Actions"] {
+      display: block;
+      padding-top: 12px;
+    }
+    .lender-loans-table td[data-label="Actions"]::before {
+      display: block;
+      margin-bottom: 8px;
+    }
+    .lender-loans-table td[data-label="Loan"] {
+      background: rgba(91,110,245,0.055);
+    }
+    .lender-loans-table td[data-label="Actions"] .actions {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+</style>
 <script>
   const ME = '{{ username }}';
   let currentStatus = '';
+  let lenderLoans = [];
+  let sortKey = 'relevance';
+  let sortDir = 'asc';
+  let quickFilter = '';
+  let reminderQueue = null;
+  const DUE_SOON_DAYS = 3;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans();
+    loadStats();
+    loadReminders();
+    loadLoans();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -60,55 +213,416 @@
   async function loadStats() {
     try {
       const s = await apiFetch(`/api/stats/lender/${ME}`);
-      document.getElementById('s-total').textContent      = s.total_loans;
-      document.getElementById('s-active').textContent     = s.active_loans;
-      document.getElementById('s-unpaid').textContent     = s.unpaid_loans;
-      document.getElementById('s-repaid').textContent     = s.repaid_loans;
-      document.getElementById('s-lent').textContent       = '$' + fmt(s.total_lent);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
-      document.getElementById('s-recovered').textContent  = '$' + fmt(s.total_recovered) + ' recovered';
+      document.getElementById('s-total').textContent = s.total_loans;
+      document.getElementById('s-active').textContent = s.active_loans;
+      document.getElementById('s-unpaid').textContent = s.unpaid_loans;
+      document.getElementById('s-repaid').textContent = s.repaid_loans;
+      document.getElementById('s-lent').textContent = '$' + fmt(s.total_lent);
+      document.getElementById('s-dueback').textContent = '$' + fmt(s.outstanding);
+      document.getElementById('s-duecount').textContent = `${s.active_loans || 0} active`;
+      document.getElementById('m-outstanding').textContent = '$' + fmt(s.outstanding);
+      document.getElementById('m-recovered').textContent = '$' + fmt(s.total_recovered);
+      document.getElementById('m-risk').textContent = `${s.unpaid_loans || 0} loans`;
     } catch(e) { console.error(e); }
   }
 
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
-    btn.disabled = true; btn.textContent = '↻ Loading...';
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
     let url = `/api/loans?lender=${ME}&limit=200`;
     if (currentStatus) url += `&status=${currentStatus}`;
     try {
-      const loans = await apiFetch(url);
-      const tbody = document.getElementById('loansBody');
-      if (!loans.length) {
-        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
-        return;
-      }
-      tbody.innerHTML = loans.map(loan => {
-        const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
-        const id = loan.loan_id || loan.db_id;
-        const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
-        const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
-        const canRefund = !['repaid','refunded'].includes(loan.status);
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
-        return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.borrower}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-          <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-          <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
-          <td><div class="actions">
-            ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
-            ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
-            ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
-          </div></td>
-        </tr>`;
-      }).join('');
+      lenderLoans = await apiFetch(url);
+      document.getElementById('schemaWarning').style.display = lenderLoans.some(loan => loan.schema_outdated) ? 'block' : 'none';
+      renderLoans();
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
-    } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="12" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Refresh';
+    }
   }
 
-  function loadData() { loadLoans(); loadStats(); }
+  async function loadReminders() {
+    try {
+      reminderQueue = await apiFetch(`/api/reminders?lender=${encodeURIComponent(ME)}&days=${DUE_SOON_DAYS}`);
+      renderReminderMeta();
+    } catch(e) {
+      reminderQueue = null;
+    }
+  }
+
+  function renderLoans() {
+    const tbody = document.getElementById('loansBody');
+    renderDueAlerts();
+    const q = (document.getElementById('loanSearch')?.value || '').trim().toLowerCase();
+    const rows = lenderLoans.filter(loan => {
+      if (!q) return true;
+      return [loan.loan_id, loan.db_id, loan.borrower, loan.status, loan.notes, loan.payment_method]
+        .some(v => String(v || '').toLowerCase().includes(q));
+    }).filter(loan => {
+      if (quickFilter === 'overdue') return isOverdue(loan);
+      if (quickFilter === 'due_soon') return isDueSoon(loan);
+      if (quickFilter === 'needs_action') return ['confirmed','partially_repaid','unpaid','disputed'].includes(loan.status);
+      return true;
+    }).sort(compareLoans);
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><h3>No loans found</h3><p>Record a loan after terms are agreed on Reddit.</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(loan => {
+      const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+      const repaid = parseFloat(loan.amount_repaid || 0);
+      const remaining = Math.max(repayAmount - repaid, 0);
+      const id = loan.loan_id || loan.db_id;
+      const canPay = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+      const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
+      const canRefund = !['repaid','refunded'].includes(loan.status);
+      const daysFunded = daysSince(loan.date_created);
+      const overdue = isOverdue(loan) && remaining > 0;
+      const dueSoon = !overdue && isDueSoon(loan);
+      const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+        ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '';
+      const due = ['confirmed','partially_repaid','unpaid'].includes(loan.status) ? dueLabel(loan.repay_date) : '';
+      const note = escapeHtml(loan.notes || '');
+      const noteHtml = loan.notes
+        ? `<span class="notes-preview" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')" title="${note}">${note}</span>`
+        : `<button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
+      return `<tr class="${overdue ? 'row-overdue' : dueSoon ? 'row-due-soon' : ''}">
+        <td data-label="Select"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></td>
+        <td data-label="Loan"><span class="loan-id">${escapeHtml(id)}</span><div>${thread}</div></td>
+        <td data-label="Borrower" class="username">${redditUser(loan.borrower)}</td>
+        <td data-label="Lent"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
+        <td data-label="Due Back"><span class="amount">${fmt(repayAmount)} ${escapeHtml(loan.currency)}</span></td>
+        <td data-label="Repaid">${fmt(repaid)}</td>
+        <td data-label="Remaining" class="${remaining > 0 ? 'c-remaining' : ''}">${fmt(remaining)}</td>
+        <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
+        <td data-label="Due" class="date-cell">${due || fmtDate(loan.date_created)}</td>
+        <td data-label="Days Funded" class="date-cell">${daysFunded}</td>
+        <td data-label="Notes">${noteHtml}</td>
+        <td data-label="Actions"><div class="actions">
+          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Files</button>
+          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openTermsModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Terms</button>
+          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
+          ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
+          ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
+          ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
+        </div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function exportCsv() {
+    const status = currentStatus ? `&status=${encodeURIComponent(currentStatus)}` : '';
+    window.location.href = `/api/loans/export.csv?lender=${encodeURIComponent(ME)}${status}`;
+  }
+
+  function openVerificationModal() {
+    document.getElementById('verificationPublicNote').value = '';
+    document.getElementById('verificationPrivateNote').value = '';
+    document.getElementById('verificationError').style.display = 'none';
+    document.getElementById('verificationModal').classList.add('open');
+  }
+
+  async function submitVerificationApplication() {
+    const errEl = document.getElementById('verificationError');
+    try {
+      await apiFetch('/api/verification/apply', {
+        method: 'POST',
+        body: JSON.stringify({
+          requested_role: 'lender',
+          public_note: document.getElementById('verificationPublicNote').value.trim(),
+          private_note: document.getElementById('verificationPrivateNote').value.trim()
+        })
+      });
+      closeModal('verificationModal');
+      toast('Verification application submitted.', 'success');
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  function findLoan(loanId) {
+    return lenderLoans.find(item => String(item.loan_id || item.db_id) === String(loanId));
+  }
+
+  function getLoanNote(loanId) {
+    return findLoan(loanId)?.notes || '';
+  }
+
+  function showOverdueOnly() {
+    quickFilter = quickFilter === 'overdue' ? '' : 'overdue';
+    renderLoans();
+  }
+
+  function showDueSoon() {
+    quickFilter = quickFilter === 'due_soon' ? '' : 'due_soon';
+    sortKey = 'relevance';
+    sortDir = 'asc';
+    renderLoans();
+  }
+
+  function showNeedsAction() {
+    quickFilter = quickFilter === 'needs_action' ? '' : 'needs_action';
+    renderLoans();
+  }
+
+  function setRelevanceSort() {
+    sortKey = 'relevance';
+    sortDir = 'asc';
+    quickFilter = '';
+    renderLoans();
+  }
+
+  function setSort(key) {
+    if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortKey = key; sortDir = 'asc'; }
+    renderLoans();
+  }
+
+  function compareLoans(a, b) {
+    const av = sortValue(a, sortKey);
+    const bv = sortValue(b, sortKey);
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  }
+
+  function sortValue(loan, key) {
+    const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+    const repaid = parseFloat(loan.amount_repaid || 0);
+    const id = loan.loan_id || loan.db_id || '';
+    const values = {
+      id,
+      borrower: String(loan.borrower || '').toLowerCase(),
+      amount: parseFloat(loan.amount || 0),
+      repay_amount: repayAmount,
+      amount_repaid: repaid,
+      remaining: Math.max(repayAmount - repaid, 0),
+      status: String(loan.status || ''),
+      repay_date: loan.repay_date ? parseLocalDate(loan.repay_date).getTime() : 9999999999999,
+      days_funded: daysSince(loan.date_created),
+      date_created: loan.date_created ? new Date(loan.date_created).getTime() : 0,
+      relevance: relevanceScore(loan)
+    };
+    return values[key] ?? '';
+  }
+
+  function relevanceScore(loan) {
+    const status = String(loan.status || '');
+    const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+    const repaid = parseFloat(loan.amount_repaid || 0);
+    const remaining = Math.max(repayAmount - repaid, 0);
+    const open = remaining > 0 && ['confirmed','partially_repaid','unpaid','disputed'].includes(status);
+    const statusRank = { unpaid: 0, disputed: 1, partially_repaid: 2, confirmed: 3, repaid: 8, refunded: 9 }[status] ?? 6;
+    const dueRank = open ? daysUntil(loan.repay_date) : 9999;
+    const dueBoost = loan.repay_date ? Math.max(-365, Math.min(9999, dueRank)) : 5000;
+    return (open ? 0 : 1000000) + (dueBoost * 1000) + (statusRank * 100) - Math.min(remaining, 9999) / 1000;
+  }
+
+  function daysSince(dateValue) {
+    if (!dateValue) return 0;
+    const created = new Date(dateValue);
+    const today = new Date();
+    created.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    return Math.max(0, Math.floor((today - created) / 86400000));
+  }
+
+  function daysUntil(dateValue) {
+    if (!dateValue) return 9999;
+    const due = parseLocalDate(dateValue);
+    const today = new Date();
+    due.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    return Math.round((due - today) / 86400000);
+  }
+
+  function isOverdue(loan) {
+    if (!loan.repay_date || !['confirmed','partially_repaid','unpaid'].includes(loan.status)) return false;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = parseLocalDate(loan.repay_date); due.setHours(0,0,0,0);
+    return due < today;
+  }
+
+  function isDueSoon(loan) {
+    const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+    const repaid = parseFloat(loan.amount_repaid || 0);
+    const remaining = Math.max(repayAmount - repaid, 0);
+    if (!loan.repay_date || remaining <= 0 || !['confirmed','partially_repaid','unpaid','disputed'].includes(loan.status)) return false;
+    return daysUntil(loan.repay_date) <= DUE_SOON_DAYS;
+  }
+
+  function renderDueAlerts() {
+    const panel = document.getElementById('dueAlertPanel');
+    const list = document.getElementById('dueAlertList');
+    const sub = document.getElementById('dueAlertSub');
+    if (!panel || !list || !sub) return;
+    const dueLoans = lenderLoans
+      .filter(isDueSoon)
+      .sort((a, b) => relevanceScore(a) - relevanceScore(b));
+    if (!dueLoans.length) {
+      panel.style.display = 'none';
+      return;
+    }
+    const overdueCount = dueLoans.filter(isOverdue).length;
+    sub.textContent = overdueCount
+      ? `${overdueCount} overdue. Due-soon loans are sorted to the top.`
+      : `${dueLoans.length} loan${dueLoans.length === 1 ? '' : 's'} due within ${DUE_SOON_DAYS} days.`;
+    list.innerHTML = dueLoans.slice(0, 4).map(loan => {
+      const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+      const repaid = parseFloat(loan.amount_repaid || 0);
+      const remaining = Math.max(repayAmount - repaid, 0);
+      const id = loan.loan_id || loan.db_id;
+      const urgentClass = isOverdue(loan) ? 'urgent' : 'soon';
+      return `<button class="due-alert-item ${urgentClass}" onclick="focusLoan('${escapeAttr(id)}')">
+        <div class="due-alert-top">
+          <span class="due-alert-user">u/${escapeHtml(loan.borrower)}</span>
+          <span class="due-alert-money">$${fmt(remaining)}</span>
+        </div>
+        <div class="due-alert-meta">
+          <span>${dueLabel(loan.repay_date)}</span>
+          <span>${escapeHtml(id)}</span>
+        </div>
+      </button>`;
+    }).join('');
+    panel.style.display = 'block';
+    renderReminderMeta();
+  }
+
+  function renderReminderMeta() {
+    const el = document.getElementById('reminderQueueMeta');
+    if (!el || !reminderQueue) return;
+    const c = reminderQueue.counts || {};
+    const missing = Number(c.missing_due_date || 0);
+    const dueSoon = Number(c.due_soon || 0) + Number(c.due_today || 0);
+    const overdue = Number(c.overdue || 0);
+    const parts = [];
+    if (overdue) parts.push(`${overdue} overdue`);
+    if (dueSoon) parts.push(`${dueSoon} due soon/today`);
+    if (missing) parts.push(`${missing} missing due date`);
+    el.textContent = parts.length ? `Reminder queue: ${parts.join(' | ')}` : 'Reminder queue clear.';
+  }
+
+  function focusLoan(loanId) {
+    quickFilter = '';
+    const search = document.getElementById('loanSearch');
+    if (search) search.value = loanId;
+    renderLoans();
+    document.querySelector('.table-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function toggleAllLoans(checked) {
+    document.querySelectorAll('.loan-select:not(:disabled)').forEach(box => box.checked = checked);
+  }
+
+  async function bulkMarkPaid() {
+    const ids = [...document.querySelectorAll('.loan-select:checked')].map(box => box.value);
+    if (!ids.length) { toast('Select at least one active loan.', 'error'); return; }
+    if (!confirm(`Mark ${ids.length} selected loan(s) fully paid?`)) return;
+    try {
+      const result = await apiFetch('/api/loans/bulk-paid', {
+        method: 'POST',
+        body: JSON.stringify({ lender: ME, loan_ids: ids })
+      });
+      const failures = result.errors?.length || 0;
+      toast(failures ? `Updated ${result.updated.length}, ${failures} failed.` : 'Selected loans marked paid.', failures ? 'error' : 'success');
+      document.getElementById('selectAllLoans').checked = false;
+      loadData();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function openTermsModal(loanId, repayAmount, repayDate) {
+    document.getElementById('termsLoanId').value = loanId;
+    document.getElementById('termsLoanIdDisplay').value = loanId;
+    document.getElementById('termsRepayAmount').value = repayAmount;
+    document.getElementById('termsRepayDate').value = repayDate || '';
+    document.getElementById('termsNotes').value = getLoanNote(loanId);
+    document.getElementById('termsError').style.display = 'none';
+    document.getElementById('termsModal').classList.add('open');
+  }
+
+  async function submitTermsEdit() {
+    const loanId = document.getElementById('termsLoanId').value;
+    const repayAmount = parseFloat(document.getElementById('termsRepayAmount').value);
+    const repayDate = document.getElementById('termsRepayDate').value;
+    const notes = document.getElementById('termsNotes').value.trim();
+    const errEl = document.getElementById('termsError');
+    if (!repayAmount || repayAmount <= 0) { errEl.textContent = 'Repay amount is required.'; errEl.style.display = 'block'; return; }
+    if (!repayDate) { errEl.textContent = 'Due date is required.'; errEl.style.display = 'block'; return; }
+    try {
+      await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/terms`, {
+        method: 'PUT',
+        body: JSON.stringify({ repay_amount: repayAmount, repay_date: repayDate, notes })
+      });
+      closeModal('termsModal');
+      toast('Loan terms updated.', 'success');
+      loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function copyLoanSummary(loanId) {
+    const loan = findLoan(loanId);
+    if (!loan) return;
+    const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+    const repaid = parseFloat(loan.amount_repaid || 0);
+    const remaining = Math.max(repayAmount - repaid, 0);
+    const text = [
+      `LoanCentral loan ${loan.loan_id || loan.db_id}`,
+      `Lender: u/${loan.lender}`,
+      `Borrower: u/${loan.borrower}`,
+      `Lent: ${fmt(loan.amount)} ${loan.currency}`,
+      `Due back: ${fmt(repayAmount)} ${loan.currency}`,
+      `Repaid: ${fmt(repaid)} ${loan.currency}`,
+      `Remaining: ${fmt(remaining)} ${loan.currency}`,
+      `Status: ${statusLabel(loan.status)}`,
+      `Due date: ${dateInput(loan.repay_date) || 'not set'}`,
+      `Payment method: ${loan.payment_method || 'not recorded'}`,
+      `Thread: ${loan.original_thread && loan.original_thread !== 'dashboard' ? loan.original_thread : 'not recorded'}`
+    ].join('\\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Loan summary copied.', 'success');
+    } catch(e) {
+      window.prompt('Copy loan summary:', text);
+    }
+  }
+
+  function loadData() { loadLoans(); loadStats(); loadReminders(); }
+  function jsString(value) { return JSON.stringify(String(value || '')); }
+  function fmtRaw(value) { return Number(value || 0).toFixed(2); }
+  function dateInput(value) { return value ? String(value).split('T')[0] : ''; }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
+  function redditUser(username) {
+    const raw = String(username || '');
+    return `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(raw)}">u/${escapeHtml(raw)}</a>`;
+  }
+
+  Object.assign(window, {
+    bulkMarkPaid,
+    copyLoanSummary,
+    exportCsv,
+    focusLoan,
+    getLoanNote,
+    loadData,
+    loadLoans,
+    loadReminders,
+    openTermsModal,
+    openVerificationModal,
+    renderLoans,
+    setRelevanceSort,
+    setSort,
+    showDueSoon,
+    showNeedsAction,
+    showOverdueOnly,
+    submitTermsEdit,
+    submitVerificationApplication,
+    toggleAllLoans
+  });
 </script>
 {% endblock %}

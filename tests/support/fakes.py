@@ -192,7 +192,8 @@ class FakeDb:
             return None
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
-    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status):
+    def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status,
+                    repay_amount=None, repay_date=None, payment_method=None):
         db_id = self.next_id
         self.next_id += 1
         self.loans.append(
@@ -207,6 +208,12 @@ class FakeDb:
                 "date_created": date_created,
                 "original_thread": original_thread,
                 "status": status,
+                "repay_amount": repay_amount,
+                "repay_date": repay_date,
+                "payment_method": payment_method,
+                "borrower_acknowledged_at": None,
+                "borrower_acknowledged_note": None,
+                "notes": None,
             }
         )
         return db_id
@@ -254,6 +261,7 @@ class FakeCursor:
                 loan["amount_repaid"],
                 loan["currency"],
                 loan["status"],
+                loan.get("repay_amount") or loan["amount"],
             )
             return
 
@@ -307,6 +315,7 @@ class FakeCursor:
                 loan["original_thread"],
                 loan["status"],
                 loan["borrower"],
+                loan.get("repay_amount") or loan["amount"],
             )
             return
 
@@ -500,6 +509,12 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("repay_date"),
+                    loan.get("notes"),
+                    loan.get("repay_amount"),
+                    loan.get("payment_method"),
+                    loan.get("borrower_acknowledged_at"),
+                    loan.get("borrower_acknowledged_note"),
                 )
                 for loan in matches
             ]
@@ -525,6 +540,12 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("repay_date"),
+                    loan.get("notes"),
+                    loan.get("repay_amount"),
+                    loan.get("payment_method"),
+                    loan.get("borrower_acknowledged_at"),
+                    loan.get("borrower_acknowledged_note"),
                 )
                 for loan in matches
             ]
@@ -599,6 +620,12 @@ def loan_record(
         "currency": currency,
         "status": status,
         "original_thread": original_thread,
+        "repay_amount": None,
+        "repay_date": None,
+        "payment_method": None,
+        "borrower_acknowledged_at": None,
+        "borrower_acknowledged_note": None,
+        "notes": None,
     }
 
 

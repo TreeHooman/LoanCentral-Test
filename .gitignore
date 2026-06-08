@@ -21,6 +21,10 @@ dist/
 # Logs and runtime files
 *.log
 *.pid
+uploads/
+.public-dashboard-token
+data/
+tools/
 
 # Local database files
 *.sqlite

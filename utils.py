@@ -21,6 +21,10 @@ reddit = praw.Reddit(
 # PostgreSQL connection
 def get_db_connection():
     """Get database connection"""
+    if os.getenv("DB_BACKEND", "").lower() == "sqlite":
+        from local_db import get_sqlite_connection
+        return get_sqlite_connection()
+
     try:
         # Determine SSL mode based on host
         host = os.getenv("DB_HOST", "localhost")
@@ -35,5 +39,9 @@ def get_db_connection():
             sslmode=ssl_mode
         )
     except Exception:
+        if os.getenv("LOANCENTRAL_ENV", "prod") != "prod":
+            logger.warning("PostgreSQL unavailable in dev; using local SQLite database.")
+            from local_db import get_sqlite_connection
+            return get_sqlite_connection()
         logger.error("Database connection failed", exc_info=True)
         return None

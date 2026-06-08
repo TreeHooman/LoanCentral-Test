@@ -1,12 +1,11 @@
 import re
 import logging
 
+from bot_messages import DASHBOARD_URL, with_dashboard_link
+
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$refunded"
-
-
-DASHBOARD_URL = "https://loancentral.app"
 
 
 def process_refund_command(comment):
@@ -27,7 +26,7 @@ def process_refund_command(comment):
     result, error = mark_refunded_by_id(loan_id, lender)
 
     if error:
-        comment.reply(f"Error: {error}")
+        comment.reply(with_dashboard_link(f"Error: {error}"))
         return
 
     borrower = result["borrower"]
@@ -51,10 +50,10 @@ def process_refund_command(comment):
     except Exception as e:
         logger.error(f"Failed to notify mods of refund: {e}")
 
-    comment.reply(
+    comment.reply(with_dashboard_link(
         f"Loan `{loan_id}` marked as refunded.\n\n"
         f"The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} "
         f"has been removed from both users' statistics.\n\n"
         f"---\n*View loan history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
-    )
+    ))
     logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")

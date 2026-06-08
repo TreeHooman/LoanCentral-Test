@@ -118,3 +118,101 @@ Status: Pending
 - Run one controlled live flow.
 - Monitor logs.
 - Keep rollback ready.
+
+## Dashboard / Platform Backlog
+
+### Borrower And Lender Dashboard
+
+Status: In progress
+
+- Done: borrower profile page from clickable usernames, scoped to own/mod/shared-loan visibility.
+- Done: CSV loan export for borrower and lender history.
+- Done: lender loan search by borrower name, loan ID, status, and notes.
+- Done: overdue loans are highlighted in red on borrower/lender tables.
+- Done: lender due-soon alert panel highlights overdue and next-due loans.
+- Done: days since funded column on active loan tables.
+- Done: sortable lender and borrower loan tables.
+- Done: lender dashboard defaults to most-relevant sorting with next due/overdue loans first.
+- Done: lender can edit repay amount and due date on open loans.
+- Done: lender can bulk mark selected active loans fully paid.
+- Done: copy loan summary button for lender records.
+- Done: mobile dashboard polish for lender/borrower views with card-style loan rows, tap-friendly controls, and no horizontal overflow at phone widths.
+- Done: borrower can see agreed payment method/contact info for each loan when recorded.
+- Done: borrower can acknowledge a loan as received from the dashboard, with timestamp, optional note, audit event, API field, and CSV export.
+- Pending: borrower profile shows account age and Reddit join date once OAuth/API support is enabled.
+
+### Mod Dashboard
+
+Status: In progress
+
+- Done: backend live activity feed API for recent audit events.
+- Pending: visible activity tab polish in the mod dashboard.
+- Private mod notes on borrowers.
+- Ban log with issuer, confirmation status, reason, and timestamp.
+- Manual loan status override with audit reason.
+- Delete fraudulent or erroneous loan records with audit trail.
+- Community stats: total volume, repayment rate, unpaid rate over time.
+- Filter unpaid loans by lender.
+- Reassign loan from one lender to another for edge cases.
+- Add notes to unpaid review queue decisions.
+- Search all users across the platform.
+
+### Loan Request System
+
+Status: In progress
+
+- Done: request auto-expiry service and mod API trigger.
+- Done: open request listing auto-runs expiry checks when enabled by config.
+- Done: lender/mod private note API for a request before funding.
+- Done: duplicate open request detection helper for the bot/mod layer.
+- Done: lender can cancel/reject a specific looked-up REQ-ID from the Record Loan modal, with audit logging and without exposing a browsable request marketplace.
+- Done: duplicate open request warning appears during specific REQ-ID lookup before funding.
+- Pending: visible mod view for oldest open requests.
+
+### Bot
+
+Status: In progress
+
+- Done: bot generates a REQ-ID in the same history reply when a `[REQ]` post is saved.
+- Done: bot command cooldown to reduce spam and Reddit API pressure.
+- Bot comments repayment reminders X days before due date.
+- Bot comments when a dashboard loan is funded.
+- Bot comments congratulations when a loan is fully repaid.
+- `$extend` command for borrower due-date extension requests.
+- Graceful handling for deleted or removed posts.
+- Done: deleted/removed posts with no author are skipped gracefully.
+- Done: timestamped audit log service for major bot/dashboard actions.
+- Process manager setup so the bot restarts automatically after crashes.
+- DM lender when borrower repay date passes with no repayment.
+
+### Devvit Feasibility
+
+Status: Researched
+
+- Devvit can read/write Reddit content with Reddit's developer platform API client.
+- Devvit can use app accounts, scheduler jobs, Redis-style storage, and moderator APIs.
+- Good Devvit candidates: REQ-ID comments, simple moderation actions, scheduled reminders, lightweight post/comment handlers, mod-only utilities.
+- Keep external Python/Postgres for now for full dashboard, relational loan history, exports, audit logs, verification records, and cross-view reporting.
+- Possible hybrid: Devvit handles Reddit-native events and calls LoanCentral's backend API for the source-of-truth database.
+- Avoid rebuilding the whole dashboard in Devvit until storage, reporting, and relational-query limits are fully proven.
+
+### Auth And Roles
+
+Status: Pending
+
+- Reddit flair check on OAuth login to auto-assign lender role.
+- One-click Reddit ban after mod confirmation.
+- Lender verification application flow with mod approve/deny.
+- Done: session expiry warning API and dashboard banner for sessions close to expiring.
+- Revoke lender dashboard access without removing Reddit flair.
+
+### Tech And Infrastructure
+
+Status: In progress
+
+- Done: migration script for dashboard columns and request tables.
+- Done: move uploads folder outside `api/` by default so files survive code deploys.
+- Done: dashboard/API rate limiting.
+- Done: Flask API logging with user and timestamp.
+- Done: deployment checklist draft.
+- Done: audit/activity table for immutable trust events.

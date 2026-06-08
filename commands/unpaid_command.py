@@ -1,12 +1,11 @@
 import re
 import logging
 
+from bot_messages import DASHBOARD_URL, with_dashboard_link
+
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$unpaid"
-
-
-DASHBOARD_URL = "https://loancentral.app"
 
 
 def process_unpaid_command(comment):
@@ -27,7 +26,7 @@ def process_unpaid_command(comment):
     result, error = mark_unpaid(loan_id, lender)
 
     if error:
-        comment.reply(f"Error: {error}")
+        comment.reply(with_dashboard_link(f"Error: {error}"))
         return
 
     borrower = result["borrower"]
@@ -45,5 +44,5 @@ def process_unpaid_command(comment):
         f"*Manage this at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
     )
 
-    comment.reply(response)
+    comment.reply(with_dashboard_link(response))
     logger.info(f"Loan {loan_id} marked unpaid by {lender}")

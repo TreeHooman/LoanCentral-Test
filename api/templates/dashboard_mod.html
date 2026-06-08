@@ -27,12 +27,44 @@
       <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
     </div>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:var(--red)" onclick="showTab('unpaid')">⚑ Unpaid Review</button>
+    <button class="btn-primary" style="background:rgba(91,110,245,0.15);border:1px solid rgba(91,110,245,0.3);color:var(--accent-h)" onclick="showTab('requests')">📋 Requests</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="mobile-cards">
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Request queue tab -->
+<div id="tab-requests" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Open Loan Requests</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">All open REQ posts the bot has seen. Lenders fund these from their dashboard.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Request ID</th><th>Borrower</th><th>Asking</th><th>Repay</th><th>Repay Date</th><th>Payment</th><th>Posted</th><th>Thread</th></tr></thead>
+      <tbody id="requestsBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Unpaid review tab -->
+<div id="tab-unpaid" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Unpaid Loan Review</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">These loans have been flagged unpaid by a lender. Review each case — if confirmed ghosted or scammed, issue the ban.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Flagged Date</th><th>Thread</th><th>Action</th></tr></thead>
+      <tbody id="unpaidBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -54,9 +86,69 @@
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">↻ Refresh</button>
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="mobile-cards">
       <thead><tr><th>Username</th><th>Role</th><th>Subscription</th><th>Last Login</th><th>Actions</th></tr></thead>
       <tbody id="rolesBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Activity tab -->
+<div id="tab-activity" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Live Activity Feed</span>
+    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Recent dashboard and bot audit events. Auto-refreshes once per minute while open.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Time</th><th>Event</th><th>Actor</th><th>Target</th><th>Loan/REQ</th><th>Source</th><th>Details</th></tr></thead>
+      <tbody id="activityBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Reminder queue tab -->
+<div id="tab-reminders" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Reminder Queue</span>
+    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Read-only queue for overdue, due-today, due-soon, and missing due-date loans. This does not call Reddit.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Level</th><th>Loan</th><th>Lender</th><th>Borrower</th><th>Remaining</th><th>Due</th><th>Thread</th></tr></thead>
+      <tbody id="remindersBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Verification review tab -->
+<div id="tab-verification" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Verification Applications</span>
+    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Approve grants dashboard lender access only. Reddit flair changes stay manual until test Reddit integration is enabled.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>User</th><th>Status</th><th>Requested</th><th>Submitted</th><th>Notes</th><th>Reviewer</th><th>Actions</th></tr></thead>
+      <tbody id="verificationBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Reddit action queue tab -->
+<div id="tab-reddit-actions" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Reddit Action Queue</span>
+    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Staged Reddit actions for reminders, bans, and flair sync. This page reviews queue records only; it does not call Reddit.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Action</th><th>Status</th><th>Target</th><th>Loan/REQ</th><th>Reason</th><th>Created</th><th>Controls</th></tr></thead>
+      <tbody id="redditActionsBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -66,9 +158,11 @@
 <script>
   let currentStatus = '';
   let searchTimer = null;
+  let activityTimer = null;
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
+    addModUtilityButtons();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -81,6 +175,10 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(loadLoans, 400);
     });
+    const initialTab = new URLSearchParams(window.location.search).get('tab');
+    if (['activity','reminders','verification','reddit-actions','requests','roles','unpaid'].includes(initialTab)) {
+      showTab(initialTab);
+    }
   });
 
   async function loadStats() {
@@ -114,10 +212,305 @@
 
   function loadData() { loadLoans(); loadStats(); }
 
+  function loanRow(loan) {
+    const id = loan.loan_id || loan.db_id;
+    const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+    const repaid = parseFloat(loan.amount_repaid || 0);
+    const remaining = Math.max(repayAmount - repaid, 0);
+    const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+      ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '-';
+    const canPay = ['confirmed','partially_repaid','unpaid','disputed'].includes(loan.status);
+    const canUnpaid = ['confirmed','partially_repaid','disputed'].includes(loan.status);
+    const canRefund = !['repaid','refunded'].includes(loan.status);
+    return `<tr>
+      <td data-label="Loan ID"><span class="loan-id">${escapeHtml(id)}</span></td>
+      <td data-label="Lender">${redditUser(loan.lender)}</td>
+      <td data-label="Borrower">${redditUser(loan.borrower)}</td>
+      <td data-label="Amount"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
+      <td data-label="Repaid">${fmt(repaid)}</td>
+      <td data-label="Remaining" class="${remaining > 0 ? 'c-remaining' : ''}">${fmt(remaining)}</td>
+      <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
+      <td data-label="Date" class="date-cell">${fmtDate(loan.date_created)}<br>${dueLabel(loan.repay_date) || ''}<br>${thread}</td>
+      <td data-label="Actions"><div class="actions">
+        ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
+        ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : ''}
+        ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : ''}
+      </div></td>
+    </tr>`;
+  }
+
+  function addModUtilityButtons() {
+    const toolbar = document.querySelector('#tab-loans .toolbar');
+    if (!toolbar || document.getElementById('activityTabBtn')) return;
+    const activityLink = document.createElement('a');
+    activityLink.id = 'activityTabBtn';
+    activityLink.className = 'btn-primary';
+    activityLink.href = '/dashboard/mod?tab=activity';
+    activityLink.style.cssText = 'background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none';
+    activityLink.textContent = 'Activity';
+    const reminderLink = document.createElement('a');
+    reminderLink.id = 'reminderTabBtn';
+    reminderLink.className = 'btn-primary';
+    reminderLink.href = '/dashboard/mod?tab=reminders';
+    reminderLink.style.cssText = 'background:rgba(243,156,18,0.14);border:1px solid rgba(243,156,18,0.28);color:var(--orange);text-decoration:none';
+    reminderLink.textContent = 'Reminders';
+    const verificationLink = document.createElement('a');
+    verificationLink.id = 'verificationTabBtn';
+    verificationLink.className = 'btn-primary';
+    verificationLink.href = '/dashboard/mod?tab=verification';
+    verificationLink.style.cssText = 'background:rgba(46,204,113,0.13);border:1px solid rgba(46,204,113,0.26);color:var(--green);text-decoration:none';
+    verificationLink.textContent = 'Verification';
+    const redditActionsLink = document.createElement('a');
+    redditActionsLink.id = 'redditActionsTabBtn';
+    redditActionsLink.className = 'btn-primary';
+    redditActionsLink.href = '/dashboard/mod?tab=reddit-actions';
+    redditActionsLink.style.cssText = 'background:rgba(91,110,245,0.13);border:1px solid rgba(91,110,245,0.26);color:var(--accent-h);text-decoration:none';
+    redditActionsLink.textContent = 'Reddit Queue';
+    toolbar.appendChild(activityLink);
+    toolbar.appendChild(reminderLink);
+    toolbar.appendChild(verificationLink);
+    toolbar.appendChild(redditActionsLink);
+  }
+
   function showTab(name) {
-    document.getElementById('tab-loans').style.display = name === 'loans' ? '' : 'none';
-    document.getElementById('tab-roles').style.display = name === 'roles' ? '' : 'none';
-    if (name === 'roles') loadRoles();
+    ['loans','unpaid','requests','roles','activity','reminders','verification','reddit-actions'].forEach(t =>
+      document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
+    );
+    if (name === 'roles')    loadRoles();
+    if (name === 'unpaid')   loadUnpaid();
+    if (name === 'requests') loadRequests();
+    if (name === 'activity') {
+      loadActivity();
+      if (!activityTimer) activityTimer = setInterval(loadActivity, 60000);
+    } else if (activityTimer) {
+      clearInterval(activityTimer);
+      activityTimer = null;
+    }
+    if (name === 'reminders') loadReminders();
+    if (name === 'verification') loadVerificationApplications();
+    if (name === 'reddit-actions') loadRedditActions();
+  }
+
+  async function loadActivity() {
+    try {
+      const events = await apiFetch('/api/activity?limit=80');
+      const tbody = document.getElementById('activityBody');
+      if (!events.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No activity yet</h3><p>Audit events will appear here after bot or dashboard actions.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = events.map(ev => {
+        const details = ev.details ? Object.entries(ev.details).slice(0, 3).map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(v)}`).join('<br>') : '';
+        const loanReq = [ev.loan_id ? `Loan ${escapeHtml(ev.loan_id)}` : '', ev.request_id ? `REQ ${escapeHtml(ev.request_id)}` : ''].filter(Boolean).join('<br>');
+        return `<tr>
+          <td data-label="Time" class="date-cell">${fmtDate(ev.created_at)}</td>
+          <td data-label="Event"><span class="badge badge-confirmed">${escapeHtml(eventLabel(ev.event_type))}</span></td>
+          <td data-label="Actor">${ev.actor ? redditUser(ev.actor) : '-'}</td>
+          <td data-label="Target">${ev.target_user ? redditUser(ev.target_user) : '-'}</td>
+          <td data-label="Loan/REQ">${loanReq || '-'}</td>
+          <td data-label="Source">${escapeHtml(ev.source || '-')}</td>
+          <td data-label="Details" style="color:var(--muted);font-size:12px">${details || '-'}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('activityBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function loadReminders() {
+    try {
+      const queue = await apiFetch('/api/reminders?days=3&limit=500');
+      const tbody = document.getElementById('remindersBody');
+      const items = queue.items || [];
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>Reminder queue clear</h3><p>No overdue or due-soon loans need attention.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map(item => {
+        const thread = item.thread && item.thread !== 'dashboard' ? `<a class="thread-link" href="${escapeAttr(item.thread)}" target="_blank">Thread</a>` : '-';
+        return `<tr>
+          <td data-label="Level"><span class="badge ${reminderBadge(item.level)}">${escapeHtml(reminderLabel(item.level))}</span></td>
+          <td data-label="Loan"><span class="loan-id">${escapeHtml(item.loan_id)}</span></td>
+          <td data-label="Lender">${redditUser(item.lender)}</td>
+          <td data-label="Borrower">${redditUser(item.borrower)}</td>
+          <td data-label="Remaining" class="c-remaining">${fmt(item.remaining)} ${escapeHtml(item.currency)}</td>
+          <td data-label="Due">${dueLabel(item.repay_date) || 'Missing due date'}</td>
+          <td data-label="Thread">${thread}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('remindersBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function loadVerificationApplications() {
+    try {
+      const rows = await apiFetch('/api/verification?limit=200');
+      const tbody = document.getElementById('verificationBody');
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No verification applications</h3><p>New lender applications will appear here.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(app => {
+        const pending = app.status === 'pending';
+        return `<tr>
+          <td data-label="User">${redditUser(app.username)}</td>
+          <td data-label="Status"><span class="badge ${app.status === 'approved' ? 'badge-repaid' : app.status === 'denied' ? 'badge-unpaid' : 'badge-partially_repaid'}">${escapeHtml(app.status)}</span></td>
+          <td data-label="Requested">${escapeHtml(app.requested_role)}</td>
+          <td data-label="Submitted" class="date-cell">${fmtDate(app.submitted_at)}</td>
+          <td data-label="Notes" style="color:var(--muted);font-size:12px">
+            ${escapeHtml(app.public_note || 'No public summary')}
+            ${app.private_note ? `<br><strong style="color:var(--text2)">Private:</strong> ${escapeHtml(app.private_note)}` : ''}
+            ${app.review_note ? `<br><strong style="color:var(--text2)">Review:</strong> ${escapeHtml(app.review_note)}` : ''}
+          </td>
+          <td data-label="Reviewer">${app.reviewer ? redditUser(app.reviewer) : '-'}</td>
+          <td data-label="Actions"><div class="actions">
+            ${pending ? `<button class="btn-action btn-paid" onclick="decideVerification(${app.id},'approved')">Approve</button>
+            <button class="btn-action btn-unpaid" onclick="decideVerification(${app.id},'denied')">Deny</button>` : '-'}
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('verificationBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function decideVerification(id, decision) {
+    const reviewNote = window.prompt(`${decision === 'approved' ? 'Approve' : 'Deny'} application #${id}. Optional mod note:`, '') || '';
+    try {
+      await apiFetch(`/api/verification/${id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, review_note: reviewNote })
+      });
+      toast(`Application ${decision}.`, 'success');
+      loadVerificationApplications();
+      loadRoles();
+    } catch(e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function loadRedditActions() {
+    try {
+      const rows = await apiFetch('/api/reddit-actions?limit=200');
+      const tbody = document.getElementById('redditActionsBody');
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>Queue clear</h3><p>No staged Reddit actions yet.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(action => {
+        const loanReq = [action.loan_id ? `Loan ${escapeHtml(action.loan_id)}` : '', action.request_id ? `REQ ${escapeHtml(action.request_id)}` : ''].filter(Boolean).join('<br>') || '-';
+        const queued = action.status === 'queued';
+        return `<tr>
+          <td data-label="Action"><span class="badge badge-confirmed">${escapeHtml(eventLabel(action.action_type))}</span></td>
+          <td data-label="Status"><span class="badge ${action.status === 'queued' ? 'badge-partially_repaid' : action.status === 'sent' ? 'badge-repaid' : 'badge-refunded'}">${escapeHtml(action.status)}</span></td>
+          <td data-label="Target">${action.target_user ? redditUser(action.target_user) : '-'}</td>
+          <td data-label="Loan/REQ">${loanReq}</td>
+          <td data-label="Reason" style="color:var(--muted);font-size:12px">${escapeHtml(action.reason || '-')}</td>
+          <td data-label="Created" class="date-cell">${fmtDate(action.created_at)}</td>
+          <td data-label="Controls"><div class="actions">
+            ${queued ? `<button class="btn-action btn-paid" onclick="updateRedditAction(${action.id},'skipped')">Skip</button>
+            <button class="btn-action btn-unpaid" onclick="updateRedditAction(${action.id},'cancelled')">Cancel</button>` : '-'}
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('redditActionsBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function updateRedditAction(id, status) {
+    const reason = window.prompt(`Mark action #${id} as ${status}. Optional reason:`, '') || '';
+    try {
+      await apiFetch(`/api/reddit-actions/${id}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status, reason })
+      });
+      toast(`Action ${status}.`, 'success');
+      loadRedditActions();
+    } catch(e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function loadRequests() {
+    try {
+      const reqs = await apiFetch('/api/requests');
+      const tbody = document.getElementById('requestsBody');
+      if (!reqs.length) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>No open requests</h3><p>Bot has not seen any [REQ] posts yet.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = reqs.map(r => {
+        const thread = r.thread_link ? `<a class="thread-link" href="${r.thread_link}" target="_blank">View ↗</a>` : '—';
+        const repayAmt = r.repay_amount ? `$${parseFloat(r.repay_amount).toFixed(2)}` : '<span style="color:var(--orange)">TBD</span>';
+        const repayDate = r.repay_date ? r.repay_date.split('T')[0] : '—';
+        const posted = r.post_date ? fmtDate(r.post_date) : '—';
+        return `<tr>
+          <td><span class="loan-id">${r.request_id}</span></td>
+          <td class="username">u/${r.borrower}</td>
+          <td><span class="amount">$${parseFloat(r.amount).toFixed(2)} ${r.currency}</span></td>
+          <td>${repayAmt}</td>
+          <td class="date-cell">${repayDate}</td>
+          <td style="color:var(--muted)">${r.payment_method || '—'}</td>
+          <td class="date-cell">${posted}</td>
+          <td>${thread}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('requestsBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function loadUnpaid() {
+    try {
+      const loans = await apiFetch('/api/loans?status=unpaid&limit=200');
+      const tbody = document.getElementById('unpaidBody');
+      if (!loans.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No unpaid loans</h3><p>Nothing flagged for review right now.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const id = loan.loan_id || loan.db_id;
+        const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+          ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">View Thread ↗</a>`
+          : '—';
+        return `<tr>
+          <td><span class="loan-id">${id}</span></td>
+          <td class="username">u/${loan.lender}</td>
+          <td class="username">u/${loan.borrower}</td>
+          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          <td class="date-cell">${fmtDate(loan.last_updated || loan.date_created)}</td>
+          <td>${thread}</td>
+          <td><div class="actions">
+            <button class="btn-action" style="background:rgba(231,76,60,0.2);color:var(--red)" onclick="confirmBan('${loan.borrower}','${id}')">Confirm &amp; Ban</button>
+            <button class="btn-action btn-paid" onclick="clearUnpaid('${id}','${loan.lender}')">Clear — Not Unpaid</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      document.getElementById('unpaidBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  function confirmBan(borrower, loanId) {
+    if (!confirm(`Queue Reddit ban for u/${borrower}?\n\nThis stages the action for review. It does not call Reddit yet.`)) return;
+    apiFetch('/api/reddit-actions/ban', {
+      method: 'POST',
+      body: JSON.stringify({ target_user: borrower, loan_id: loanId, reason: 'Mod confirmed unpaid/default review.' })
+    }).then(() => {
+      toast(`Ban queued for u/${borrower}.`, 'success');
+      showTab('reddit-actions');
+    }).catch(e => toast(e.message, 'error'));
+  }
+
+  async function clearUnpaid(loanId, lender) {
+    if (!confirm('Mark this loan as NOT unpaid? This will restore it to active status.')) return;
+    try {
+      await apiFetch(`/api/loans/${loanId}/clear-unpaid`, { method: 'POST', body: JSON.stringify({ lender }) });
+      toast('Loan cleared from unpaid queue.', 'success');
+      loadUnpaid(); loadStats();
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function loadRoles() {
@@ -155,7 +548,63 @@
     } catch(e) { toast(e.message, 'error'); }
   }
 
+  function eventLabel(value) {
+    return String(value || 'event').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+  }
+
+  function reminderLabel(value) {
+    return {
+      overdue: 'Overdue',
+      due_today: 'Due Today',
+      due_soon: 'Due Soon',
+      missing_due_date: 'Missing Due Date',
+      upcoming: 'Upcoming'
+    }[value] || value;
+  }
+
+  function reminderBadge(value) {
+    return {
+      overdue: 'badge-unpaid',
+      due_today: 'badge-unpaid',
+      due_soon: 'badge-partially_repaid',
+      missing_due_date: 'badge-refunded',
+      upcoming: 'badge-confirmed'
+    }[value] || 'badge-confirmed';
+  }
+
+  function redditUser(username) {
+    const raw = String(username || '');
+    return raw ? `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(raw)}">u/${escapeHtml(raw)}</a>` : '-';
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
+
   function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+
+  Object.assign(window, {
+    addModUtilityButtons,
+    assignRole,
+    clearUnpaid,
+    confirmBan,
+    loadActivity,
+    loadData,
+    loadLoans,
+    loadReminders,
+    loadRequests,
+    loadRoles,
+    loadStats,
+    loadUnpaid,
+    loadVerificationApplications,
+    loadRedditActions,
+    quickRole,
+    decideVerification,
+    updateRedditAction,
+    showTab
+  });
 </script>
 {% endblock %}

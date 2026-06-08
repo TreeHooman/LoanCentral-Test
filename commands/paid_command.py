@@ -2,6 +2,8 @@ import re
 import logging
 from decimal import Decimal
 
+from bot_messages import DASHBOARD_URL, with_dashboard_link
+
 logger = logging.getLogger("LoanCentral")
 
 COMMAND_TRIGGER = "$paid_with_id"
@@ -20,9 +22,6 @@ def _parse_paid(text):
     return None
 
 
-DASHBOARD_URL = "https://loancentral.app"
-
-
 def process_paid_command(comment):
     """Process $paid_with_id command - lender records a repayment."""
     from services import mark_repaid, update_last_login
@@ -38,7 +37,7 @@ def process_paid_command(comment):
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")
 
     if error:
-        comment.reply(f"Error: {error}")
+        comment.reply(with_dashboard_link(f"Error: {error}"))
         return
 
     remaining = result["remaining"]
@@ -52,5 +51,5 @@ def process_paid_command(comment):
     )
 
     response += f"\n\n---\n*View full history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
-    comment.reply(response)
+    comment.reply(with_dashboard_link(response))
     logger.info(f"Payment recorded on loan {loan_id} by lender {lender}")

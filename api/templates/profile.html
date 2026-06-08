@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}User Profile - LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:20px">u/{{ profile_username }}</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">LoanCentral record profile</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="btn-secondary" href="https://www.reddit.com/user/{{ profile_username }}" target="_blank">Open Reddit</a>
+    <button class="btn-secondary" onclick="history.back()">Back</button>
+  </div>
+</div>
+
+<div class="panel-grid">
+  <section class="panel">
+    <div class="panel-title">Borrower Record</div>
+    <p class="panel-copy">This page shows factual loan history already recorded by LoanCentral. Private verification documents and lender notes are not shown here.</p>
+    <div class="mini-grid">
+      <div class="mini-stat"><div class="mini-label">Borrowed</div><div class="mini-value c-accent" id="p-borrowed">-</div></div>
+      <div class="mini-stat"><div class="mini-label">Repaid</div><div class="mini-value c-green" id="p-repaid">-</div></div>
+      <div class="mini-stat"><div class="mini-label">Outstanding</div><div class="mini-value c-orange" id="p-outstanding">-</div></div>
+    </div>
+  </section>
+
+  <aside class="callout">
+    <strong>Record only:</strong> use this profile to review history. Any new agreement still happens directly on Reddit between users.
+  </aside>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label">As Borrower</div><div class="stat-value c-accent" id="p-loans-borrower">-</div></div>
+  <div class="stat-card"><div class="stat-label">As Lender</div><div class="stat-value c-accent" id="p-loans-lender">-</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid Loans</div><div class="stat-value c-red" id="p-unpaid">-</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid Amount</div><div class="stat-value c-red" id="p-unpaid-amount">-</div></div>
+  <div class="stat-card"><div class="stat-label">Standing</div><div class="stat-value" id="p-standing" style="font-size:22px">-</div></div>
+</div>
+
+<div class="section-header">
+  <span class="section-title">Loan Timeline</span>
+</div>
+
+<div class="timeline" id="profileTimeline">
+  <div class="empty-state"><div class="spinner"></div><br>Loading...</div>
+</div>
+
+<div class="section-header" style="margin-top:20px">
+  <span class="section-title">Recent Loan Table</span>
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards">
+    <thead><tr><th>Loan</th><th>Lender</th><th>Borrower</th><th>Lent</th><th>Due Back</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Due</th><th>Date</th><th>Thread</th></tr></thead>
+    <tbody id="profileLoans"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .timeline { display:grid; gap:10px; margin-bottom:18px; }
+  .timeline-item { display:grid; grid-template-columns:120px minmax(0,1fr); gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px; }
+  .timeline-date { color:var(--muted); font-size:12px; }
+  .timeline-main { min-width:0; }
+  .timeline-title { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-weight:700; }
+  .timeline-meta { color:var(--muted); font-size:12px; margin-top:6px; line-height:1.45; }
+  @media (max-width:640px) {
+    .panel-grid { display:none; }
+    .timeline-item { grid-template-columns:1fr; gap:6px; padding:10px; }
+    .timeline-date { font-size:11px; }
+    #profileLoans td[data-label="Loan"] { background:rgba(91,110,245,0.055); }
+    #profileLoans td[data-label="Still Owe"] { background:rgba(243,156,18,0.07); font-weight:700; }
+  }
+</style>
+<script>
+  const PROFILE_USER = '{{ profile_username }}';
+
+  document.addEventListener('DOMContentLoaded', loadProfile);
+
+  async function loadProfile() {
+    try {
+      const p = await apiFetch(`/api/users/${encodeURIComponent(PROFILE_USER)}`);
+      document.getElementById('p-borrowed').textContent = '$' + fmt(p.amount_borrowed);
+      document.getElementById('p-repaid').textContent = '$' + fmt(p.amount_repaid);
+      document.getElementById('p-outstanding').textContent = '$' + fmt(p.active_amount || 0);
+      document.getElementById('p-loans-borrower').textContent = p.loans_as_borrower || 0;
+      document.getElementById('p-loans-lender').textContent = p.loans_as_lender || 0;
+      document.getElementById('p-unpaid').textContent = p.unpaid_loans || 0;
+      document.getElementById('p-unpaid-amount').textContent = '$' + fmt(p.unpaid_amount || 0);
+
+      const standing = (p.unpaid_loans || 0) > 0 ? 'Unpaid' : 'Clear';
+      const standingEl = document.getElementById('p-standing');
+      standingEl.textContent = standing;
+      standingEl.className = 'stat-value ' + (standing === 'Clear' ? 'c-green' : 'c-red');
+
+      renderLoans(p.recent_loans || []);
+      renderTimeline(p.recent_loans || []);
+    } catch(e) {
+      document.getElementById('profileLoans').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+      document.getElementById('profileTimeline').innerHTML = `<div class="empty-state" style="color:var(--red)">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderLoans(loans) {
+    const tbody = document.getElementById('profileLoans');
+    if (!loans.length) {
+      tbody.innerHTML = '<tr><td colspan="11" class="table-placeholder">No recorded loans found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = loans.map(loan => {
+      const id = loan.loan_id || loan.db_id;
+      const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+      const repaid = parseFloat(loan.amount_repaid || 0);
+      const remaining = Math.max(repayAmount - repaid, 0);
+      const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+        ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '-';
+      return `<tr>
+        <td data-label="Loan"><span class="loan-id">${escapeHtml(id)}</span></td>
+        <td data-label="Lender" class="username">${userLink(loan.lender)}</td>
+        <td data-label="Borrower" class="username">${userLink(loan.borrower)}</td>
+        <td data-label="Lent"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
+        <td data-label="Due Back">${fmt(repayAmount)}</td>
+        <td data-label="Repaid">${fmt(repaid)}</td>
+        <td data-label="Still Owe">${fmt(remaining)}</td>
+        <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
+        <td data-label="Due" class="date-cell">${dueLabel(loan.repay_date) || '-'}</td>
+        <td data-label="Date" class="date-cell">${fmtDate(loan.date_created)}</td>
+        <td data-label="Thread">${thread}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderTimeline(loans) {
+    const el = document.getElementById('profileTimeline');
+    if (!loans.length) {
+      el.innerHTML = '<div class="empty-state"><h3>No timeline yet</h3><p>No recorded loan events found for this user.</p></div>';
+      return;
+    }
+    el.innerHTML = loans.map(loan => {
+      const id = loan.loan_id || loan.db_id;
+      const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+      const repaid = parseFloat(loan.amount_repaid || 0);
+      const remaining = Math.max(repayAmount - repaid, 0);
+      const role = String(loan.borrower || '').toLowerCase() === PROFILE_USER.toLowerCase() ? 'Borrowed from' : 'Lent to';
+      const otherUser = role === 'Borrowed from' ? loan.lender : loan.borrower;
+      const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+        ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '';
+      return `<div class="timeline-item">
+        <div class="timeline-date">${fmtDate(loan.date_created)}</div>
+        <div class="timeline-main">
+          <div class="timeline-title">
+            <span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span>
+            <span>${role} ${userLink(otherUser)}</span>
+            <span class="loan-id">${escapeHtml(id)}</span>
+          </div>
+          <div class="timeline-meta">
+            Lent ${fmt(loan.amount)} ${escapeHtml(loan.currency)} | Due back ${fmt(repayAmount)} | Repaid ${fmt(repaid)} | Remaining ${fmt(remaining)}
+            ${loan.repay_date ? `<br>${dueLabel(loan.repay_date)}` : ''}
+            ${thread ? `<br>${thread}` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function userLink(username) {
+    const raw = String(username || '');
+    return `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(raw)}">u/${escapeHtml(raw)}</a>`;
+  }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
+</script>
+{% endblock %}
