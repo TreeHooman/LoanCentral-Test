@@ -500,6 +500,7 @@ class FakeCursor:
                     loan["status"],
                     loan.get("date_created"),
                     loan.get("original_thread", ""),
+                    loan.get("last_updated"),
                 )
                 for loan in matches
             ]
