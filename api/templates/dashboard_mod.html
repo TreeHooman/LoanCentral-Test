@@ -58,6 +58,9 @@
     <button class="btn-secondary" onclick="promptCheckUser()">Check User</button>
     <button class="btn-secondary" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="Auto-refresh every 5 min">Auto ↻</button>
   </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <span id="loanCount" style="font-size:12px;color:var(--muted)"></span>
+  </div>
   <div class="table-wrap">
     <table>
       <thead><tr>
@@ -207,8 +210,14 @@
     try {
       allLoans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = allLoans.length ? allLoans.map(loanRow).join('') :
-        `<tr><td colspan="9"><div class="empty-state"><h3>No loans found</h3><p>No loans match the current filter.</p></div></td></tr>`;
+      const countEl = document.getElementById('loanCount');
+      if (allLoans.length) {
+        if (countEl) countEl.textContent = `${allLoans.length} loan${allLoans.length !== 1 ? 's' : ''}`;
+        tbody.innerHTML = allLoans.map(loanRow).join('');
+      } else {
+        if (countEl) countEl.textContent = '';
+        tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><h3>No loans found</h3><p>No loans match the current filter.</p></div></td></tr>`;
+      }
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }

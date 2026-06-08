@@ -30,7 +30,7 @@
 
 <!-- What I owe -->
 <div class="section-header" style="margin-top:8px" id="section-owing">
-  <span class="section-title">What I Currently Owe</span>
+  <span class="section-title">What I Currently Owe <span id="owingCount" style="font-size:13px;font-weight:400;color:var(--muted)"></span></span>
   <button class="btn-secondary" onclick="exportCSV(owingLoans, 'outstanding.csv')">↓ CSV</button>
 </div>
 
@@ -124,6 +124,8 @@
         apiFetch(`/api/loans?borrower=${ME}&status=unpaid&limit=50`),
       ]);
       owingLoans = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
+      const countEl = document.getElementById('owingCount');
+      if (countEl) countEl.textContent = owingLoans.length > 0 ? `(${owingLoans.length})` : '';
       const tbody = document.getElementById('owingBody');
       if (!owingLoans.length) {
         tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>All clear!</h3><p>You have no outstanding loans.</p></div></td></tr>`;

@@ -119,6 +119,9 @@
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
 </div>
 
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+  <span id="loanCount" style="font-size:12px;color:var(--muted)"></span>
+</div>
 <div class="table-wrap">
   <table>
     <thead><tr>
@@ -256,13 +259,16 @@
 
   function renderLoans(loans) {
     const tbody = document.getElementById('loansBody');
+    const countEl = document.getElementById('loanCount');
     if (!loans.length) {
       const isEmpty = !allLoans.length;
+      if (countEl) countEl.textContent = '';
       tbody.innerHTML = isEmpty
         ? `<tr><td colspan="8"><div class="empty-state"><h3>No loans recorded yet</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record your first loan.</p></div></td></tr>`
         : `<tr><td colspan="8"><div class="empty-state"><h3>No loans match</h3><p>Try a different filter or clear the search.</p></div></td></tr>`;
       return;
     }
+    if (countEl) countEl.textContent = `${loans.length}${loans.length < allLoans.length ? ' of ' + allLoans.length : ''} loan${loans.length !== 1 ? 's' : ''}`;
     tbody.innerHTML = loans.map(loan => {
       const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
       const id = loan.loan_id || loan.db_id;
