@@ -71,7 +71,7 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(91,110,245,0.05); }
     .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
-    .username a { color: var(--text); text-decoration: none; font-weight: 500; }
+    .username a { color: var(--text); text-decoration: none; font-weight: 500; word-break: break-word; }
     .username a:hover { color: var(--accent-h); }
     .amount { font-weight: 600; color: var(--text); }
     .c-remaining { color: var(--orange); }
@@ -90,7 +90,7 @@
 
     /* ACTIONS */
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .btn-action { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .btn-action { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; min-height: 32px; }
     .btn-action:hover { opacity: 0.8; }
     .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
     .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
@@ -127,25 +127,56 @@
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
 
-    /* MOBILE */
+    /* HAMBURGER */
+    .nav-burger { display: none; background: none; border: 1px solid var(--border); color: var(--text2); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 18px; line-height: 1; }
+    .nav-mobile-menu { display: none; position: absolute; top: 56px; left: 0; right: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px; z-index: 99; flex-direction: column; gap: 4px; }
+    .nav-mobile-menu.open { display: flex; }
+    .nav-mobile-menu a { display: block; padding: 10px 14px; border-radius: 6px; color: var(--text2); text-decoration: none; font-size: 14px; }
+    .nav-mobile-menu a:hover { background: var(--surface2); color: var(--text); }
+    .nav-mobile-menu .nav-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .nav-mobile-user { padding: 8px 14px; font-size: 12px; color: var(--muted); }
+
+    /* MOBILE 768px */
     @media (max-width: 768px) {
-      nav { padding: 0 12px; height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+      nav { padding: 0 12px; height: 56px; position: relative; }
       .nav-links { display: none; }
-      .nav-right { gap: 6px; flex-wrap: wrap; }
+      .nav-burger { display: block; }
+      .nav-right { gap: 6px; }
+      .nav-right .btn-logout, .nav-right a.btn-logout { display: none; }
       .nav-user { display: none; }
       main { padding: 12px; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat-card { padding: 12px; }
       .stat-value { font-size: 20px; }
-      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      table { min-width: 600px; }
-      th, td { padding: 8px 10px; font-size: 12px; }
-      .toolbar { flex-direction: column; align-items: stretch; }
-      .toolbar .tabs { flex-wrap: wrap; }
+      .stat-label { font-size: 10px; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; }
+      table { min-width: 580px; }
+      th, td { padding: 10px 10px; font-size: 12px; }
+      td:first-child, th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+      thead th:first-child { background: var(--surface2); }
+      .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .toolbar .tabs { flex-wrap: wrap; gap: 4px; }
+      .tab { padding: 8px 12px; font-size: 12px; flex: 1; min-width: 80px; text-align: center; }
       .search-wrap { min-width: unset; }
-      .modal { width: 95vw; padding: 16px; }
+      .btn-primary { font-size: 13px; padding: 9px 14px; min-height: 40px; }
+      .btn-action { padding: 8px 12px; font-size: 12px; min-height: 38px; }
+      .btn-logout { font-size: 12px; padding: 6px 10px; }
+      .modal { width: 95vw; max-width: 95vw; padding: 16px; margin: 0 auto; }
+      .modal-actions { flex-direction: column; gap: 8px; }
+      .modal-actions button { width: 100%; padding: 12px; font-size: 14px; }
       .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-      .btn-primary, .btn-logout { font-size: 12px; padding: 6px 10px; }
+      .section-header > * { width: 100%; }
       #toast { bottom: 12px; right: 12px; left: 12px; max-width: unset; }
+      .actions { gap: 6px; }
+    }
+
+    /* MOBILE 480px */
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+      .stat-value { font-size: 18px; }
+      .stat-card { padding: 10px; }
+      main { padding: 8px; }
+      .section-title { font-size: 14px; }
     }
   </style>
   {% block head %}{% endblock %}
@@ -168,8 +199,26 @@
     <a class="btn-logout" href="{{ url_for('change_password') }}" style="margin-right:4px">⚙ Settings</a>
     <a class="btn-logout" href="/privacy" style="margin-right:4px">Privacy</a>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
+    <button class="nav-burger" onclick="toggleMobileMenu()" aria-label="Menu">☰</button>
   </div>
 </nav>
+
+<!-- Mobile slide-down menu -->
+<div class="nav-mobile-menu" id="navMobileMenu">
+  <div class="nav-mobile-user">u/{{ username }} · <span class="role-badge role-{{ role }}" style="font-size:10px">{{ role }}</span></div>
+  <div class="nav-divider"></div>
+  {% if role == 'mod' %}
+    <a href="{{ url_for('dashboard_mod') }}">📋 Mod Dashboard</a>
+    <a href="{{ url_for('dashboard_lender') }}">💸 Lender Dashboard</a>
+    <a href="{{ url_for('dashboard_borrower') }}">📥 Borrower Dashboard</a>
+    <div class="nav-divider"></div>
+  {% endif %}
+  <a href="{{ url_for('leaderboard_page') }}">🏆 Leaderboard</a>
+  <a href="{{ url_for('change_password') }}">⚙ Settings</a>
+  <a href="/privacy">🔒 Privacy</a>
+  <div class="nav-divider"></div>
+  <a href="{{ url_for('auth_logout') }}" style="color:var(--red)">Logout</a>
+</div>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
@@ -231,6 +280,19 @@
 <div id="toast"></div>
 
 <script>
+  // ---- Hamburger nav ----
+  function toggleMobileMenu() {
+    const m = document.getElementById('navMobileMenu');
+    m.classList.toggle('open');
+  }
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('navMobileMenu');
+    if (menu && menu.classList.contains('open') &&
+        !menu.contains(e.target) && !e.target.closest('.nav-burger')) {
+      menu.classList.remove('open');
+    }
+  });
+
   // ---- Shared modal helpers ----
   function openPayModal(loanId, lender, currency) {
     document.getElementById('payLoanId').value = loanId;

@@ -7,9 +7,11 @@
     <div class="section-title" style="font-size:20px">My Lending Dashboard</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center">
-    <span style="font-size:12px;color:var(--muted)">Available to lend:</span>
-    <button id="availBtn" class="btn-primary" onclick="toggleAvailability()" style="min-width:80px">Loading…</button>
+  <div class="lender-header-actions">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;color:var(--muted)">Available:</span>
+      <button id="availBtn" class="btn-primary" onclick="toggleAvailability()" style="min-width:80px">Loading…</button>
+    </div>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showLenderTab('applications')">📋 Applications</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showLenderTab('analytics')">📊 Analytics</button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/auth/change-password">⚙ Settings</a>
@@ -62,7 +64,7 @@
     <span class="section-title">My Lending Analytics</span>
     <button class="btn-primary" onclick="showLenderTab('loans')">← Back to My Loans</button>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">
+  <div class="analytics-grid" style="margin-top:8px">
     <div class="table-wrap" style="padding:20px">
       <h4 style="margin:0 0 12px;font-size:14px;color:var(--text2)">Loans Over Time (last 12 months)</h4>
       <canvas id="lenderLoansChart" height="200"></canvas>
@@ -404,4 +406,13 @@
     } catch(e) { toast(e.message, 'error'); }
   }
 </script>
+<style>
+  .lender-header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) {
+    .lender-header-actions { width: 100%; margin-top: 8px; }
+    .lender-header-actions .btn-primary, .lender-header-actions a.btn-primary { flex: 1; text-align: center; }
+    .analytics-grid { grid-template-columns: 1fr; }
+  }
+</style>
 {% endblock %}

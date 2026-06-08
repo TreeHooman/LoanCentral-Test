@@ -10,7 +10,7 @@
   <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadAll()">↻ Refresh</button>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+<div class="lb-grid">
 
   <!-- Top Lenders -->
   <div>
@@ -91,4 +91,8 @@
     return ['🥇','🥈','🥉'][i] || (i + 1);
   }
 </script>
+<style>
+  .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 768px) { .lb-grid { grid-template-columns: 1fr; } }
+</style>
 {% endblock %}
