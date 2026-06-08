@@ -16,6 +16,9 @@
   </div>
 </div>
 
+<!-- Due-soon alert banner -->
+<div id="dueSoonBanner" style="display:none;margin-bottom:16px"></div>
+
 <!-- Stats -->
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
@@ -40,6 +43,7 @@
   <div class="search-wrap">
     <input type="text" id="searchInput" placeholder="Search by borrower..." />
   </div>
+  <button class="btn-primary" id="sortBtn" onclick="toggleSort()" title="Toggle sort order">📅 Due Date</button>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
   <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/my-export.csv">⬇ Export CSV</a>
 </div>
@@ -93,12 +97,14 @@
   let currentStatus = '';
   let offset = 0;
   let searchTimer = null;
+  let sortByDue = false;
 
   let isAvailable = true;
 
   document.addEventListener('DOMContentLoaded', () => {
-    loadStats(); loadLoans(); loadAvailability();
+    loadStats(); loadLoans(); loadAvailability(); loadDueSoon();
     setInterval(loadStats, 60000);
+    setInterval(loadDueSoon, 300000);
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -131,6 +137,80 @@
     } catch(e) { console.error(e); }
   }
 
+  async function loadDueSoon() {
+    try {
+      const loans = await apiFetch('/api/loans/due-soon');
+      const banner = document.getElementById('dueSoonBanner');
+      if (!loans.length) { banner.style.display = 'none'; return; }
+      const overdue  = loans.filter(l => l.overdue);
+      const today    = loans.filter(l => !l.overdue && l.days_left === 0);
+      const soon3    = loans.filter(l => !l.overdue && l.days_left > 0 && l.days_left <= 3);
+      const soon7    = loans.filter(l => !l.overdue && l.days_left > 3);
+      let html = '';
+      if (overdue.length) {
+        html += `<div style="background:rgba(231,76,60,0.12);border:1px solid rgba(231,76,60,0.4);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px">
+          ⛔ <strong>${overdue.length} overdue loan${overdue.length>1?'s':''}</strong> —
+          ${overdue.map(l=>`<a href="#" onclick="filterToBorrower('${l.borrower}')" style="color:var(--red)">u/${l.borrower} (${(l.amount-l.amount_repaid).toFixed(2)} ${l.currency})</a>`).join(', ')}
+        </div>`;
+      }
+      if (today.length || soon3.length) {
+        const urgent = [...today, ...soon3];
+        html += `<div style="background:rgba(243,156,18,0.12);border:1px solid rgba(243,156,18,0.4);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px">
+          ⚠️ <strong>${urgent.length} loan${urgent.length>1?'s':''} due within 3 days</strong> —
+          ${urgent.map(l=>`u/${l.borrower} (${l.days_left===0?'today':`${l.days_left}d`})`).join(', ')}
+        </div>`;
+      }
+      if (soon7.length) {
+        html += `<div style="background:rgba(241,196,15,0.1);border:1px solid rgba(241,196,15,0.3);border-radius:8px;padding:10px 14px;font-size:13px">
+          📅 <strong>${soon7.length} loan${soon7.length>1?'s':''} due within 7 days</strong> —
+          ${soon7.map(l=>`u/${l.borrower} (${l.days_left}d)`).join(', ')}
+        </div>`;
+      }
+      banner.innerHTML = html;
+      banner.style.display = '';
+    } catch(e) { console.error('due-soon error', e); }
+  }
+
+  function filterToBorrower(borrower) {
+    document.getElementById('searchInput').value = borrower;
+    offset = 0;
+    loadLoans();
+  }
+
+  function toggleSort() {
+    sortByDue = !sortByDue;
+    const btn = document.getElementById('sortBtn');
+    btn.style.background = sortByDue ? 'rgba(91,110,245,0.2)' : '';
+    btn.style.border     = sortByDue ? '1px solid var(--accent-h)' : '';
+    btn.style.color      = sortByDue ? 'var(--accent-h)' : '';
+    offset = 0;
+    loadLoans();
+  }
+
+  function dueDateStyle(due_date) {
+    if (!due_date) return '';
+    const now  = new Date();
+    const due  = new Date(due_date);
+    const days = Math.ceil((due - now) / 86400000);
+    if (days < 0)  return 'color:var(--red);font-weight:700';
+    if (days === 0) return 'color:var(--red);font-weight:600';
+    if (days <= 3) return 'color:var(--orange);font-weight:600';
+    if (days <= 7) return 'color:var(--yellow)';
+    return '';
+  }
+
+  function dueDateLabel(due_date) {
+    if (!due_date) return '—';
+    const now  = new Date();
+    const due  = new Date(due_date);
+    const days = Math.ceil((due - now) / 86400000);
+    const base = fmtDate(due_date);
+    if (days < 0)   return `${base} (${Math.abs(days)}d overdue)`;
+    if (days === 0) return `${base} (today)`;
+    if (days <= 7)  return `${base} (${days}d)`;
+    return base;
+  }
+
   function buildLoanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
@@ -140,17 +220,15 @@
     const thread    = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
     const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
     const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
-    const dueDate    = loan.due_date ? fmtDate(loan.due_date) : '—';
-    const duePast    = loan.due_date && new Date(loan.due_date) < new Date();
     return `<tr>
       <td><span class="loan-id">${id}</span></td>
-      <td class="username">u/${loan.borrower}</td>
+      <td class="username"><a href="/u/${loan.borrower}" style="color:var(--accent-h)">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
-      <td class="date-cell" style="${duePast?'color:var(--red);font-weight:600':''}">${dueDate}</td>
+      <td class="date-cell" style="${dueDateStyle(loan.due_date)}">${dueDateLabel(loan.due_date)}</td>
       <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
       <td class="date-cell">${repaidDate}</td>
       <td><div class="actions">
@@ -169,7 +247,15 @@
     if (currentStatus) url += `&status=${currentStatus}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
-      const loans = await apiFetch(url);
+      let loans = await apiFetch(url);
+      if (sortByDue) {
+        loans.sort((a, b) => {
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(a.due_date) - new Date(b.due_date);
+        });
+      }
       const tbody = document.getElementById('loansBody');
       if (!loans.length) {
         tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
@@ -202,7 +288,7 @@
     } finally { btn.disabled = false; btn.textContent = 'Load More'; }
   }
 
-  function loadData() { loadLoans(); loadStats(); }
+  function loadData() { loadLoans(); loadStats(); loadDueSoon(); }
 
   function showLenderTab(name) {
     document.getElementById('tab-applications').style.display = name === 'applications' ? '' : 'none';

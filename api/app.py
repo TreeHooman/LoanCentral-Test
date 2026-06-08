@@ -901,6 +901,51 @@ def get_borrower_stats(borrower):
     return _json(stats)
 
 
+@app.route("/api/loans/due-soon", methods=["GET"])
+@require_auth
+def get_due_soon_loans():
+    """Return the logged-in lender's active loans due within 7 days (or overdue)."""
+    from services import _get_db
+    lender = session.get("username")
+    if not lender:
+        return _json({"error": "Not authenticated"}, 401)
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, borrower, amount, amount_repaid, currency, status, due_date
+            FROM loans
+            WHERE lender = %s
+              AND due_date IS NOT NULL
+              AND due_date <= NOW() + INTERVAL '7 days'
+              AND status IN ('confirmed', 'partially_repaid')
+            ORDER BY due_date ASC
+        """, (lender.lower(),))
+        rows = cur.fetchall()
+        now = datetime.utcnow()
+        results = []
+        for r in rows:
+            due = r[7]
+            days_left = (due.date() - now.date()).days if due else None
+            results.append({
+                "db_id": r[0], "loan_id": r[1], "borrower": r[2],
+                "amount": float(r[3]), "amount_repaid": float(r[4]),
+                "currency": r[5], "status": r[6],
+                "due_date": due.isoformat() if due else None,
+                "days_left": days_left,
+                "overdue": days_left is not None and days_left < 0,
+            })
+        return _json(results)
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+    finally:
+        try: cur.close()
+        except Exception: pass
+        conn.close()
+
+
 @app.route("/api/loans/overdue", methods=["GET"])
 @require_mod_api
 def get_overdue_loans():
