@@ -76,7 +76,7 @@ def process_check_command(comment):
     if unpaid > 0:
         reply += f"⚠️ This user has **{unpaid} unpaid loan(s)**.\n\n"
 
-    reply += f"*Full profile and loan history: [{DASHBOARD_URL}]({DASHBOARD_URL})*"
+    reply += f"*Full profile: [{DASHBOARD_URL}/u/{target}]({DASHBOARD_URL}/u/{target})*"
 
     comment.reply(reply)
     logger.info(f"$check: u/{requester} checked u/{target}")

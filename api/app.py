@@ -648,34 +648,57 @@ def get_user(username):
 @require_auth
 def get_user_public_profile(username):
     """Public borrower profile — available to any authenticated user."""
-    from services import get_user_profile
+    from services import get_user_profile, get_loan_history, _get_db
     profile, error = get_user_profile(username)
     if error:
         return _json({"error": error}, 500)
-    # Also fetch last_login from user_roles
     last_login = None
-    from services import _get_db
+    role_row = None
     conn = _get_db()
     if conn:
         try:
             cur = conn.cursor()
-            cur.execute("SELECT last_login FROM user_roles WHERE username = %s", (username.lower(),))
+            cur.execute("SELECT last_login, role FROM user_roles WHERE username = %s", (username.lower(),))
             row = cur.fetchone()
             if row:
-                last_login = row[0]
+                last_login, role_row = row
         except Exception:
             pass
         finally:
             cur.close(); conn.close()
+    # Include recent loan history (visible to lenders and mods, plus the borrower themselves)
+    viewer_role = session.get("role", "borrower")
+    viewer = session.get("username", "")
+    include_loans = viewer_role in ("lender", "mod") or viewer.lower() == username.lower()
+    recent_loans = []
+    if include_loans:
+        loans, _ = get_loan_history(username, role="borrower", limit=20)
+        recent_loans = [
+            {"loan_id": l["loan_id"], "lender": l["lender"], "amount": l["amount"],
+             "amount_repaid": l["amount_repaid"], "currency": l["currency"],
+             "status": l["status"], "date_created": l["date_created"], "due_date": l.get("due_date")}
+            for l in (loans or [])
+        ]
     return _json({
         "username": username,
+        "role": role_row or "borrower",
         "loans_as_borrower": profile.get("loans_as_borrower", 0),
         "unpaid_loans": profile.get("unpaid_loans", 0),
         "amount_borrowed": profile.get("amount_borrowed", 0),
         "amount_repaid": profile.get("amount_repaid", 0),
         "active_amount": profile.get("active_amount", 0),
         "last_login": last_login,
+        "recent_loans": recent_loans,
     })
+
+
+@app.route("/u/<username>")
+@login_required
+def user_profile_page(username):
+    return render_template("user_profile.html",
+                           username=session["username"],
+                           role=session.get("role", "borrower"),
+                           profile_username=username.lower())
 
 
 @app.route("/api/users/me", methods=["GET"])

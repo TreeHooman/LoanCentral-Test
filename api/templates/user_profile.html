@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}u/{{ profile_username }} — LoanCentral{% endblock %}
+
+{% block head %}
+<style>
+  .profile-header { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+  .profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--surface2); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; color: var(--accent-h); flex-shrink: 0; }
+  .profile-meta { flex: 1; }
+  .profile-name { font-size: 22px; font-weight: 700; color: var(--text); }
+  .profile-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .profile-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+  .profile-sidebar { display: flex; flex-direction: column; gap: 16px; }
+  .profile-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .profile-card h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .stat-line { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(46,50,72,0.5); font-size: 13px; }
+  .stat-line:last-child { border-bottom: none; }
+  .stat-line .lbl { color: var(--text2); }
+  .stat-line .val { font-weight: 600; color: var(--text); }
+  .trust-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; margin-top: 12px; }
+  .trust-trusted { background: rgba(46,204,113,0.15); border: 1px solid rgba(46,204,113,0.3); color: var(--green); }
+  .trust-reliable { background: rgba(91,110,245,0.15); border: 1px solid rgba(91,110,245,0.3); color: var(--accent-h); }
+  .trust-good { background: rgba(241,196,15,0.12); border: 1px solid rgba(241,196,15,0.3); color: var(--yellow); }
+  .trust-unpaid { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); }
+  @media (max-width: 768px) {
+    .profile-grid { grid-template-columns: 1fr; }
+    .profile-header { gap: 12px; }
+    .profile-avatar { width: 48px; height: 48px; font-size: 18px; }
+    .profile-name { font-size: 18px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-header">
+  <div class="profile-avatar" id="avatarEl">?</div>
+  <div class="profile-meta">
+    <div class="profile-name">u/<span id="pUsername">{{ profile_username }}</span></div>
+    <div class="profile-sub" id="pSub">Loading profile...</div>
+  </div>
+  <div>
+    <a href="https://reddit.com/u/{{ profile_username }}" target="_blank" class="btn-secondary" style="font-size:12px">View on Reddit ↗</a>
+  </div>
+</div>
+
+<div class="profile-grid">
+  <div class="profile-sidebar">
+
+    <!-- Health Score Card -->
+    <div class="profile-card" id="scoreCard">
+      <h3>Borrower Health</h3>
+      <div style="text-align:center;padding:8px 0">
+        <div id="pHealthScore" style="font-size:48px;font-weight:800;line-height:1">—</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">/ 100</div>
+      </div>
+      <div class="progress-wrap" style="margin:12px 0;height:8px;border-radius:4px">
+        <div class="progress-bar" id="pHealthBar" style="transition:width 1s ease;height:100%;border-radius:4px"></div>
+      </div>
+      <div id="pTrustBadge"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="profile-card">
+      <h3>Loan Stats</h3>
+      <div id="pStats">
+        <div class="stat-line"><span class="lbl">Total Loans</span><span class="val" id="p-total">—</span></div>
+        <div class="stat-line"><span class="lbl">Unpaid</span><span class="val" id="p-unpaid">—</span></div>
+        <div class="stat-line"><span class="lbl">Total Borrowed</span><span class="val" id="p-borrowed">—</span></div>
+        <div class="stat-line"><span class="lbl">Total Repaid</span><span class="val" id="p-repaid">—</span></div>
+        <div class="stat-line"><span class="lbl">Outstanding</span><span class="val" id="p-outstanding">—</span></div>
+        <div class="stat-line"><span class="lbl">Repay Ratio</span><span class="val" id="p-ratio">—</span></div>
+        <div class="stat-line"><span class="lbl">Last Seen</span><span class="val" id="p-lastseen" style="font-size:12px;color:var(--muted)">—</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Loan History -->
+  <div>
+    <div class="profile-card" style="padding:0">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <h3 style="margin:0">Recent Loan History</h3>
+        <span style="font-size:11px;color:var(--muted)" id="loanHistoryNote"></span>
+      </div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table>
+          <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Repaid</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody id="pLoansBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PROFILE_USER = '{{ profile_username }}';
+  const ME = '{{ username }}';
+  const MY_ROLE = '{{ role }}';
+
+  document.addEventListener('DOMContentLoaded', loadProfile);
+
+  async function loadProfile() {
+    try {
+      const p = await apiFetch(`/api/users/${PROFILE_USER}/profile`);
+
+      // Avatar initial
+      document.getElementById('avatarEl').textContent = PROFILE_USER[0].toUpperCase();
+
+      // Health score
+      const total = p.loans_as_borrower || 0;
+      const unpaid = p.unpaid_loans || 0;
+      const borrowed = parseFloat(p.amount_borrowed || 0);
+      const repaid  = parseFloat(p.amount_repaid  || 0);
+      const outstanding = parseFloat(p.active_amount || 0);
+      let health = 100;
+      if (total > 0) {
+        const lr = (total - unpaid) / total;
+        const pr = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
+        health = Math.round((lr * 0.7 + pr * 0.3) * 100);
+      }
+      const color = scoreColor(health);
+      const hEl = document.getElementById('pHealthScore');
+      hEl.textContent = health;
+      hEl.style.color = color;
+      const bar = document.getElementById('pHealthBar');
+      bar.style.background = color;
+      setTimeout(() => { bar.style.width = health + '%'; }, 50);
+
+      // Trust badge
+      const tier = trustTier(health, total, unpaid);
+      const badgeEl = document.getElementById('pTrustBadge');
+      if (tier) {
+        badgeEl.innerHTML = `<div class="trust-badge trust-${tier.label.split(' ')[0].toLowerCase()}" style="background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);color:var(--green)">${tier.label}</div>`;
+      } else if (unpaid > 0) {
+        badgeEl.innerHTML = `<div class="trust-badge trust-unpaid">⚠ ${unpaid} Unpaid Loan${unpaid>1?'s':''}</div>`;
+      } else {
+        badgeEl.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-top:8px">${scoreLabel(health)}</div>`;
+      }
+
+      // Sub-header
+      const statusStr = unpaid > 0 ? `${unpaid} unpaid loan${unpaid>1?'s':''}` : total > 0 ? 'Good standing' : 'New user';
+      document.getElementById('pSub').textContent = statusStr + (p.role && p.role !== 'borrower' ? ` · ${p.role}` : '');
+      document.getElementById('pSub').style.color = unpaid > 0 ? 'var(--red)' : 'var(--muted)';
+
+      // Stats
+      document.getElementById('p-total').textContent = total;
+      const unpaidEl = document.getElementById('p-unpaid');
+      unpaidEl.textContent = unpaid;
+      unpaidEl.style.color = unpaid > 0 ? 'var(--red)' : 'var(--green)';
+      document.getElementById('p-borrowed').textContent = '$' + fmt(borrowed);
+      document.getElementById('p-repaid').textContent = '$' + fmt(repaid);
+      const outEl = document.getElementById('p-outstanding');
+      outEl.textContent = '$' + fmt(outstanding);
+      outEl.style.color = outstanding > 0 ? 'var(--orange)' : 'var(--muted)';
+      const ratio = borrowed > 0 ? Math.round(Math.min(repaid / borrowed, 1) * 100) : 100;
+      const ratioEl = document.getElementById('p-ratio');
+      ratioEl.textContent = ratio + '%';
+      ratioEl.style.color = scoreColor(ratio);
+      document.getElementById('p-lastseen').textContent = p.last_login ? fmtDate(p.last_login) : 'Never';
+
+      // Loans
+      const loans = p.recent_loans || [];
+      const noteEl = document.getElementById('loanHistoryNote');
+      const tbody = document.getElementById('pLoansBody');
+      if (!loans.length) {
+        noteEl.textContent = '';
+        tbody.innerHTML = `<tr><td colspan="6" class="table-placeholder">No loan history available.</td></tr>`;
+      } else {
+        noteEl.textContent = `${loans.length} most recent`;
+        tbody.innerHTML = loans.map(l => {
+          const id = l.loan_id || l.db_id;
+          const isOverdue = isLoanOverdue(l);
+          return `<tr${isOverdue?' style="background:rgba(231,76,60,0.04)"':''}>
+            <td><span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')">${id}</span></td>
+            <td class="username"><span class="user-link" onclick="openUserModal('${l.lender}')">u/${l.lender}</span></td>
+            <td><span class="amount">${parseFloat(l.amount).toFixed(2)} ${l.currency}</span></td>
+            <td>${parseFloat(l.amount_repaid||0).toFixed(2)}</td>
+            <td><span class="badge badge-${l.status}">${statusLabel(l.status)}</span>${l.due_date?`<div style="font-size:10px;color:${isOverdue?'var(--red)':'var(--muted)'};margin-top:2px">Due: ${l.due_date.split('T')[0]}</div>`:''}</td>
+            <td class="date-cell">${fmtDate(l.date_created)}</td>
+          </tr>`;
+        }).join('');
+      }
+    } catch(e) {
+      document.getElementById('pSub').textContent = 'Profile unavailable';
+      document.getElementById('pLoansBody').innerHTML = `<tr><td colspan="6" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+</script>
+{% endblock %}

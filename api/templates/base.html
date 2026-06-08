@@ -752,7 +752,10 @@
           <div class="user-stat-item"><div class="label">Repay Ratio</div><div class="value" style="color:${scoreColor(health)}">${borrowed>0?Math.round(Math.min(repaid/borrowed,1)*100):100}%</div></div>
         </div>
         ${unpaid > 0 ? `<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--red);margin-top:8px">⚠ ${unpaid} unpaid loan${unpaid>1?'s':''} on record</div>` : `<div style="background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.2);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--green);margin-top:8px">Good standing — no unpaid loans</div>`}
-        ${p.last_login ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:right">Last seen: ${fmtDate(p.last_login)}</div>` : ''}
+        ${p.last_login ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">Last seen: ${fmtDate(p.last_login)}</div>` : ''}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <a href="/u/${username}" style="font-size:12px;color:var(--accent-h);text-decoration:none" onclick="closeModal('userModal')">View full profile →</a>
+        </div>
       `;
     } catch(e) {
       content.innerHTML = `<p style="color:var(--muted);text-align:center;padding:24px">No profile data for u/${username}</p>`;
