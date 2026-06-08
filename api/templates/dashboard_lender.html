@@ -119,12 +119,12 @@
   async function loadStats() {
     try {
       const s = await apiFetch(`/api/stats/lender/${ME}`);
-      document.getElementById('s-active').textContent     = s.active_loans;
-      document.getElementById('s-unpaid').textContent     = s.unpaid_loans;
-      document.getElementById('s-repaid').textContent     = s.repaid_loans;
-      document.getElementById('s-lent').textContent       = '$' + fmt(s.total_lent);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
-      document.getElementById('s-recovered').textContent  = '$' + fmt(s.total_recovered) + ' recovered';
+      animateValue(document.getElementById('s-active'),      s.active_loans,     '', '', false);
+      animateValue(document.getElementById('s-unpaid'),      s.unpaid_loans,     '', '', false);
+      animateValue(document.getElementById('s-repaid'),      s.repaid_loans,     '', '', false);
+      animateValue(document.getElementById('s-lent'),        s.total_lent,       '$', '', true);
+      animateValue(document.getElementById('s-outstanding'), s.outstanding,      '$', '', true);
+      document.getElementById('s-recovered').textContent = '$' + fmt(s.total_recovered) + ' recovered';
 
       const score = calcPortfolioScore(s);
       const scoreEl = document.getElementById('s-score');

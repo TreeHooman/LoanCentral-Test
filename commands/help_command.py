@@ -37,6 +37,11 @@ The bot tracks loans. History, health scores, stats, and mod tools are on the **
 
     $refunded [loan_id]
 
+**Send a payment reminder**
+
+    $remind u/[borrower]
+    $remind u/[borrower] [loan_id]
+
 ---
 
 ## Borrower Commands

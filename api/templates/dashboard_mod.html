@@ -26,6 +26,10 @@
   <div class="stat-card clickable" onclick="filterByCard('disputed')" id="card-disputed">
     <div class="stat-label">Disputed</div><div class="stat-value c-orange" id="s-disputed">—</div>
   </div>
+  <div class="stat-card">
+    <div class="stat-label">Repayment Rate</div><div class="stat-value" id="s-rate">—</div>
+    <div class="stat-sub">of settled loans</div>
+  </div>
 </div>
 
 <!-- Loans tab -->
@@ -146,14 +150,18 @@
   async function loadStats() {
     try {
       const s = await apiFetch('/api/stats');
-      document.getElementById('s-total').textContent   = s.total_loans;
-      document.getElementById('s-active').textContent  = s.active_loans + s.partial_loans;
-      document.getElementById('s-unpaid').textContent  = s.unpaid_loans;
-      document.getElementById('s-repaid').textContent  = s.repaid_loans;
-      document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
-      document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
+      animateValue(document.getElementById('s-total'),   s.total_loans, '', '', false);
+      animateValue(document.getElementById('s-active'),  s.active_loans + s.partial_loans, '', '', false);
+      animateValue(document.getElementById('s-unpaid'),  s.unpaid_loans, '', '', false);
+      animateValue(document.getElementById('s-repaid'),  s.repaid_loans, '', '', false);
+      animateValue(document.getElementById('s-volume'),  s.total_volume, '$', '', true);
+      animateValue(document.getElementById('s-trepaid'), s.total_repaid, '$', '', true);
+      animateValue(document.getElementById('s-disputed'),s.disputed_loans, '', '', false);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
-      document.getElementById('s-disputed').textContent = s.disputed_loans;
+      const settled = (s.repaid_loans||0) + (s.unpaid_loans||0);
+      const rate = settled > 0 ? Math.round((s.repaid_loans / settled) * 100) : 100;
+      const rateEl = document.getElementById('s-rate');
+      if (rateEl) { rateEl.textContent = rate + '%'; rateEl.style.color = rate >= 90 ? 'var(--green)' : rate >= 70 ? 'var(--yellow)' : 'var(--red)'; }
       const badge = document.getElementById('navDisputedBadge');
       if (badge) {
         if (s.disputed_loans > 0) {

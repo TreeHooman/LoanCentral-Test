@@ -93,10 +93,10 @@
   async function loadProfile() {
     try {
       const p = await apiFetch(`/api/users/${ME}`);
-      document.getElementById('s-borrowed').textContent    = '$' + fmt(p.amount_borrowed);
-      document.getElementById('s-repaid').textContent      = '$' + fmt(p.amount_repaid);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(p.active_amount || 0);
-      document.getElementById('s-unpaid').textContent      = p.unpaid_loans;
+      animateValue(document.getElementById('s-borrowed'),    p.amount_borrowed, '$', '', true);
+      animateValue(document.getElementById('s-repaid'),      p.amount_repaid,   '$', '', true);
+      animateValue(document.getElementById('s-outstanding'), p.active_amount||0,'$', '', true);
+      animateValue(document.getElementById('s-unpaid'),      p.unpaid_loans,    '', '', false);
 
       const score = calcHealth(p);
       const el = document.getElementById('s-health');

@@ -522,6 +522,20 @@
     setTimeout(() => el.className = '', 3500);
   }
 
+  function animateValue(el, target, prefix, suffix, isFloat) {
+    if (!el) return;
+    const duration = 700;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const cur = target * ease;
+      el.textContent = (prefix||'') + (isFloat ? fmt(cur) : Math.round(cur)) + (suffix||'');
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
   function scoreColor(s) {
     if (s >= 90) return 'var(--green)';
     if (s >= 70) return 'var(--accent-h)';
