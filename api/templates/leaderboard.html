@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard — LoanCentral{% endblock %}
+
+{% block head %}
+<style>
+  .lb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+  .lb-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .lb-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .lb-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .lb-icon { font-size: 20px; }
+  .lb-table { width: 100%; border-collapse: collapse; }
+  .lb-table th { padding: 10px 16px; text-align: left; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface2); }
+  .lb-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .lb-table tr:last-child td { border-bottom: none; }
+  .lb-table tr:hover td { background: rgba(91,110,245,0.04); }
+  .lb-rank { font-size: 13px; font-weight: 700; color: var(--muted); width: 32px; }
+  .rank-1 { color: var(--yellow); }
+  .rank-2 { color: var(--text2); }
+  .rank-3 { color: var(--orange); }
+  .lb-user { font-weight: 600; color: var(--text); cursor: pointer; }
+  .lb-user:hover { color: var(--accent-h); text-decoration: underline; }
+  .lb-amount { font-weight: 700; color: var(--text); font-size: 13px; }
+  .lb-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .reliability-bar { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .reliability-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+  .community-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .community-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; text-align: center; }
+  .community-stat .val { font-size: 28px; font-weight: 700; }
+  .community-stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  @media (max-width: 768px) {
+    .lb-grid { grid-template-columns: 1fr; }
+    .lb-table td, .lb-table th { padding: 10px 12px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title" style="font-size:20px">Community Leaderboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">Top lenders &amp; most reliable borrowers</div>
+  </div>
+  <button class="btn-secondary" onclick="loadLeaderboard()">↻ Refresh</button>
+</div>
+
+<!-- Community summary stats -->
+<div class="community-stats" id="communityStats">
+  <div class="community-stat"><div class="val c-accent" id="cs-total">—</div><div class="lbl">Total Loans</div></div>
+  <div class="community-stat"><div class="val c-yellow" id="cs-volume">—</div><div class="lbl">Total Volume</div></div>
+  <div class="community-stat"><div class="val c-green" id="cs-repaid">—</div><div class="lbl">Total Recovered</div></div>
+  <div class="community-stat"><div class="val" id="cs-rate">—</div><div class="lbl">Repayment Rate</div></div>
+</div>
+
+<div class="lb-grid">
+  <!-- Top Lenders -->
+  <div class="lb-section">
+    <div class="lb-header">
+      <span class="lb-icon">💰</span>
+      <span class="lb-title">Top Lenders</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto">by total lent</span>
+    </div>
+    <table class="lb-table">
+      <thead><tr><th>#</th><th>Lender</th><th>Loans</th><th>Total Lent</th><th>Recovery</th></tr></thead>
+      <tbody id="lendersBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Top Borrowers -->
+  <div class="lb-section">
+    <div class="lb-header">
+      <span class="lb-icon">⭐</span>
+      <span class="lb-title">Most Reliable Borrowers</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto">≥ 2 loans</span>
+    </div>
+    <table class="lb-table">
+      <thead><tr><th>#</th><th>Borrower</th><th>Loans</th><th>Repayment</th><th>Unpaid</th></tr></thead>
+      <tbody id="borrowersBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<p style="font-size:12px;color:var(--muted);text-align:center">
+  Updated in real-time · Use <code style="background:var(--surface);padding:1px 5px;border-radius:3px">$leaderboard</code> in a Reddit comment for a text version
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    loadLeaderboard();
+    loadCommunityStats();
+  });
+
+  async function loadCommunityStats() {
+    try {
+      const s = await apiFetch('/api/stats');
+      document.getElementById('cs-total').textContent = s.total_loans || 0;
+      document.getElementById('cs-volume').textContent = '$' + fmt(s.total_volume || 0);
+      document.getElementById('cs-repaid').textContent = '$' + fmt(s.total_repaid || 0);
+      const settled = (s.repaid_loans || 0) + (s.unpaid_loans || 0);
+      const rate = settled > 0 ? Math.round((s.repaid_loans / settled) * 100) : 100;
+      const rEl = document.getElementById('cs-rate');
+      rEl.textContent = rate + '%';
+      rEl.style.color = rate >= 90 ? 'var(--green)' : rate >= 70 ? 'var(--yellow)' : 'var(--red)';
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadLeaderboard() {
+    try {
+      const data = await apiFetch('/api/leaderboard');
+      renderLenders(data.top_lenders || []);
+      renderBorrowers(data.top_borrowers || []);
+    } catch(e) {
+      document.getElementById('lendersBody').innerHTML = `<tr><td colspan="5" style="color:var(--red);padding:16px">Error: ${e.message}</td></tr>`;
+      document.getElementById('borrowersBody').innerHTML = `<tr><td colspan="5" style="color:var(--red);padding:16px">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  function renderLenders(lenders) {
+    const tbody = document.getElementById('lendersBody');
+    if (!lenders.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="table-placeholder" style="padding:32px">No lending activity yet.</td></tr>`;
+      return;
+    }
+    const maxLent = Math.max(...lenders.map(l => parseFloat(l.total_lent || 0)));
+    tbody.innerHTML = lenders.map((l, i) => {
+      const lent = parseFloat(l.total_lent || 0);
+      const recovered = parseFloat(l.total_recovered || 0);
+      const rate = lent > 0 ? Math.round(Math.min(recovered / lent, 1) * 100) : 0;
+      const barPct = maxLent > 0 ? Math.round(lent / maxLent * 100) : 0;
+      return `<tr>
+        <td class="lb-rank rank-${i+1}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)}</td>
+        <td>
+          <span class="lb-user" onclick="openUserModal('${l.username}')">u/${l.username}</span>
+          <div class="reliability-bar"><div class="reliability-fill" style="width:${barPct}%;background:var(--accent)"></div></div>
+        </td>
+        <td><span class="lb-amount">${l.loans}</span><div class="lb-sub">${l.repaid} repaid</div></td>
+        <td><span class="lb-amount">$${fmt(lent)}</span></td>
+        <td><span style="color:${rate >= 80 ? 'var(--green)' : rate >= 60 ? 'var(--yellow)' : 'var(--red)'};font-weight:600">${rate}%</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderBorrowers(borrowers) {
+    const tbody = document.getElementById('borrowersBody');
+    if (!borrowers.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="table-placeholder" style="padding:32px">Not enough data yet (need ≥ 2 loans per user).</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = borrowers.map((b, i) => {
+      const repayRate = b.total > 0 ? Math.round((b.repaid / b.total) * 100) : 0;
+      const tier = b.unpaid === 0 && repayRate >= 95 && b.total >= 5 ? '⭐ Trusted'
+                 : b.unpaid === 0 && repayRate >= 85 && b.total >= 3 ? '✓ Reliable'
+                 : b.unpaid === 0 ? 'Good'
+                 : null;
+      return `<tr>
+        <td class="lb-rank rank-${i+1}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)}</td>
+        <td>
+          <span class="lb-user" onclick="openUserModal('${b.username}')">u/${b.username}</span>
+          ${tier ? `<div class="lb-sub" style="color:var(--green)">${tier}</div>` : ''}
+        </td>
+        <td><span class="lb-amount">${b.total}</span></td>
+        <td>
+          <span style="color:${repayRate>=90?'var(--green)':repayRate>=70?'var(--yellow)':'var(--red)'};font-weight:700">${repayRate}%</span>
+          <div class="reliability-bar"><div class="reliability-fill" style="width:${repayRate}%;background:${repayRate>=90?'var(--green)':repayRate>=70?'var(--yellow)':'var(--red)'}"></div></div>
+        </td>
+        <td><span style="color:${b.unpaid > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${b.unpaid}</span></td>
+      </tr>`;
+    }).join('');
+  }
+</script>
+{% endblock %}

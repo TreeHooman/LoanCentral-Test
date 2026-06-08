@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Settings — LoanCentral{% endblock %}
+
+{% block head %}
+<style>
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; }
+  .settings-card h3 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(46,50,72,0.5); gap: 12px; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 13px; color: var(--text2); flex: 1; }
+  .setting-value { font-size: 13px; color: var(--text); font-weight: 500; text-align: right; }
+  .api-key-wrap { display: flex; align-items: center; gap: 8px; }
+  .api-key-field { font-family: monospace; font-size: 12px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); padding: 6px 10px; border-radius: 6px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+  .role-info { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .role-info-name { font-size: 18px; font-weight: 700; }
+  .role-info-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .quick-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .quick-link { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text2); text-decoration: none; font-size: 13px; transition: all 0.15s; }
+  .quick-link:hover { border-color: var(--accent); color: var(--text); }
+  @media (max-width: 768px) {
+    .settings-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title" style="font-size:20px">Account Settings</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
+  </div>
+</div>
+
+<div class="settings-grid">
+
+  <!-- Account Info -->
+  <div class="settings-card">
+    <h3>Account</h3>
+    <div class="role-info">
+      <div>
+        <div class="role-info-name">u/{{ username }}</div>
+        <div class="role-info-sub">Logged in via Reddit OAuth</div>
+      </div>
+      <span class="role-badge role-{{ role }}" style="margin-left:auto">{{ role }}</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Role</span>
+      <span class="setting-value"><span class="badge {% if role == 'mod' %}badge-disputed{% elif role == 'lender' %}badge-confirmed{% else %}badge-repaid{% endif %}">{{ role }}</span></span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Dashboard</span>
+      <span class="setting-value">
+        {% if role == 'mod' %}<a href="/dashboard/mod" style="color:var(--accent-h)">Mod Dashboard</a>
+        {% elif role == 'lender' %}<a href="/dashboard/lender" style="color:var(--accent-h)">Lender Dashboard</a>
+        {% else %}<a href="/dashboard/borrower" style="color:var(--accent-h)">Borrower Dashboard</a>
+        {% endif %}
+      </span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Platform</span>
+      <span class="setting-value" style="color:var(--muted)">LoanCentral v1.0</span>
+    </div>
+    <div style="margin-top:16px">
+      <a href="{{ url_for('auth_logout') }}" class="btn-secondary" style="font-size:13px;color:var(--red);border-color:rgba(231,76,60,0.3)">Sign Out</a>
+    </div>
+  </div>
+
+  <!-- Quick Links -->
+  <div class="settings-card">
+    <h3>Quick Links</h3>
+    <div class="quick-links">
+      {% if role in ('mod', 'lender') %}
+        <a class="quick-link" href="{{ url_for('dashboard_lender') }}">💰 Lender Dashboard</a>
+      {% endif %}
+      <a class="quick-link" href="{{ url_for('dashboard_borrower') }}">📋 Borrower View</a>
+      {% if role == 'mod' %}
+        <a class="quick-link" href="{{ url_for('dashboard_mod') }}">🛡 Mod Dashboard</a>
+      {% endif %}
+      <a class="quick-link" href="{{ url_for('leaderboard') }}">🏆 Leaderboard</a>
+      {% if role in ('mod', 'lender') %}
+        <a class="quick-link" href="{{ url_for('api_docs') }}">⚡ API Docs</a>
+      {% endif %}
+    </div>
+
+    <div style="margin-top:20px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Bot Commands</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        {% for cmd in ['$help', '$check u/[user]', '$balance [id]', '$mystats', '$leaderboard'] %}
+          <code onclick="(async()=>{await navigator.clipboard.writeText('{{ cmd }}');toast('Copied!','success');})()" style="background:var(--bg);border:1px solid var(--border);padding:4px 8px;border-radius:4px;font-size:11px;color:var(--accent-h);cursor:pointer" title="Click to copy">{{ cmd }}</code>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% if role in ('mod', 'lender') %}
+  <!-- API Access -->
+  <div class="settings-card">
+    <h3>API Access</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5">Use the API key below to authenticate programmatic requests. Keep it secret — it provides full read/write access to your loans.</p>
+    <div class="setting-row">
+      <span class="setting-label">API Key</span>
+      <div class="api-key-wrap">
+        <span class="api-key-field" id="apiKeyDisplay">••••••••••••••••</span>
+        <button class="btn-secondary" style="padding:5px 10px;font-size:12px" onclick="toggleApiKey()">Show</button>
+        <button class="btn-secondary" style="padding:5px 10px;font-size:12px" onclick="copyApiKey()">Copy</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Header</span>
+      <code style="font-size:11px;background:var(--bg);padding:4px 8px;border-radius:4px;color:var(--muted)">X-API-Key: [your-key]</code>
+    </div>
+    <div style="margin-top:12px">
+      <a href="{{ url_for('api_docs') }}" class="btn-secondary" style="font-size:12px">View API Documentation →</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- About -->
+  <div class="settings-card">
+    <h3>About LoanCentral</h3>
+    <div class="setting-row">
+      <span class="setting-label">Version</span>
+      <span class="setting-value" style="color:var(--muted)">1.0</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Loan ID Format</span>
+      <code style="font-size:11px;color:var(--accent-h)">LC-XXXXXX</code>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Currencies</span>
+      <span class="setting-value" style="color:var(--muted)">USD · CAD · GBP · EUR · AUD · NZD</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">Subreddit</span>
+      <span class="setting-value"><a href="https://reddit.com" target="_blank" style="color:var(--accent-h)">r/borrow</a></span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5">
+      LoanCentral tracks peer-to-peer loans via Reddit bot commands and this dashboard. All data is stored securely. Disputes are reviewed by community mods.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const _APIKEY = '{{ api_key }}';
+  let _apiKeyVisible = false;
+
+  function toggleApiKey() {
+    _apiKeyVisible = !_apiKeyVisible;
+    const el = document.getElementById('apiKeyDisplay');
+    const btn = el.nextElementSibling;
+    el.textContent = _apiKeyVisible ? _APIKEY : '••••••••••••••••';
+    btn.textContent = _apiKeyVisible ? 'Hide' : 'Show';
+  }
+
+  async function copyApiKey() {
+    try {
+      await navigator.clipboard.writeText(_APIKEY);
+      toast('API key copied!', 'success');
+    } catch(e) { toast('Copy failed', 'error'); }
+  }
+</script>
+{% endblock %}

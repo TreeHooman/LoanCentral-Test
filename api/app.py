@@ -730,6 +730,80 @@ def get_stats():
         conn.close()
 
 
+@app.route("/api/leaderboard", methods=["GET"])
+@require_auth
+def get_leaderboard():
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lender,
+                   COUNT(*) FILTER (WHERE status NOT IN ('refunded')) AS loans,
+                   COALESCE(SUM(amount) FILTER (WHERE status NOT IN ('refunded')), 0) AS total_lent,
+                   COALESCE(SUM(amount_repaid), 0) AS total_recovered,
+                   COUNT(*) FILTER (WHERE status = 'repaid') AS repaid_count,
+                   COUNT(*) FILTER (WHERE status = 'unpaid') AS unpaid_count
+            FROM loans
+            WHERE status NOT IN ('refunded')
+            GROUP BY lender
+            HAVING COUNT(*) FILTER (WHERE status NOT IN ('refunded')) >= 1
+            ORDER BY total_lent DESC
+            LIMIT 10
+        """)
+        top_lenders = [
+            {"username": r[0], "loans": r[1], "total_lent": r[2],
+             "total_recovered": r[3], "repaid": r[4], "unpaid": r[5]}
+            for r in cur.fetchall()
+        ]
+        cur.execute("""
+            SELECT borrower,
+                   COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE status = 'repaid') AS repaid,
+                   COUNT(*) FILTER (WHERE status = 'unpaid') AS unpaid,
+                   COALESCE(SUM(amount_repaid), 0) AS amount_repaid,
+                   COALESCE(SUM(amount), 0) AS amount_borrowed
+            FROM loans
+            WHERE status NOT IN ('refunded')
+            GROUP BY borrower
+            HAVING COUNT(*) >= 2
+            ORDER BY
+                COUNT(*) FILTER (WHERE status = 'unpaid') ASC,
+                (COUNT(*) FILTER (WHERE status = 'repaid')::float /
+                 NULLIF(COUNT(*) FILTER (WHERE status NOT IN ('refunded','disputed')),0)) DESC NULLS LAST,
+                COUNT(*) DESC
+            LIMIT 10
+        """)
+        top_borrowers = [
+            {"username": r[0], "total": r[1], "repaid": r[2],
+             "unpaid": r[3], "amount_repaid": r[4], "amount_borrowed": r[5]}
+            for r in cur.fetchall()
+        ]
+        return _json({"top_lenders": top_lenders, "top_borrowers": top_borrowers})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/leaderboard")
+@login_required
+def leaderboard():
+    return render_template("leaderboard.html",
+                           username=session["username"],
+                           role=session.get("role", "borrower"))
+
+
+@app.route("/settings")
+@login_required
+def settings():
+    return render_template("settings.html",
+                           username=session["username"],
+                           role=session.get("role", "borrower"),
+                           api_key=API_KEY)
+
+
 @app.route("/api/stats/lender/<lender>", methods=["GET"])
 @require_auth
 def get_lender_stats(lender):
@@ -741,6 +815,41 @@ def get_lender_stats(lender):
     if error:
         return _json({"error": error}, 500)
     return _json(stats)
+
+
+@app.route("/api/stats/lender/<lender>/monthly", methods=["GET"])
+@require_auth
+def get_lender_monthly(lender):
+    """Monthly loan activity for the past 12 months."""
+    from services import _get_db
+    if session.get("username") and session.get("role") not in ("mod",):
+        if lender.lower() != session["username"]:
+            return _json({"error": "You can only view your own stats."}, 403)
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                TO_CHAR(DATE_TRUNC('month', date_created), 'YYYY-MM') AS month,
+                COUNT(*) AS new_loans,
+                COALESCE(SUM(amount), 0) AS volume_lent,
+                COALESCE(SUM(amount_repaid), 0) AS recovered
+            FROM loans
+            WHERE lender = %s
+              AND date_created >= NOW() - INTERVAL '12 months'
+            GROUP BY DATE_TRUNC('month', date_created)
+            ORDER BY DATE_TRUNC('month', date_created)
+        """, (lender.lower(),))
+        rows = cur.fetchall()
+        return _json([
+            {"month": r[0], "new_loans": r[1], "volume_lent": r[2], "recovered": r[3]}
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

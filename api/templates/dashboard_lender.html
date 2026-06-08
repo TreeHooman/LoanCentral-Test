@@ -52,6 +52,7 @@
   </div>
   <div class="stat-card">
     <div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div>
+    <div class="stat-sub" id="s-avg-loan"></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div>
@@ -69,6 +70,20 @@
       <div class="progress-bar" id="s-score-bar"></div>
     </div>
   </div>
+  <div class="stat-card clickable" onclick="filterByCard('repaid')" id="card-rate">
+    <div class="stat-label">Repay Rate</div>
+    <div class="stat-value" id="s-rate">—</div>
+    <div class="stat-sub">settled loans</div>
+  </div>
+</div>
+
+<!-- Monthly Activity Chart -->
+<div id="chartPanel" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <span style="font-size:13px;font-weight:600;color:var(--text2)">Portfolio Activity (12 months)</span>
+    <span style="font-size:11px;color:var(--muted)" id="chartSub"></span>
+  </div>
+  <canvas id="activityChart" height="80"></canvas>
 </div>
 
 <!-- Quick Commands Reference -->
@@ -172,7 +187,7 @@
       const si = document.getElementById('searchInput');
       if (si) { si.value = savedSearch; document.getElementById('searchClear').classList.add('visible'); }
     }
-    loadStats(); loadLoans();
+    loadStats(); loadLoans(); loadChart();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -223,6 +238,16 @@
       animateValue(document.getElementById('s-borrowers'),   s.unique_borrowers || 0, '', '', false);
       const thisMonthEl = document.getElementById('s-this-month');
       if (thisMonthEl) thisMonthEl.textContent = (s.this_month || 0) + ' new this month';
+      const avgEl = document.getElementById('s-avg-loan');
+      if (avgEl && s.avg_loan_size) avgEl.textContent = 'avg $' + fmt(s.avg_loan_size) + '/loan';
+
+      const settled = (s.repaid_loans || 0) + (s.unpaid_loans || 0);
+      const repayRate = settled > 0 ? Math.round((s.repaid_loans / settled) * 100) : 100;
+      const rateEl = document.getElementById('s-rate');
+      if (rateEl) {
+        rateEl.textContent = repayRate + '%';
+        rateEl.style.color = repayRate >= 90 ? 'var(--green)' : repayRate >= 70 ? 'var(--yellow)' : 'var(--red)';
+      }
 
       const score = calcPortfolioScore(s);
       const scoreEl = document.getElementById('s-score');
@@ -352,7 +377,69 @@
     }).join('') + renderCurrencySummary(loans);
   }
 
-  function loadData() { loadLoans(); loadStats(); }
+  function loadData() { loadLoans(); loadStats(); loadChart(); }
+
+  async function loadChart() {
+    try {
+      const data = await apiFetch(`/api/stats/lender/${ME}/monthly`);
+      if (!data || !data.length) return;
+      const labels = data.map(d => {
+        const [y, m] = d.month.split('-');
+        return new Date(y, m-1).toLocaleString('default', { month: 'short', year: '2-digit' });
+      });
+      const lent = data.map(d => parseFloat(d.volume_lent || 0));
+      const rec = data.map(d => parseFloat(d.recovered || 0));
+      const totalLent = lent.reduce((a, b) => a + b, 0);
+      const chartSub = document.getElementById('chartSub');
+      if (chartSub) chartSub.textContent = `$${fmt(totalLent)} lent over ${data.length} month${data.length !== 1 ? 's' : ''}`;
+      drawBarChart('activityChart', labels, lent, rec);
+    } catch(e) { console.error('chart', e); }
+  }
+
+  function drawBarChart(canvasId, labels, lentData, recoveredData) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth || canvas.parentElement.clientWidth;
+    const h = parseInt(canvas.getAttribute('height') || 80) * dpr;
+    canvas.width = w * dpr;
+    canvas.height = h;
+    canvas.style.height = (h / dpr) + 'px';
+    ctx.scale(dpr, dpr);
+    const cw = w, ch = h / dpr;
+    ctx.clearRect(0, 0, cw, ch);
+    const maxVal = Math.max(...lentData, ...recoveredData, 1);
+    const n = labels.length;
+    const padL = 0, padR = 4, padT = 4, padB = 20;
+    const bw = Math.max(Math.floor((cw - padL - padR) / n) - 3, 2);
+    const totalW = bw * n + (n - 1) * 3;
+    const startX = padL + (cw - padL - padR - totalW) / 2;
+    const chartH = ch - padT - padB;
+    const accent = 'rgba(91,110,245,0.7)';
+    const green = 'rgba(46,204,113,0.55)';
+    for (let i = 0; i < n; i++) {
+      const x = startX + i * (bw + 3);
+      const lH = Math.max((lentData[i] / maxVal) * chartH, 2);
+      const rH = Math.max((recoveredData[i] / maxVal) * chartH, 0);
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.roundRect(x, padT + chartH - lH, bw, lH, [2, 2, 0, 0]);
+      ctx.fill();
+      if (rH > 0) {
+        ctx.fillStyle = green;
+        ctx.beginPath();
+        ctx.roundRect(x, padT + chartH - rH, bw, rH, [1, 1, 0, 0]);
+        ctx.fill();
+      }
+      if (i % Math.ceil(n / 6) === 0 || i === n - 1) {
+        ctx.fillStyle = 'rgba(136,145,170,0.7)';
+        ctx.font = `${10}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[i], x + bw / 2, ch - 4);
+      }
+    }
+  }
 
   function toggleCmdPanel() {
     const body = document.getElementById('cmdBody');
@@ -448,8 +535,6 @@
       toast('Copied!', 'success');
     } catch(e) { toast('Copy failed', 'error'); }
   }
-
-  function loadData() { loadLoans(); loadStats(); }
 
   function renderCurrencySummary(loans) {
     // Build per-currency totals for the rendered loans
