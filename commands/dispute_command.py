@@ -3,25 +3,25 @@ $dispute [loan_id]
 Borrower flags a loan for mod review. Puts the loan into 'disputed' status.
 """
 
-from services import dispute_loan, update_last_login
+import logging
 
-DASHBOARD_URL = "https://loancentral.app"  # update when domain is live
+logger = logging.getLogger("LoanCentral")
+
+COMMAND_TRIGGER = "$dispute"
+DASHBOARD_URL = "https://loancentral.app"
 
 
-def handle_dispute(comment, username):
-    """
-    Parse and handle a $dispute command.
-    Format: $dispute [loan_id]
-    """
+def process_dispute_command(comment):
+    """Parse and handle a $dispute command: $dispute [loan_id]"""
+    from services import dispute_loan, update_last_login
+
     parts = comment.body.strip().split()
-
-    # Need: $dispute <loan_id>
     if len(parts) < 2:
         return  # silent — no help spam
 
     loan_id = parts[1].strip()
+    username = comment.author.name.lower()
 
-    # Auto-create user record on first interaction
     update_last_login(username)
 
     result, error = dispute_loan(loan_id, username)
@@ -39,3 +39,4 @@ def handle_dispute(comment, username):
         f"A mod will review and reach out. In the meantime the loan status is frozen.\n\n"
         f"View your loan history: {DASHBOARD_URL}"
     )
+    logger.info(f"Loan {loan_id} disputed by {username}")

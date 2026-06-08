@@ -13,8 +13,9 @@ class TestDisputeCommand(unittest.TestCase):
         db = FakeDb(loans=loans or [])
         with patch.dict(sys.modules, {"utils": fake_utils_module(db)}):
             mod = importlib.import_module("commands.dispute_command")
+            importlib.reload(mod)
             comment = FakeComment(body=body, author_name=username)
-            mod.handle_dispute(comment, username)
+            mod.process_dispute_command(comment)
         return comment
 
     def _loan(self, **kw):

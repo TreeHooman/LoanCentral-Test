@@ -10,6 +10,7 @@
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
   <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Disputed</div><div class="stat-value c-orange" id="s-disputed">—</div></div>
 </div>
 
 <!-- Loans tab -->
@@ -22,6 +23,7 @@
       <button class="tab" data-status="unpaid">Unpaid</button>
       <button class="tab" data-status="repaid">Repaid</button>
       <button class="tab" data-status="refunded">Refunded</button>
+      <button class="tab" data-status="disputed">Disputed</button>
     </div>
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
@@ -93,6 +95,7 @@
       document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
       document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      document.getElementById('s-disputed').textContent = s.disputed_loans;
     } catch(e) { console.error(e); }
   }
 
