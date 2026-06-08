@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: loancentral-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python startup.py
+    startCommand: gunicorn "api.app:app" --bind 0.0.0.0:$PORT --workers 2
+    envVars:
+      - key: LOANCENTRAL_ENV
+        value: prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: loancentral-db
+          property: connectionString
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_USER_AGENT
+        value: LoanCentral/1.0
+
+databases:
+  - name: loancentral-db
+    databaseName: loancentral
+    plan: free
