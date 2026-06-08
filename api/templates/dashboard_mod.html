@@ -104,11 +104,23 @@
   let allLoans = [];
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Restore filter from URL
+    const savedStatus = getURLParam('status');
+    if (savedStatus) {
+      currentStatus = savedStatus;
+      setActiveTab(savedStatus);
+    }
+    const savedSearch = getURLParam('q');
+    if (savedSearch) {
+      const si = document.getElementById('searchInput');
+      if (si) { si.value = savedSearch; document.getElementById('searchClear').classList.add('visible'); }
+    }
     loadStats(); loadLoans();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         setActiveTab(tab.dataset.status);
         currentStatus = tab.dataset.status;
+        setURLParam('status', currentStatus);
         loadLoans();
       });
     });
@@ -116,6 +128,7 @@
     const clearBtn = document.getElementById('searchClear');
     searchEl.addEventListener('input', () => {
       clearBtn.classList.toggle('visible', searchEl.value.length > 0);
+      setURLParam('q', searchEl.value);
       clearTimeout(searchTimer);
       searchTimer = setTimeout(loadLoans, 350);
     });

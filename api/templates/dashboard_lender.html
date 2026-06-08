@@ -142,12 +142,24 @@
   let allLoans = [];
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Restore state from URL
+    const savedStatus = getURLParam('status');
+    const savedSearch = getURLParam('q');
+    if (savedStatus) {
+      currentStatus = savedStatus;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.status === savedStatus));
+    }
+    if (savedSearch) {
+      const si = document.getElementById('searchInput');
+      if (si) { si.value = savedSearch; document.getElementById('searchClear').classList.add('visible'); }
+    }
     loadStats(); loadLoans();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        setURLParam('status', currentStatus);
         loadLoans();
         syncCardHighlight();
       });
@@ -157,6 +169,7 @@
   function onSearch() {
     const v = document.getElementById('searchInput').value;
     document.getElementById('searchClear').classList.toggle('visible', v.length > 0);
+    setURLParam('q', v);
     filterLoans();
   }
 
