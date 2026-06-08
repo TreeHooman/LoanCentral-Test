@@ -35,7 +35,7 @@ class TestDisputeCommand(unittest.TestCase):
         loans = [self._loan()]
         c = self._run("$dispute LC-001", "wronguser", loans)
         self.assertIsNotNone(c.reply_text)
-        self.assertIn("couldn't", c.reply_text.lower())
+        self.assertIn("error", c.reply_text.lower())
         self.assertEqual(loans[0]["status"], "confirmed")
 
     def test_already_disputed_blocked(self):

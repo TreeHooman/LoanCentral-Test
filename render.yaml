@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn api.app:app --bind 0.0.0.0:$PORT
+    startCommand: gunicorn api.app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:
       - key: LOANCENTRAL_ENV
         value: prod
@@ -13,9 +13,11 @@ services:
           name: loancentral-db
           property: connectionString
       - key: SECRET_KEY
-        generateValue: true
+        sync: false  # Set once manually in Render dashboard — never regenerate or all sessions die
       - key: API_KEY
-        generateValue: true
+        sync: false  # Set once manually
+      - key: UPLOAD_DIR
+        value: /tmp/loancentral-uploads
       - key: DASHBOARD_URL
         value: https://loancentral-web.onrender.com
       - key: DASHBOARD_CLIENT_ID

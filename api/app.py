@@ -403,6 +403,11 @@ def home():
     return redirect(url_for("dashboard_borrower"))
 
 
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
 @app.route("/login")
 def login():
     if session.get("username"):
@@ -679,8 +684,8 @@ def export_loans_csv():
     writer.writerow([
         "loan_id", "lender", "borrower", "amount_lent", "repay_amount",
         "amount_repaid", "remaining", "currency", "status", "date_created",
-        "repay_date", "payment_method", "borrower_acknowledged_at",
-        "borrower_acknowledged_note", "thread", "notes"
+        "repay_date", "payment_method", "interest_amount", "interest_rate",
+        "borrower_acknowledged_at", "borrower_acknowledged_note", "thread", "notes"
     ])
     for loan in loans:
         writer.writerow([
@@ -696,6 +701,8 @@ def export_loans_csv():
             loan.get("date_created"),
             loan.get("repay_date"),
             loan.get("payment_method") or "",
+            loan.get("interest_amount") or "",
+            loan.get("interest_rate") or "",
             loan.get("borrower_acknowledged_at") or "",
             loan.get("borrower_acknowledged_note") or "",
             loan.get("original_thread"),

@@ -30,7 +30,9 @@
     </div>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:var(--red)" onclick="showTab('unpaid')">⚑ Unpaid Review</button>
+    <button class="btn-primary" style="background:rgba(243,156,18,0.15);border:1px solid rgba(243,156,18,0.3);color:var(--yellow)" onclick="showTab('disputes')">⚠ Disputes</button>
     <button class="btn-primary" style="background:rgba(91,110,245,0.15);border:1px solid rgba(91,110,245,0.3);color:var(--accent-h)" onclick="showTab('requests')">📋 Requests</button>
+    <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid rgba(46,204,113,0.3);color:var(--green)" onclick="showTab('verification')">✓ Verification</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
   </div>
   <div class="table-wrap">
@@ -126,6 +128,21 @@
   </div>
 </div>
 
+<!-- Disputes tab -->
+<div id="tab-disputes" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Disputed Loans</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Loans a borrower has flagged for review. Status is frozen until resolved. Use the loan actions to mark paid, unpaid, or refunded once reviewed.</p>
+  <div class="table-wrap">
+    <table class="mobile-cards">
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Remaining</th>{% endif %}<th>Date Funded</th><th>Thread</th><th>Actions</th></tr></thead>
+      <tbody id="disputesBody"><tr><td colspan="{% if can_view_money %}8{% else %}5{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Verification review tab -->
 <div id="tab-verification" style="display:none">
   <div class="section-header">
@@ -180,7 +197,7 @@
       searchTimer = setTimeout(loadLoans, 400);
     });
     const initialTab = new URLSearchParams(window.location.search).get('tab');
-    if (['activity','reminders','verification','reddit-actions','requests','roles','unpaid'].includes(initialTab)) {
+    if (['activity','reminders','verification','reddit-actions','requests','roles','unpaid','disputes'].includes(initialTab)) {
       showTab(initialTab);
     }
   });
@@ -283,7 +300,7 @@
   }
 
   function showTab(name) {
-    ['loans','unpaid','requests','roles','activity','reminders','verification','reddit-actions'].forEach(t =>
+    ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions'].forEach(t =>
       document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
     );
     if (name === 'roles')    loadRoles();
@@ -296,6 +313,7 @@
       clearInterval(activityTimer);
       activityTimer = null;
     }
+    if (name === 'disputes') loadDisputes();
     if (name === 'reminders') loadReminders();
     if (name === 'verification') loadVerificationApplications();
     if (name === 'reddit-actions') loadRedditActions();
@@ -350,6 +368,44 @@
       }).join('');
     } catch(e) {
       document.getElementById('remindersBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function loadDisputes() {
+    try {
+      const loans = await apiFetch('/api/loans?status=disputed&limit=200');
+      const tbody = document.getElementById('disputesBody');
+      const cols = CAN_VIEW_MONEY ? 8 : 5;
+      if (!loans.length) {
+        tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state"><h3>No disputes</h3><p>Disputed loans will appear here.</p></div></td></tr>`;
+        return;
+      }
+      tbody.innerHTML = loans.map(loan => {
+        const id = loan.loan_id || loan.db_id;
+        const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
+        const repaid = parseFloat(loan.amount_repaid || 0);
+        const remaining = Math.max(repayAmount - repaid, 0);
+        const thread = loan.original_thread && loan.original_thread !== 'dashboard'
+          ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '-';
+        return `<tr>
+          <td data-label="Loan ID"><span class="loan-id">${escapeHtml(id)}</span></td>
+          <td data-label="Lender">${redditUser(loan.lender)}</td>
+          <td data-label="Borrower">${redditUser(loan.borrower)}</td>
+          ${CAN_VIEW_MONEY ? `
+          <td data-label="Amount"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
+          <td data-label="Remaining" class="c-remaining">${fmt(remaining)} ${escapeHtml(loan.currency)}</td>` : ''}
+          <td data-label="Date Funded" class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td data-label="Thread">${thread}</td>
+          <td data-label="Actions"><div class="actions">
+            <button class="btn-action btn-paid" onclick="openPayModal('${escapeHtml(id)}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>
+            <button class="btn-action btn-unpaid" onclick="openUnpaidModal('${escapeHtml(id)}','${escapeHtml(loan.lender)}')">Unpaid</button>
+            <button class="btn-action btn-refund" onclick="openRefundModal('${escapeHtml(id)}','${escapeHtml(loan.lender)}')">Refund</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      const cols = CAN_VIEW_MONEY ? 8 : 5;
+      document.getElementById('disputesBody').innerHTML = `<tr><td colspan="${cols}" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
@@ -606,6 +662,7 @@
     loadLoans,
     loadReminders,
     loadRequests,
+    loadDisputes,
     loadRoles,
     loadStats,
     loadUnpaid,
