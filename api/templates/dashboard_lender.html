@@ -212,9 +212,33 @@
           ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending review</span>` : ''}
         </div></td>
       </tr>`;
-    }).join('');
+    }).join('') + renderCurrencySummary(loans);
   }
 
   function loadData() { loadLoans(); loadStats(); }
+
+  function renderCurrencySummary(loans) {
+    // Build per-currency totals for the rendered loans
+    const totals = {};
+    loans.forEach(l => {
+      const c = l.currency || 'USD';
+      if (!totals[c]) totals[c] = { lent: 0, repaid: 0, remaining: 0 };
+      totals[c].lent      += parseFloat(l.amount || 0);
+      totals[c].repaid    += parseFloat(l.amount_repaid || 0);
+      totals[c].remaining += parseFloat(l.amount || 0) - parseFloat(l.amount_repaid || 0);
+    });
+    const currencies = Object.keys(totals);
+    if (currencies.length === 0) return '';
+    return currencies.map(c => {
+      const t = totals[c];
+      return `<tr style="background:var(--surface2);font-weight:600;font-size:12px">
+        <td colspan="2" style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Total (${c})</td>
+        <td><span class="amount">${t.lent.toFixed(2)} ${c}</span></td>
+        <td>${t.repaid.toFixed(2)}</td>
+        <td class="${t.remaining>0?'c-remaining':''}">${t.remaining.toFixed(2)}</td>
+        <td colspan="3"></td>
+      </tr>`;
+    }).join('');
+  }
 </script>
 {% endblock %}

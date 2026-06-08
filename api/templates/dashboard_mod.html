@@ -154,10 +154,15 @@
       document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
       document.getElementById('s-disputed').textContent = s.disputed_loans;
-      // Flash disputed card if > 0
-      if (s.disputed_loans > 0) {
-        const card = document.getElementById('card-disputed');
-        card.style.borderColor = 'var(--orange)';
+      const badge = document.getElementById('navDisputedBadge');
+      if (badge) {
+        if (s.disputed_loans > 0) {
+          badge.textContent = s.disputed_loans;
+          badge.style.display = 'inline-block';
+          document.getElementById('card-disputed').style.borderColor = 'rgba(243,156,18,0.5)';
+        } else {
+          badge.style.display = 'none';
+        }
       }
     } catch(e) { console.error(e); }
   }

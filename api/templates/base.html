@@ -30,6 +30,7 @@
     .nav-user { font-size: 13px; color: var(--text2); }
     .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; text-decoration: none; transition: all 0.15s; }
     .btn-logout:hover { border-color: var(--red); color: var(--red); }
+    .nav-badge { display: inline-block; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 4px; vertical-align: middle; min-width: 16px; text-align: center; }
     .nav-hamburger { display: none; flex-direction: column; justify-content: center; gap: 5px; background: none; border: none; cursor: pointer; padding: 8px 4px; width: 36px; height: 36px; }
     .nav-hamburger span { display: block; width: 22px; height: 2px; background: var(--text2); border-radius: 2px; transition: all 0.2s; }
     .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
@@ -254,9 +255,9 @@
   <a class="nav-brand" href="/">LC</a>
   <div class="nav-links" id="navLinks">
     {% if role == 'mod' %}
-      <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
-      <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
-      <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod <span class="nav-badge" id="navDisputedBadge" style="display:none"></span></a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender</a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower</a>
     {% endif %}
   </div>
   <div class="nav-right">

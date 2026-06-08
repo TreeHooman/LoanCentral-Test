@@ -441,7 +441,7 @@ def get_user_profile(username: str):
 
         cur.execute('''
             SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
-            FROM loans WHERE borrower = %s AND status = 'confirmed'
+            FROM loans WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
         ''', (username.lower(),))
 
         active = cur.fetchone()
