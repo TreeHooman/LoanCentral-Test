@@ -7,7 +7,7 @@
     <div class="section-title" style="font-size:20px">My Loan Overview</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
-  <div style="display:flex;gap:8px">
+  <div class="borrower-header-btns">
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="openRoleRequestModal()">Request Lender Access</button>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/auth/change-password">⚙ Settings</a>
   </div>
@@ -141,7 +141,7 @@
   <p style="color:var(--text2);font-size:13px;margin-bottom:16px;line-height:1.6">
     Add your phone number to receive SMS reminders for active loans (every 7 days) and urgent notices when a loan is marked unpaid. Completely optional.
   </p>
-  <div style="display:flex;gap:10px;align-items:center">
+  <div class="sms-input-row">
     <input type="tel" id="phoneInput" placeholder="+1 555 123 4567"
            style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:6px;font-size:14px;outline:none" />
     <button class="btn-primary" onclick="savePhone()">Save</button>
@@ -152,6 +152,17 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .borrower-header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sms-input-row { display: flex; gap: 10px; align-items: center; }
+  @media (max-width: 640px) {
+    .borrower-header-btns { width: 100%; margin-top: 8px; }
+    .borrower-header-btns button, .borrower-header-btns a { flex: 1; text-align: center; min-height: 40px; }
+    .sms-input-row { flex-direction: column; align-items: stretch; }
+    .sms-input-row input { width: 100%; box-sizing: border-box; }
+    .sms-input-row button { width: 100%; min-height: 40px; }
+  }
+</style>
 <script>
   const ME = '{{ username }}';
   let historyStatus = '';

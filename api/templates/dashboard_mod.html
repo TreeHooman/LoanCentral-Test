@@ -48,11 +48,11 @@
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
     <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
-    <div style="display:flex;gap:0;align-items:stretch">
+    <div class="user-lookup-wrap">
       <input type="text" id="userLookupInput" placeholder="Look up user…"
-             style="background:var(--bg);border:1px solid var(--border);border-right:none;color:var(--text);padding:6px 10px;border-radius:6px 0 0 6px;font-size:13px;outline:none;width:140px"
+             style="background:var(--bg);border:1px solid var(--border);border-right:none;color:var(--text);padding:6px 10px;border-radius:6px 0 0 6px;font-size:13px;outline:none"
              onkeydown="if(event.key==='Enter')goToUser()" />
-      <button onclick="goToUser()" class="btn-primary" style="border-radius:0 6px 6px 0;padding:6px 10px">→</button>
+      <button onclick="goToUser()" class="btn-primary" style="border-radius:0 6px 6px 0;padding:6px 10px;white-space:nowrap">→</button>
     </div>
   </div>
   <!-- Advanced filters panel -->
@@ -115,7 +115,7 @@
     <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="a-lent">—</div></div>
     <div class="stat-card"><div class="stat-label">Total Recovered</div><div class="stat-value c-green" id="a-recovered">—</div></div>
   </div>
-  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+  <div class="mod-analytics-grid" style="margin-bottom:24px">
     <div class="table-wrap" style="padding:20px">
       <div class="section-title" style="margin-bottom:16px;font-size:14px">Monthly Loan Volume — Last 12 Months</div>
       <canvas id="monthlyChart" height="110"></canvas>
@@ -138,7 +138,7 @@
 <div id="tab-disputes" style="display:none">
   <div class="section-header">
     <span class="section-title">Loan Disputes</span>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <select id="disputeStatusFilter" onchange="loadDisputes()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
         <option value="open">Open</option>
         <option value="resolved">Resolved</option>
@@ -228,7 +228,7 @@
 <div id="tab-overdue" style="display:none">
   <div class="section-header">
     <span class="section-title">Overdue Loans</span>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-primary" onclick="loadOverdue()">↻ Refresh</button>
       <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back to Loans</button>
     </div>
@@ -245,7 +245,7 @@
 <div id="tab-bans" style="display:none">
   <div class="section-header">
     <span class="section-title">Banned Users</span>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-primary" onclick="loadBans()">↻ Refresh</button>
       <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="openBanModal()">🔨 Ban User</button>
       <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
@@ -838,4 +838,16 @@
     } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }
 </script>
+<style>
+  .mod-analytics-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  .user-lookup-wrap { display: flex; gap: 0; align-items: stretch; }
+  .user-lookup-wrap input { width: 140px; }
+  @media (max-width: 768px) {
+    .mod-analytics-grid { grid-template-columns: 1fr; }
+    .user-lookup-wrap { width: 100%; }
+    .user-lookup-wrap input { flex: 1; width: auto; min-width: 0; }
+    #bulkBar { padding: 8px 12px; }
+    #bulkBar .btn-action { flex: 1; min-height: 38px; text-align: center; }
+  }
+</style>
 {% endblock %}
