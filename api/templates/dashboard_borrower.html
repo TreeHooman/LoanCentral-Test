@@ -102,7 +102,9 @@
       const el = document.getElementById('s-health');
       el.textContent = score + '/100';
       el.style.color = scoreColor(score);
-      document.getElementById('s-health-label').textContent = scoreLabel(score);
+      const tier = trustTier(score, p.loans_as_borrower || 0, p.unpaid_loans || 0);
+      document.getElementById('s-health-label').textContent = tier ? tier.label : scoreLabel(score);
+      if (tier) document.getElementById('s-health-label').style.color = tier.color;
 
       document.getElementById('s-health-bar-wrap').style.display = '';
       const bar = document.getElementById('s-health-bar');

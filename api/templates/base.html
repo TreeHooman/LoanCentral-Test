@@ -491,6 +491,11 @@
     const currency = document.getElementById('payCurrency').value.trim().toUpperCase();
     const errEl = document.getElementById('payError');
     if (!lender || !amount || !currency) { errEl.textContent = 'All fields required.'; errEl.style.display='block'; return; }
+    if (amount <= 0) { errEl.textContent = 'Amount must be greater than zero.'; errEl.style.display='block'; return; }
+    if (_payRemaining > 0 && amount > _payRemaining + 0.01) {
+      errEl.textContent = `Amount (${amount}) exceeds remaining balance (${_payRemaining.toFixed(2)}). Use exact remaining or lower.`;
+      errEl.style.display='block'; return;
+    }
     try {
       await apiFetch(`/api/loans/${loanId}/paid`, { method: 'POST', body: JSON.stringify({ lender, amount, currency }) });
       closeModal('payModal'); toast('Payment recorded!', 'success');
@@ -633,6 +638,14 @@
     return 'Very Poor';
   }
 
+  function trustTier(score, total, unpaid) {
+    if (unpaid > 0) return null;
+    if (score >= 95 && total >= 5)  return { label: 'Trusted Borrower', color: 'var(--green)' };
+    if (score >= 85 && total >= 3)  return { label: 'Reliable',         color: 'var(--accent-h)' };
+    if (score >= 70 && total >= 1)  return { label: 'Good Standing',    color: 'var(--yellow)' };
+    return null;
+  }
+
   async function openUserModal(username) {
     document.getElementById('userModal').classList.add('open');
     const content = document.getElementById('userModalContent');
@@ -650,8 +663,9 @@
         const pr = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
         health = Math.round((lr * 0.7 + pr * 0.3) * 100);
       }
-      const statusColor = unpaid > 0 ? 'var(--orange)' : 'var(--green)';
-      const statusText  = unpaid > 0 ? `${unpaid} unpaid` : 'Good standing';
+      const tier = trustTier(health, total, unpaid);
+      const statusColor = unpaid > 0 ? 'var(--orange)' : tier ? tier.color : 'var(--green)';
+      const statusText  = unpaid > 0 ? `${unpaid} unpaid` : tier ? tier.label : 'Good standing';
       content.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div>
