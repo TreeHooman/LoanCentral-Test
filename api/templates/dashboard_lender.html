@@ -107,6 +107,14 @@
     <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="onSearch()" />
     <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
   </div>
+  <select id="dateFilter" onchange="filterLoans()" style="background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:7px 10px;border-radius:6px;font-size:13px;cursor:pointer">
+    <option value="">All time</option>
+    <option value="7">Last 7 days</option>
+    <option value="30">Last 30 days</option>
+    <option value="90">Last 90 days</option>
+    <option value="365">Last year</option>
+  </select>
+  <button class="btn-secondary" onclick="copyRedditTable()">Copy Table</button>
   <button class="btn-secondary" onclick="exportCSV(allLoans, 'my-loans.csv')">↓ CSV</button>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
 </div>
@@ -225,7 +233,11 @@
 
   function filterLoans() {
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
-    const filtered = q ? allLoans.filter(l => (l.borrower||'').toLowerCase().includes(q) || (l.loan_id||'').toLowerCase().includes(q)) : allLoans;
+    const days = parseInt(document.getElementById('dateFilter').value) || 0;
+    const cutoff = days ? Date.now() - days * 86400000 : 0;
+    let filtered = allLoans;
+    if (q) filtered = filtered.filter(l => (l.borrower||'').toLowerCase().includes(q) || (l.loan_id||'').toLowerCase().includes(q));
+    if (cutoff) filtered = filtered.filter(l => l.date_created && new Date(l.date_created).getTime() >= cutoff);
     renderLoans(filtered);
   }
 
@@ -287,6 +299,25 @@
       document.getElementById('cmdToggle')?.classList.add('open');
     });
   }
+  async function copyRedditTable() {
+    const loans = allLoans.filter(l => l.status !== 'refunded');
+    if (!loans.length) { toast('No loans to copy.', 'error'); return; }
+    const header = '|Loan ID|Borrower|Amount|Repaid|Status|Date|';
+    const sep    = '|:--:|:--|--:|--:|:--:|:--:|';
+    const rows = loans.map(l => {
+      const id = l.loan_id || l.db_id;
+      const amt = parseFloat(l.amount||0).toFixed(2);
+      const rep = parseFloat(l.amount_repaid||0).toFixed(2);
+      const date = (l.date_created||'').split('T')[0];
+      return `|${id}|u/${l.borrower}|${amt} ${l.currency}|${rep}|${statusLabel(l.status)}|${date}|`;
+    });
+    const table = [header, sep, ...rows].join('\n');
+    try {
+      await navigator.clipboard.writeText(table);
+      toast('Reddit table copied!', 'success');
+    } catch(e) { toast('Copy failed', 'error'); }
+  }
+
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);

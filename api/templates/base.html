@@ -622,23 +622,31 @@
         const pr = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
         health = Math.round((lr * 0.7 + pr * 0.3) * 100);
       }
+      const statusColor = unpaid > 0 ? 'var(--orange)' : 'var(--green)';
+      const statusText  = unpaid > 0 ? `${unpaid} unpaid` : 'Good standing';
       content.innerHTML = `
-        <div class="user-link-row">
-          <span class="username-large">u/${username}</span>
-          <span style="color:${scoreColor(health)};font-weight:700;font-size:13px">${health}/100 ${scoreLabel(health)}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:700;color:var(--text)">u/${username}</div>
+            <div style="font-size:12px;color:${statusColor};margin-top:2px">${statusText}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:24px;font-weight:700;color:${scoreColor(health)}">${health}</div>
+            <div style="font-size:11px;color:var(--muted)">/ 100 health</div>
+          </div>
         </div>
-        <div class="progress-wrap" style="margin-bottom:16px">
+        <div class="progress-wrap" style="margin-bottom:16px;height:6px">
           <div class="progress-bar" style="background:${scoreColor(health)};width:${health}%;transition:width 0.8s ease"></div>
         </div>
         <div class="user-profile-grid">
           <div class="user-stat-item"><div class="label">Total Loans</div><div class="value c-accent">${total}</div></div>
-          <div class="user-stat-item"><div class="label">Unpaid</div><div class="value c-red">${unpaid}</div></div>
-          <div class="user-stat-item"><div class="label">Borrowed</div><div class="value">$${fmt(borrowed)}</div></div>
-          <div class="user-stat-item"><div class="label">Repaid</div><div class="value c-green">$${fmt(repaid)}</div></div>
+          <div class="user-stat-item"><div class="label">Unpaid</div><div class="value ${unpaid>0?'c-red':'c-green'}">${unpaid}</div></div>
+          <div class="user-stat-item"><div class="label">Total Borrowed</div><div class="value">$${fmt(borrowed)}</div></div>
+          <div class="user-stat-item"><div class="label">Total Repaid</div><div class="value c-green">$${fmt(repaid)}</div></div>
           <div class="user-stat-item"><div class="label">Outstanding</div><div class="value c-orange">$${fmt(outstanding)}</div></div>
-          <div class="user-stat-item"><div class="label">Score</div><div class="value" style="color:${scoreColor(health)}">${health}/100</div></div>
+          <div class="user-stat-item"><div class="label">Repay Ratio</div><div class="value" style="color:${scoreColor(health)}">${borrowed>0?Math.round(Math.min(repaid/borrowed,1)*100):100}%</div></div>
         </div>
-        ${unpaid > 0 ? `<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--red)">⚠ ${unpaid} unpaid loan${unpaid>1?'s':''} on record</div>` : ''}
+        ${unpaid > 0 ? `<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--red);margin-top:8px">⚠ ${unpaid} unpaid loan${unpaid>1?'s':''} on record</div>` : `<div style="background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.2);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--green);margin-top:8px">Good standing — no unpaid loans</div>`}
       `;
     } catch(e) {
       content.innerHTML = `<p style="color:var(--muted);text-align:center;padding:24px">No profile data for u/${username}</p>`;
