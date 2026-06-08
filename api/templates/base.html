@@ -177,6 +177,15 @@
     /* ================================================================
        MOBILE RESPONSIVE — everything below 768px
        ================================================================ */
+    /* Prevent 300ms tap delay on mobile */
+    button, a, [onclick] { touch-action: manipulation; }
+
+    /* Sortable column header */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--text); }
+    th.sort-asc::after  { content: ' ▲'; font-size: 9px; }
+    th.sort-desc::after { content: ' ▼'; font-size: 9px; }
+
     @media (max-width: 768px) {
       nav { padding: 0 16px; gap: 8px; }
       .nav-hamburger { display: flex; order: -1; }
@@ -209,8 +218,11 @@
       table { min-width: 480px; }
       th, td { padding: 9px 10px; font-size: 12px; }
 
-      .btn-action { padding: 6px 10px; font-size: 11px; min-height: 30px; }
-      .btn-primary { padding: 7px 12px; font-size: 13px; }
+      .btn-action { padding: 6px 10px; font-size: 11px; min-height: 32px; }
+      .btn-primary, .btn-secondary { padding: 8px 12px; font-size: 13px; min-height: 36px; }
+      /* Fix iOS auto-zoom on inputs */
+      input, select, textarea { font-size: 16px !important; }
+      .tab { font-size: 13px; padding: 7px 12px; min-height: 36px; }
 
       .modal-overlay.open { align-items: flex-end; }
       .modal {
@@ -583,6 +595,53 @@
     </tr>`;
   }
 </script>
+  // ---- Keyboard shortcuts ----
+  document.addEventListener('keydown', e => {
+    // Escape closes any open modal
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      document.getElementById('navLinks')?.classList.remove('open');
+      document.getElementById('navToggle')?.classList.remove('open');
+      return;
+    }
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // r = refresh
+    if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+      if (typeof loadData === 'function') { e.preventDefault(); loadData(); }
+      else if (typeof loadAll === 'function') { e.preventDefault(); loadAll(); }
+    }
+    // / = focus search
+    if (e.key === '/') {
+      const s = document.getElementById('searchInput');
+      if (s) { e.preventDefault(); s.focus(); s.select(); }
+    }
+  });
+
+  // ---- Sort table by column ----
+  let _sortState = { id: null, col: -1, dir: 1 };
+  function sortTable(tbodyId, colIdx, dtype) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const dir = (_sortState.id === tbodyId && _sortState.col === colIdx) ? -_sortState.dir : 1;
+    _sortState = { id: tbodyId, col: colIdx, dir };
+    const rows = [...tbody.rows];
+    rows.sort((a, b) => {
+      let av = a.cells[colIdx]?.textContent.replace(/[^0-9.\-]/g,'').trim() || '';
+      let bv = b.cells[colIdx]?.textContent.replace(/[^0-9.\-]/g,'').trim() || '';
+      if (dtype === 'num')  { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
+      if (dtype === 'date') { av = new Date(av); bv = new Date(bv); }
+      return dir * (av > bv ? 1 : av < bv ? -1 : 0);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    // Update sort arrow on header
+    const table = tbody.closest('table');
+    table?.querySelectorAll('th').forEach((th, i) => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (i === colIdx) th.classList.add(dir > 0 ? 'sort-asc' : 'sort-desc');
+    });
+  }
+
 {% block scripts %}{% endblock %}
 </body>
 </html>

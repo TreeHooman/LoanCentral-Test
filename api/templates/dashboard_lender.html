@@ -58,7 +58,15 @@
 
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+    <thead><tr>
+      <th>Loan ID</th><th>Borrower</th>
+      <th class="sortable" onclick="sortTable('loansBody',2,'num')">Amount</th>
+      <th class="sortable" onclick="sortTable('loansBody',3,'num')">Repaid</th>
+      <th class="sortable" onclick="sortTable('loansBody',4,'num')">Remaining</th>
+      <th>Status</th>
+      <th class="sortable" onclick="sortTable('loansBody',6,'date')">Date</th>
+      <th>Actions</th>
+    </tr></thead>
     <tbody id="loansBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
