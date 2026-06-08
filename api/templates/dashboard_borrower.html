@@ -70,14 +70,19 @@
   </table>
 </div>
 
-<div class="section-header">
+<div class="section-header" style="flex-wrap:wrap;gap:10px">
   <span class="section-title">Full Loan History</span>
-  <div class="tabs">
-    <button class="tab active" data-status="">All</button>
-    <button class="tab" data-status="confirmed">Active</button>
-    <button class="tab" data-status="repaid">Repaid</button>
-    <button class="tab" data-status="unpaid">Unpaid</button>
-    <button class="tab" data-status="refunded">Refunded</button>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="tabs">
+      <button class="tab active" data-status="">All</button>
+      <button class="tab" data-status="confirmed">Active</button>
+      <button class="tab" data-status="repaid">Repaid</button>
+      <button class="tab" data-status="unpaid">Unpaid</button>
+      <button class="tab" data-status="refunded">Refunded</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="historySearch" placeholder="Search loan ID or lender..." style="min-width:180px" />
+    </div>
   </div>
 </div>
 
@@ -163,6 +168,7 @@
         loadHistory();
       });
     });
+    document.getElementById('historySearch')?.addEventListener('input', renderHistory);
   });
 
   async function loadAll() {
@@ -253,8 +259,10 @@
   }
 
   function renderHistory() {
+    const q = (document.getElementById('historySearch')?.value || '').toLowerCase().trim();
     const rows = borrowerLoans
       .filter(loan => !historyStatus || loan.status === historyStatus)
+      .filter(loan => !q || (loan.loan_id||'').toLowerCase().includes(q) || (loan.lender||'').toLowerCase().includes(q) || String(loan.db_id||'') === q || (loan.notes||'').toLowerCase().includes(q))
       .sort((a, b) => compareLoans(a, b, historySortKey, historySortDir));
     const tbody = document.getElementById('historyBody');
     if (!rows.length) {

@@ -209,8 +209,8 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
             conditions.append("status = %s")
             params.append(status)
         if search:
-            conditions.append("(lender ILIKE %s OR borrower ILIKE %s)")
-            params += [f"%{search}%", f"%{search}%"]
+            conditions.append("(lender ILIKE %s OR borrower ILIKE %s OR loan_id ILIKE %s OR CAST(id AS TEXT) = %s OR notes ILIKE %s)")
+            params += [f"%{search}%", f"%{search}%", f"%{search}%", search.strip(), f"%{search}%"]
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         params.append(limit)
         schema_mode = "dashboard"
