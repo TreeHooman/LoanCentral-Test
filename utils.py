@@ -2,12 +2,43 @@ import praw
 import psycopg2
 import logging
 import os
+import time
+import threading
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger("LoanCentral")
+
+# ---------------------------------------------------------------------------
+# Reddit API rate limiter
+# Reddit allows ~100 OAuth requests/min. We cap at 80 to stay safely under.
+# Call reddit_limiter.wait() before any outgoing Reddit API write (reply, send).
+# PRAW stream reads are throttled automatically by PRAW itself.
+# ---------------------------------------------------------------------------
+
+class _RedditRateLimiter:
+    def __init__(self, calls_per_minute: int = 80):
+        self._limit = calls_per_minute
+        self._lock  = threading.Lock()
+        self._times: list = []  # timestamps of recent calls
+
+    def wait(self):
+        with self._lock:
+            now = time.monotonic()
+            # Drop timestamps older than 60 s
+            self._times = [t for t in self._times if now - t < 60]
+            if len(self._times) >= self._limit:
+                oldest  = self._times[0]
+                wait_s  = 60.0 - (now - oldest) + 0.05
+                logger.warning(f"Reddit rate limit guard: sleeping {wait_s:.1f}s (hit {self._limit}/min cap)")
+                time.sleep(wait_s)
+                now = time.monotonic()
+                self._times = [t for t in self._times if now - t < 60]
+            self._times.append(now)
+
+reddit_limiter = _RedditRateLimiter()
 
 # Reddit API credentials
 reddit = praw.Reddit(

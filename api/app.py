@@ -474,7 +474,7 @@ def api_revoke_key(key_id):
 # Borrower OTP helpers
 # ---------------------------------------------------------------------------
 
-def _send_otp_email(to_address: str, code: str):
+def _send_otp_email(to_address: str, code: str = None, *, link: str = None, username: str = None):
     import smtplib
     from email.message import EmailMessage
     host = os.getenv("SMTP_HOST", "")
@@ -485,13 +485,22 @@ def _send_otp_email(to_address: str, code: str):
     if not host:
         raise RuntimeError("SMTP_HOST not configured.")
     msg = EmailMessage()
-    msg["Subject"] = f"LoanCentral login code: {code}"
-    msg["From"]    = frm
-    msg["To"]      = to_address
-    msg.set_content(
-        f"Your LoanCentral login code is:\n\n  {code}\n\n"
-        "It expires in 10 minutes. If you didn't request this, ignore it."
-    )
+    if link:
+        msg["Subject"] = "Your LoanCentral loan summary link"
+        msg.set_content(
+            f"Hi{' u/' + username if username else ''},\n\n"
+            f"Here is your read-only LoanCentral loan dashboard link:\n\n  {link}\n\n"
+            "This link expires in 7 days. It shows your loan history — nothing can be changed through it.\n\n"
+            "If you didn't request this, you can ignore it."
+        )
+    else:
+        msg["Subject"] = f"LoanCentral login code: {code}"
+        msg.set_content(
+            f"Your LoanCentral login code is:\n\n  {code}\n\n"
+            "It expires in 10 minutes. If you didn't request this, ignore it."
+        )
+    msg["From"] = frm
+    msg["To"]   = to_address
     with smtplib.SMTP(host, port) as s:
         s.starttls()
         if user:
@@ -611,6 +620,101 @@ def api_set_borrower_contact(username):
     if not ok:
         return _json({"error": err}, 500)
     return _json({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Magic link — mod sends, borrower views read-only dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/send-magic-link/<username>", methods=["POST"])
+@role_required("mod")
+def api_send_magic_link(username):
+    from services import create_magic_link, get_borrower_contact
+    email, _ = get_borrower_contact(username)
+    if not email:
+        return _json({"error": "No email on file for this borrower. Set one first via the Roles panel."}, 400)
+    token, err = create_magic_link(username)
+    if err:
+        return _json({"error": err}, 500)
+    link = request.host_url.rstrip("/") + f"/view/{token}"
+    try:
+        _send_otp_email(email, None, link=link, username=username)
+    except Exception as e:
+        logger.error(f"Magic link email failed: {e}", exc_info=True)
+        return _json({"error": f"Failed to send email: {e}"}, 500)
+    return _json({"ok": True, "email": email})
+
+
+@app.route("/view/<token>")
+def borrower_view(token):
+    from services import validate_magic_link, get_loan_history
+    username, err = validate_magic_link(token)
+    if err or not username:
+        return render_template("link_expired.html"), 403
+    loans, _ = get_loan_history(username, role="borrower", limit=200)
+    return render_template("dashboard_borrower_readonly.html",
+                           username=username, loans=loans or [], token=token)
+
+
+@app.route("/view/<token>/calendar.ics")
+def borrower_calendar(token):
+    from services import validate_magic_link, get_loan_history
+    username, err = validate_magic_link(token)
+    if err or not username:
+        return "Link invalid or expired.", 403
+    loans, _ = get_loan_history(username, role="borrower", limit=200)
+    ics = _build_ics(username, loans or [])
+    from flask import Response
+    return Response(ics, mimetype="text/calendar",
+                    headers={"Content-Disposition": f'attachment; filename="loancentral-{username}.ics"'})
+
+
+def _build_ics(username: str, loans: list) -> str:
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//LoanCentral//Loan Due Dates//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+    import uuid as _uuid
+    from datetime import datetime as _dt
+    now_str = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    for loan in loans:
+        if not loan.get("repay_date") or loan.get("status") in ("repaid", "refunded"):
+            continue
+        try:
+            due = str(loan["repay_date"])[:10].replace("-", "")  # YYYYMMDD
+        except Exception:
+            continue
+        lid    = loan.get("loan_id") or loan.get("db_id") or "?"
+        lender = loan.get("lender", "?")
+        amount = loan.get("repay_amount") or loan.get("amount") or 0
+        curr   = loan.get("currency", "USD")
+        uid    = str(_uuid.uuid4())
+        summary = f"Loan {lid} due — {amount} {curr} to u/{lender}"
+        desc    = (f"LoanCentral loan {lid}\\n"
+                   f"Lender: u/{lender}\\n"
+                   f"Amount due: {amount} {curr}\\n"
+                   f"Status: {loan.get('status','?')}")
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{now_str}",
+            f"DTSTART;VALUE=DATE:{due}",
+            f"DTEND;VALUE=DATE:{due}",
+            f"SUMMARY:{summary}",
+            f"DESCRIPTION:{desc}",
+            # 3-day reminder alarm
+            "BEGIN:VALARM",
+            "TRIGGER:-P3D",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:Reminder: {summary}",
+            "END:VALARM",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
 
 
 @app.route("/api/admin/integrity")

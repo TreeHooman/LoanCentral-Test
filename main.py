@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 from bot_messages import with_dashboard_link
-from utils import reddit
+from utils import reddit, reddit_limiter
 
 # Load environment variables
 load_dotenv()
@@ -273,6 +273,7 @@ class CommandManager:
                         logger.info(f"Rate limited command {trigger} from user {comment.author.name}")
                         return
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
+                    reddit_limiter.wait()
                     command_func(comment)
                 except Exception as e:
                     logger.error(f"Error processing command {trigger}: {e}")
@@ -328,6 +329,7 @@ def handle_new_post(post):
                 )
         
         # Reply once, with history plus any REQ-ID info, to minimize Reddit API calls.
+        reddit_limiter.wait()
         post.reply(with_dashboard_link("\n\n---\n\n".join(reply_parts)))
         logger.info(f"Successfully commented on post {post.id} for user {username}")
         

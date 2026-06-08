@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Loan Summary — LoanCentral</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
+      --accent: #5b6ef5; --accent-h: #7b8cff; --green: #2ecc71; --red: #e74c3c;
+      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc; --yellow: #f1c40f; --orange: #e67e22;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; padding: 24px 16px; }
+    .header { max-width: 900px; margin: 0 auto 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .logo { font-size: 22px; font-weight: 800; color: var(--accent-h); letter-spacing: -0.5px; }
+    .ro-badge { background: rgba(241,196,15,0.12); border: 1px solid rgba(241,196,15,0.3); color: var(--yellow); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .section-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .stat-value { font-size: 22px; font-weight: 800; }
+    .c-green { color: var(--green); } .c-red { color: var(--red); } .c-orange { color: var(--orange); } .c-accent { color: var(--accent-h); }
+    .callout { background: rgba(91,110,245,0.07); border: 1px solid rgba(91,110,245,0.2); border-radius: 10px; padding: 12px 16px; font-size: 13px; color: var(--text2); margin-bottom: 20px; line-height: 1.6; }
+    .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: var(--surface2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; padding: 10px 14px; text-align: left; white-space: nowrap; }
+    td { padding: 12px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+    .badge-confirmed     { background: rgba(91,110,245,0.15); color: var(--accent-h); }
+    .badge-repaid        { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-unpaid        { background: rgba(231,76,60,0.15);  color: var(--red); }
+    .badge-partially_repaid { background: rgba(243,156,18,0.15); color: var(--yellow); }
+    .badge-disputed      { background: rgba(231,76,60,0.12);  color: #e98e82; }
+    .badge-refunded      { background: rgba(46,204,113,0.08); color: #7ec8a0; }
+    .loan-id { font-family: monospace; font-size: 12px; color: var(--muted); }
+    .amount  { font-weight: 600; }
+    .cal-btn { display: inline-flex; align-items: center; gap: 7px; background: rgba(46,204,113,0.12); border: 1px solid rgba(46,204,113,0.28); border-radius: 8px; padding: 9px 16px; color: var(--green); font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; transition: opacity .15s; }
+    .cal-btn:hover { opacity: .82; }
+    .thread-link { color: var(--accent-h); text-decoration: none; font-size: 12px; }
+    .thread-link:hover { text-decoration: underline; }
+    .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+    .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 32px; line-height: 1.8; }
+    @media (max-width: 600px) {
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      td { border: none; padding: 6px 14px; }
+      td::before { content: attr(data-label); display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px; }
+      tr { border-top: 1px solid var(--border); padding: 10px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">LoanCentral</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="color:var(--muted);font-size:13px">u/{{ username }}</span>
+    <span class="ro-badge">Read Only</span>
+    <a class="cal-btn" href="/view/{{ token }}/calendar.ics" download>
+      📅 Add to Calendar (.ics)
+    </a>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="callout">
+    This is a <strong>read-only</strong> view of your loan records on LoanCentral. Nothing here can be changed — it is for your reference only.
+    Use the <strong>Add to Calendar</strong> button to download your due dates as a calendar file (.ics) compatible with Google Calendar, Apple Calendar, and Outlook.
+  </div>
+
+  {% set active = loans | selectattr("status", "in", ["confirmed","partially_repaid","unpaid","disputed"]) | list %}
+  {% set history = loans | selectattr("status", "in", ["repaid","refunded"]) | list %}
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Loans</div>
+      <div class="stat-value c-accent">{{ loans | length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-value c-orange">{{ active | length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Repaid</div>
+      <div class="stat-value c-green">{{ loans | selectattr("status","equalto","repaid") | list | length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unpaid</div>
+      <div class="stat-value c-red">{{ loans | selectattr("status","equalto","unpaid") | list | length }}</div>
+    </div>
+  </div>
+
+  <!-- Active / outstanding -->
+  <div class="section-title">Currently Owe</div>
+  <div class="table-wrap">
+    {% if active %}
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Lent</th><th>Due Back</th><th>Repaid</th><th>Still Owe</th><th>Due Date</th><th>Status</th><th>Thread</th></tr></thead>
+      <tbody>
+        {% for loan in active %}
+        {% set repay = (loan.repay_amount or loan.amount) | float %}
+        {% set repaid = (loan.amount_repaid or 0) | float %}
+        {% set remaining = [repay - repaid, 0] | max %}
+        <tr>
+          <td data-label="Loan ID"><span class="loan-id">{{ loan.loan_id or loan.db_id }}</span></td>
+          <td data-label="Lender">u/{{ loan.lender }}</td>
+          <td data-label="Lent"><span class="amount">{{ "%.2f"|format(loan.amount|float) }} {{ loan.currency }}</span></td>
+          <td data-label="Due Back">{{ "%.2f"|format(repay) }}</td>
+          <td data-label="Repaid">{{ "%.2f"|format(repaid) }}</td>
+          <td data-label="Still Owe" style="color:var(--orange);font-weight:700">{{ "%.2f"|format(remaining) }}</td>
+          <td data-label="Due Date" style="color:{% if loan.repay_date %}var(--text2){% else %}var(--muted){% endif %}">
+            {{ loan.repay_date | string | truncate(10, True, '') if loan.repay_date else '—' }}
+          </td>
+          <td data-label="Status"><span class="badge badge-{{ loan.status }}">{{ loan.status | replace('_',' ') | title }}</span></td>
+          <td data-label="Thread">
+            {% if loan.original_thread and loan.original_thread != 'dashboard' %}
+            <a class="thread-link" href="{{ loan.original_thread }}" target="_blank" rel="noopener">Thread</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No active loans.</div>
+    {% endif %}
+  </div>
+
+  <!-- History -->
+  <div class="section-title">Loan History</div>
+  <div class="table-wrap">
+    {% if history %}
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Status</th><th>Date</th><th>Thread</th></tr></thead>
+      <tbody>
+        {% for loan in history %}
+        <tr>
+          <td data-label="Loan ID"><span class="loan-id">{{ loan.loan_id or loan.db_id }}</span></td>
+          <td data-label="Lender">u/{{ loan.lender }}</td>
+          <td data-label="Amount"><span class="amount">{{ "%.2f"|format(loan.amount|float) }} {{ loan.currency }}</span></td>
+          <td data-label="Status"><span class="badge badge-{{ loan.status }}">{{ loan.status | replace('_',' ') | title }}</span></td>
+          <td data-label="Date">{{ loan.date_created | string | truncate(10, True, '') if loan.date_created else '—' }}</td>
+          <td data-label="Thread">
+            {% if loan.original_thread and loan.original_thread != 'dashboard' %}
+            <a class="thread-link" href="{{ loan.original_thread }}" target="_blank" rel="noopener">Thread</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No completed loans yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    LoanCentral — peer-to-peer loan tracking · <a href="/terms" style="color:var(--muted)">Terms of Service</a><br>
+    This link expires 7 days after it was sent. Contact your lender or a mod to get a new one.
+  </div>
+</div>
+
+</body>
+</html>

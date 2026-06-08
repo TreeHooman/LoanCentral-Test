@@ -635,6 +635,7 @@
             <button class="btn-action btn-unpaid" onclick="quickRole('${escapeHtml(r.username)}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
             <button class="btn-action" style="background:rgba(46,204,113,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
+            ${r.contact_email ? `<button class="btn-action" style="background:rgba(91,110,245,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
           </div></td>
         </tr>`).join('') : '<tr><td colspan="6" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }
@@ -726,6 +727,14 @@
     document.getElementById('contactModalErr').style.display = 'none';
     document.getElementById('contactModal').classList.add('open');
     setTimeout(() => document.getElementById('contactEmail').focus(), 80);
+  }
+
+  async function sendMagicLink(username) {
+    if (!confirm(`Send a read-only dashboard link to u/${username}'s email?`)) return;
+    try {
+      await apiFetch(`/api/admin/send-magic-link/${encodeURIComponent(username)}`, { method: 'POST' });
+      toast(`Link sent to u/${username}.`, 'success');
+    } catch(e) { toast(e.message, 'error'); }
   }
 
   async function saveContact() {

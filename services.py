@@ -2232,3 +2232,69 @@ def verify_borrower_loan_claim(username: str, loan_id: str):
     finally:
         cur.close()
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Borrower magic link tokens (read-only dashboard)
+# ---------------------------------------------------------------------------
+
+def create_magic_link(username: str, days: int = 7):
+    """
+    Generate a signed magic link token for read-only borrower dashboard access.
+    Returns (token_plaintext, None) or (None, error).
+    Token is valid for `days` days and is single-use.
+    """
+    import hashlib, secrets as _sec
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        token = _sec.token_urlsafe(32)
+        hashed = hashlib.sha256(token.encode()).hexdigest()
+        cur = conn.cursor()
+        # Expire any existing active tokens for this user
+        cur.execute("""
+            UPDATE borrower_magic_links SET used = TRUE
+            WHERE lower(username) = lower(%s) AND used = FALSE
+        """, (username,))
+        cur.execute("""
+            INSERT INTO borrower_magic_links (username, token_hash, expires_at)
+            VALUES (lower(%s), %s, NOW() + INTERVAL '%s days')
+        """, (username, hashed, days))
+        conn.commit()
+        return token, None
+    except Exception as e:
+        logger.error(f"create_magic_link error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def validate_magic_link(token: str):
+    """
+    Validate a magic link token. Returns (username, None) or (None, error).
+    Does NOT mark the token as used — read-only views may be revisited.
+    """
+    import hashlib
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        hashed = hashlib.sha256(token.encode()).hexdigest()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT username FROM borrower_magic_links
+            WHERE token_hash = %s AND used = FALSE AND expires_at > NOW()
+            LIMIT 1
+        """, (hashed,))
+        row = cur.fetchone()
+        if not row:
+            return None, "Link is invalid or has expired."
+        return row[0], None
+    except Exception as e:
+        logger.error(f"validate_magic_link error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
