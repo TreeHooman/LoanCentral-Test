@@ -470,6 +470,16 @@ def api_revoke_key(key_id):
     return _json({"ok": True})
 
 
+@app.route("/api/admin/integrity")
+@role_required("mod")
+def api_integrity_checks():
+    from services import run_integrity_checks
+    issues, error = run_integrity_checks()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(issues)
+
+
 @app.route("/terms")
 def terms():
     return render_template("terms.html")

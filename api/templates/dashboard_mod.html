@@ -34,6 +34,7 @@
     <button class="btn-primary" style="background:rgba(91,110,245,0.15);border:1px solid rgba(91,110,245,0.3);color:var(--accent-h)" onclick="showTab('requests')">📋 Requests</button>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid rgba(46,204,113,0.3);color:var(--green)" onclick="showTab('verification')">✓ Verification</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.25);color:var(--red)" onclick="showTab('integrity')">🔍 Integrity</button>
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
@@ -140,6 +141,27 @@
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Remaining</th>{% endif %}<th>Date Funded</th><th>Thread</th><th>Actions</th></tr></thead>
       <tbody id="disputesBody"><tr><td colspan="{% if can_view_money %}8{% else %}5{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Integrity tab -->
+<div id="tab-integrity" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Data Integrity Checks</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="loadIntegrity()">↻ Run Checks</button>
+      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
+    </div>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Runs live DB sanity checks — overpaid loans, stale actives, duplicate pairs, unregistered users. No changes are made.</p>
+  <div id="integrityResults">
+    <div class="table-wrap">
+      <table class="mobile-cards">
+        <thead><tr><th>Check</th><th>Severity</th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Detail</th></tr></thead>
+        <tbody id="integrityBody"><tr><td colspan="6" class="table-placeholder">Click "Run Checks" to scan.</td></tr></tbody>
+      </table>
+    </div>
+    <div id="integritySummary" style="color:var(--muted);font-size:13px;margin-top:10px"></div>
   </div>
 </div>
 
@@ -300,7 +322,7 @@
   }
 
   function showTab(name) {
-    ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions'].forEach(t =>
+    ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity'].forEach(t =>
       document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
     );
     if (name === 'roles')    loadRoles();
@@ -314,6 +336,7 @@
       activityTimer = null;
     }
     if (name === 'disputes') loadDisputes();
+    if (name === 'integrity') loadIntegrity();
     if (name === 'reminders') loadReminders();
     if (name === 'verification') loadVerificationApplications();
     if (name === 'reddit-actions') loadRedditActions();
@@ -671,8 +694,37 @@
     quickRole,
     decideVerification,
     updateRedditAction,
-    showTab
+    showTab,
+    loadIntegrity
   });
+
+  async function loadIntegrity() {
+    const tbody = document.getElementById('integrityBody');
+    const summary = document.getElementById('integritySummary');
+    tbody.innerHTML = '<tr><td colspan="6" class="table-placeholder"><div class="spinner"></div><br>Running checks…</td></tr>';
+    summary.textContent = '';
+    try {
+      const issues = await apiFetch('/api/admin/integrity');
+      if (!issues.length) {
+        tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><h3>All clear</h3><p>No integrity issues found.</p></div></td></tr>';
+        summary.textContent = 'Checked: overpaid, status mismatch, 90-day overdue, duplicate actives, unregistered users.';
+        return;
+      }
+      const errors = issues.filter(i => i.severity === 'error').length;
+      const warnings = issues.filter(i => i.severity === 'warning').length;
+      tbody.innerHTML = issues.map(i => `<tr>
+        <td data-label="Check"><strong>${escapeHtml(i.check)}</strong></td>
+        <td data-label="Severity"><span class="badge ${i.severity === 'error' ? 'badge-unpaid' : 'badge-partially_repaid'}">${escapeHtml(i.severity)}</span></td>
+        <td data-label="Loan ID">${i.loan_id ? `<span class="loan-id">${escapeHtml(i.loan_id)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Lender">${i.lender ? redditUser(i.lender) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Borrower">${i.borrower ? redditUser(i.borrower) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Detail" style="color:var(--muted);font-size:12px">${escapeHtml(i.detail)}</td>
+      </tr>`).join('');
+      summary.innerHTML = `Found <strong style="color:var(--red)">${errors} error${errors !== 1 ? 's' : ''}</strong> and <strong style="color:var(--yellow)">${warnings} warning${warnings !== 1 ? 's' : ''}</strong>.`;
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
 </script>
 {% endblock %}
 

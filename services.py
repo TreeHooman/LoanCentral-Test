@@ -1988,3 +1988,98 @@ def get_lender_stats(lender: str):
     finally:
         cur.close()
         conn.close()
+
+
+def run_integrity_checks():
+    """
+    Runs a set of DB-level sanity checks and returns a list of issues.
+    Each issue is a dict: {check, severity, loan_id, lender, borrower, detail}
+    severity: "error" | "warning"
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    issues = []
+    try:
+        cur = conn.cursor()
+
+        # Overpaid: amount_repaid > repay_amount
+        cur.execute("""
+            SELECT loan_id, lender, borrower, amount, repay_amount, amount_repaid, currency
+            FROM loans
+            WHERE amount_repaid > COALESCE(repay_amount, amount)
+              AND status NOT IN ('refunded')
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "Overpaid", "severity": "error",
+                "loan_id": r[0], "lender": r[1], "borrower": r[2],
+                "detail": f"repaid {r[5]} > repay_amount {r[3]} {r[6]}"})
+
+        # Status repaid but remaining > 0
+        cur.execute("""
+            SELECT loan_id, lender, borrower, COALESCE(repay_amount, amount) - amount_repaid AS remaining, currency
+            FROM loans
+            WHERE status = 'repaid'
+              AND COALESCE(repay_amount, amount) - amount_repaid > 0.01
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "Repaid w/ balance", "severity": "warning",
+                "loan_id": r[0], "lender": r[1], "borrower": r[2],
+                "detail": f"{r[3]:.2f} {r[4]} still outstanding despite repaid status"})
+
+        # Active loan with repay_date > 90 days overdue (no $unpaid filed)
+        cur.execute("""
+            SELECT loan_id, lender, borrower, repay_date, currency
+            FROM loans
+            WHERE status IN ('confirmed', 'partially_repaid')
+              AND repay_date IS NOT NULL
+              AND repay_date < NOW() - INTERVAL '90 days'
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "90-day overdue", "severity": "warning",
+                "loan_id": r[0], "lender": r[1], "borrower": r[2],
+                "detail": f"due {r[3]}, still active — no $unpaid filed"})
+
+        # Duplicate active loans same lender+borrower
+        cur.execute("""
+            SELECT lender, borrower, COUNT(*) AS cnt
+            FROM loans
+            WHERE status IN ('confirmed', 'partially_repaid')
+            GROUP BY lender, borrower
+            HAVING COUNT(*) > 1
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "Duplicate active", "severity": "warning",
+                "loan_id": None, "lender": r[0], "borrower": r[1],
+                "detail": f"{r[2]} simultaneous active loans between same pair"})
+
+        # Lenders in loans table not in user_roles
+        cur.execute("""
+            SELECT DISTINCT l.lender
+            FROM loans l
+            LEFT JOIN user_roles ur ON lower(l.lender) = lower(ur.username)
+            WHERE ur.username IS NULL
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "Unregistered lender", "severity": "warning",
+                "loan_id": None, "lender": r[0], "borrower": None,
+                "detail": "lender has loans but no role record"})
+
+        # Borrowers in loans table not in user_roles
+        cur.execute("""
+            SELECT DISTINCT l.borrower
+            FROM loans l
+            LEFT JOIN user_roles ur ON lower(l.borrower) = lower(ur.username)
+            WHERE ur.username IS NULL
+        """)
+        for r in cur.fetchall():
+            issues.append({"check": "Unregistered borrower", "severity": "warning",
+                "loan_id": None, "lender": None, "borrower": r[0],
+                "detail": "borrower has loans but no role record"})
+
+        cur.close()
+        conn.close()
+        return issues, None
+    except Exception as e:
+        logger.error(f"run_integrity_checks error: {e}", exc_info=True)
+        return None, str(e)
