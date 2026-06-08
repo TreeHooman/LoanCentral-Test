@@ -13,45 +13,53 @@ def process_help_command(comment):
     help_text = """
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard](https://loancentral.app)** — sign in with Reddit.
+The bot tracks loans. History, health scores, stats, and mod tools are on the **[dashboard](https://loancentral.app)** — sign in with Reddit.
 
 ---
 
 ## Lender Commands
 
 **Record a new loan**
-```
-$loan [amount] [currency] u/[borrower]
-```
-*Requires Verified Lender flair. Loan is recorded immediately.*
 
-**Record a repayment received**
-```
-$paid_with_id [loan_id] [amount] [currency]
-```
+    $loan [amount] [currency] u/[borrower]
+
+*Requires Verified Lender flair.*
+
+**Record a repayment**
+
+    $paid_with_id [loan_id] [amount] [currency]
 
 **Mark a loan as unpaid**
-```
-$unpaid [loan_id]
-```
+
+    $unpaid [loan_id]
 
 **Cancel / refund a loan**
-```
-$refunded [loan_id]
-```
+
+    $refunded [loan_id]
 
 ---
 
 ## Borrower Commands
 
-**Dispute a loan** (flags for mod review)
-```
-$dispute [loan_id]
-```
+**Dispute a loan record** (flags for mod review)
+
+    $dispute [loan_id]
 
 ---
 
-**Dashboard:** https://loancentral.app — view history, health score, active loans.
+## General Commands
+
+**Check a user's borrower profile**
+
+    $check u/[username]
+
+**View your own stats**
+
+    $mystats
+
+---
+
+**Dashboard:** https://loancentral.app
 **Need help?** Contact the moderators.
 """
 

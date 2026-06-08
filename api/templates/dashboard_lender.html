@@ -9,20 +9,38 @@
   </div>
 </div>
 
-<!-- Stats -->
+<!-- Stats — click Active/Unpaid/Repaid cards to filter -->
 <div class="stats-grid" id="statsGrid">
-  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
-  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
-  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div></div>
-  <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div><div class="stat-sub" id="s-recovered"></div></div>
+  <div class="stat-card clickable" onclick="filterByCard('confirmed,partially_repaid')" id="card-active">
+    <div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('unpaid')" id="card-unpaid">
+    <div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('repaid')" id="card-repaid">
+    <div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div>
+    <div class="stat-sub" id="s-recovered"></div>
+  </div>
+  <div class="stat-card" id="card-score">
+    <div class="stat-label">Portfolio Score</div>
+    <div class="stat-value" id="s-score" style="font-size:22px">—</div>
+    <div class="stat-sub" id="s-score-label"></div>
+    <div class="progress-wrap" id="s-score-bar-wrap" style="display:none">
+      <div class="progress-bar" id="s-score-bar"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Loans -->
 <div class="toolbar">
-  <div class="tabs">
-    <button class="tab active" data-status="">All My Loans</button>
+  <div class="tabs" id="statusTabs">
+    <button class="tab active" data-status="">All</button>
     <button class="tab" data-status="confirmed">Active</button>
     <button class="tab" data-status="partially_repaid">Partial</button>
     <button class="tab" data-status="unpaid">Unpaid</button>
@@ -30,9 +48,11 @@
     <button class="tab" data-status="refunded">Refunded</button>
     <button class="tab" data-status="disputed">Disputed</button>
   </div>
-  <div class="search-wrap" style="min-width:160px">
-    <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="filterLoans()" />
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="onSearch()" />
+    <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
   </div>
+  <button class="btn-secondary" onclick="exportCSV(allLoans, 'my-loans.csv')">↓ CSV</button>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
 </div>
 
@@ -58,21 +78,73 @@
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
         loadLoans();
+        syncCardHighlight();
       });
     });
   });
 
+  function onSearch() {
+    const v = document.getElementById('searchInput').value;
+    document.getElementById('searchClear').classList.toggle('visible', v.length > 0);
+    filterLoans();
+  }
+
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClear').classList.remove('visible');
+    filterLoans();
+  }
+
+  async function filterByCard(statusStr) {
+    document.querySelectorAll('.stat-card.clickable').forEach(c => c.classList.remove('filter-active'));
+    // Reset to "All" tab, load if needed, then filter client-side
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.status === ''));
+    currentStatus = '';
+    if (!allLoans.length) await loadLoans();
+    else renderLoans(allLoans.filter(l => statusStr.split(',').includes(l.status)));
+  }
+
+  function syncCardHighlight() {
+    document.querySelectorAll('.stat-card.clickable').forEach(c => c.classList.remove('filter-active'));
+  }
+
   async function loadStats() {
     try {
       const s = await apiFetch(`/api/stats/lender/${ME}`);
-      document.getElementById('s-total').textContent      = s.total_loans;
       document.getElementById('s-active').textContent     = s.active_loans;
       document.getElementById('s-unpaid').textContent     = s.unpaid_loans;
       document.getElementById('s-repaid').textContent     = s.repaid_loans;
       document.getElementById('s-lent').textContent       = '$' + fmt(s.total_lent);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding);
       document.getElementById('s-recovered').textContent  = '$' + fmt(s.total_recovered) + ' recovered';
+
+      const score = calcPortfolioScore(s);
+      const scoreEl = document.getElementById('s-score');
+      scoreEl.textContent = score + '/100';
+      scoreEl.style.color = scoreColor(score);
+      document.getElementById('s-score-label').textContent = scoreLabel(score);
+      document.getElementById('s-score-bar-wrap').style.display = '';
+      const bar = document.getElementById('s-score-bar');
+      bar.style.background = scoreColor(score);
+      bar.style.width = '0%';
+      setTimeout(() => { bar.style.width = score + '%'; }, 50);
+
+      if (s.unpaid_loans > 0) document.getElementById('card-unpaid').style.borderColor = 'rgba(231,76,60,0.5)';
     } catch(e) { console.error(e); }
+  }
+
+  function calcPortfolioScore(s) {
+    const total = s.total_loans || 0;
+    if (!total) return 100;
+    const unpaid = s.unpaid_loans || 0;
+    const repaid = s.repaid_loans || 0;
+    const settled = repaid + unpaid;
+    if (!settled) return 85;
+    const repayRatio = repaid / settled;
+    const lent = parseFloat(s.total_lent || 0);
+    const recovered = parseFloat(s.total_recovered || 0);
+    const recoveryRatio = lent > 0 ? Math.min(recovered / lent, 1) : 1;
+    return Math.round((repayRatio * 0.65 + recoveryRatio * 0.35) * 100);
   }
 
   async function loadLoans() {
@@ -97,7 +169,10 @@
   function renderLoans(loans) {
     const tbody = document.getElementById('loansBody');
     if (!loans.length) {
-      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
+      const isEmpty = !allLoans.length;
+      tbody.innerHTML = isEmpty
+        ? `<tr><td colspan="8"><div class="empty-state"><h3>No loans recorded yet</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record your first loan.</p></div></td></tr>`
+        : `<tr><td colspan="8"><div class="empty-state"><h3>No loans match</h3><p>Try a different filter or clear the search.</p></div></td></tr>`;
       return;
     }
     tbody.innerHTML = loans.map(loan => {
@@ -126,7 +201,7 @@
           ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
           ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
-          ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending mod review</span>` : ''}
+          ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending review</span>` : ''}
         </div></td>
       </tr>`;
     }).join('');

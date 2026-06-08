@@ -2,21 +2,36 @@
 {% block title %}Mod Dashboard — LoanCentral{% endblock %}
 
 {% block content %}
-<!-- Stats -->
+<!-- Stats — click any card to filter -->
 <div class="stats-grid" id="statsGrid">
-  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
-  <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
-  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
-  <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
-  <div class="stat-card"><div class="stat-label">Disputed</div><div class="stat-value c-orange" id="s-disputed">—</div></div>
+  <div class="stat-card clickable" onclick="filterByCard('')" id="card-all">
+    <div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('confirmed,partially_repaid')" id="card-active">
+    <div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('unpaid')" id="card-unpaid">
+    <div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('repaid')" id="card-repaid">
+    <div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div>
+    <div class="stat-sub" id="s-outstanding"></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div>
+  </div>
+  <div class="stat-card clickable" onclick="filterByCard('disputed')" id="card-disputed">
+    <div class="stat-label">Disputed</div><div class="stat-value c-orange" id="s-disputed">—</div>
+  </div>
 </div>
 
 <!-- Loans tab -->
 <div id="tab-loans">
   <div class="toolbar">
-    <div class="tabs">
+    <div class="tabs" id="statusTabs">
       <button class="tab active" data-status="">All</button>
       <button class="tab" data-status="confirmed">Active</button>
       <button class="tab" data-status="partially_repaid">Partial</button>
@@ -26,10 +41,12 @@
       <button class="tab" data-status="disputed">Disputed</button>
     </div>
     <div class="search-wrap">
-      <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
+      <input type="text" id="searchInput" placeholder="Search lender or borrower..." />
+      <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
     </div>
+    <button class="btn-secondary" onclick="exportCSV(allLoans, 'loans.csv')">↓ CSV</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
+    <button class="btn-secondary" onclick="showTab('roles')">Roles</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -43,17 +60,19 @@
 <div id="tab-roles" style="display:none">
   <div class="section-header">
     <span class="section-title">Role Management</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
+    <button class="btn-primary" onclick="showTab('loans')">← Loans</button>
   </div>
   <div class="toolbar">
-    <div class="search-wrap"><input type="text" id="roleSearch" placeholder="Add user by Reddit username..." /></div>
+    <div class="search-wrap">
+      <input type="text" id="roleSearch" placeholder="Reddit username..." />
+    </div>
     <select id="roleSelect" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:13px">
       <option value="borrower">Borrower</option>
       <option value="lender">Lender</option>
       <option value="mod">Mod</option>
     </select>
     <button class="btn-primary" onclick="assignRole()">Assign Role</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">↻ Refresh</button>
+    <button class="btn-secondary" onclick="loadRoles()">↻ Refresh</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -69,22 +88,52 @@
   window.IS_MOD = true;
   let currentStatus = '';
   let searchTimer = null;
+  let allLoans = [];
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+        setActiveTab(tab.dataset.status);
         currentStatus = tab.dataset.status;
         loadLoans();
       });
     });
-    document.getElementById('searchInput').addEventListener('input', () => {
+    const searchEl = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('searchClear');
+    searchEl.addEventListener('input', () => {
+      clearBtn.classList.toggle('visible', searchEl.value.length > 0);
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadLoans, 400);
+      searchTimer = setTimeout(loadLoans, 350);
     });
   });
+
+  function setActiveTab(status) {
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.status === status);
+    });
+    // Sync stat card highlight
+    document.querySelectorAll('.stat-card.clickable').forEach(c => c.classList.remove('filter-active'));
+    const map = { '': 'card-all', 'unpaid': 'card-unpaid', 'repaid': 'card-repaid', 'disputed': 'card-disputed' };
+    if (map[status]) document.getElementById(map[status])?.classList.add('filter-active');
+  }
+
+  function filterByCard(status) {
+    // "confirmed,partially_repaid" maps to the "All Active" view — use confirmed tab
+    const tabStatus = status.includes(',') ? '' : status;
+    currentStatus = tabStatus;
+    // Find and activate the matching tab
+    const matchTab = [...document.querySelectorAll('.tab')].find(t => t.dataset.status === tabStatus);
+    if (matchTab) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); matchTab.classList.add('active'); }
+    loadLoans();
+    document.querySelectorAll('.stat-card.clickable').forEach(c => c.classList.remove('filter-active'));
+  }
+
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClear').classList.remove('visible');
+    loadLoans();
+  }
 
   async function loadStats() {
     try {
@@ -97,6 +146,11 @@
       document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
       document.getElementById('s-disputed').textContent = s.disputed_loans;
+      // Flash disputed card if > 0
+      if (s.disputed_loans > 0) {
+        const card = document.getElementById('card-disputed');
+        card.style.borderColor = 'var(--orange)';
+      }
     } catch(e) { console.error(e); }
   }
 
@@ -108,9 +162,10 @@
     if (currentStatus) url += `&status=${currentStatus}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
-      const loans = await apiFetch(url);
+      allLoans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      tbody.innerHTML = allLoans.length ? allLoans.map(loanRow).join('') :
+        `<tr><td colspan="9"><div class="empty-state"><h3>No loans found</h3><p>No loans match the current filter.</p></div></td></tr>`;
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
@@ -131,13 +186,13 @@
       tbody.innerHTML = roles.length ? roles.map(r => `
         <tr>
           <td class="username">u/${r.username}</td>
-          <td><span class="badge badge-${r.role === 'confirmed' ? 'confirmed' : ''}" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
+          <td><span class="badge" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
           <td style="color:var(--muted)">${r.subscription_status}</td>
           <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
           <td><div class="actions">
-            <button class="btn-action btn-paid" onclick="quickRole('${r.username}','lender')">→ Lender</button>
-            <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">→ Borrower</button>
-            <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">→ Mod</button>
+            <button class="btn-action btn-paid"   onclick="quickRole('${r.username}','lender')">Lender</button>
+            <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">Borrower</button>
+            <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">Mod</button>
           </div></td>
         </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }

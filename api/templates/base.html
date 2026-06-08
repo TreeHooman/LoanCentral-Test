@@ -11,12 +11,13 @@
       --accent: #5b6ef5; --accent-h: #7b8cff;
       --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --yellow: #f1c40f;
       --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+      --radius: 10px;
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
 
     /* NAV */
     nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
-    .nav-brand { font-size: 18px; font-weight: 700; color: var(--accent-h); letter-spacing: -0.5px; text-decoration: none; }
+    .nav-brand { font-size: 18px; font-weight: 700; color: var(--accent-h); letter-spacing: -0.5px; text-decoration: none; flex-shrink: 0; }
     .nav-links { display: flex; gap: 4px; }
     .nav-link { color: var(--text2); text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: all 0.15s; }
     .nav-link:hover { background: var(--surface2); color: var(--text); }
@@ -29,6 +30,11 @@
     .nav-user { font-size: 13px; color: var(--text2); }
     .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; text-decoration: none; transition: all 0.15s; }
     .btn-logout:hover { border-color: var(--red); color: var(--red); }
+    .nav-hamburger { display: none; flex-direction: column; justify-content: center; gap: 5px; background: none; border: none; cursor: pointer; padding: 8px 4px; width: 36px; height: 36px; }
+    .nav-hamburger span { display: block; width: 22px; height: 2px; background: var(--text2); border-radius: 2px; transition: all 0.2s; }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
     /* FLASH MESSAGES */
     .flashes { padding: 0 24px; margin-top: 12px; }
@@ -42,39 +48,50 @@
 
     /* STATS GRID */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
-    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: border-color 0.15s, transform 0.1s; }
+    .stat-card.clickable { cursor: pointer; }
+    .stat-card.clickable:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .stat-card.clickable:active { transform: translateY(0); }
+    .stat-card.filter-active { border-color: var(--accent); background: rgba(91,110,245,0.08); }
     .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
     .stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
     .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
     .c-accent { color: var(--accent-h); } .c-green { color: var(--green); } .c-red { color: var(--red); } .c-orange { color: var(--orange); } .c-yellow { color: var(--yellow); } .c-muted { color: var(--muted); }
 
+    /* HEALTH SCORE BAR */
+    .health-bar-wrap { margin-top: 6px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+    .health-bar { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
     /* TOOLBAR */
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
     .tabs { display: flex; gap: 4px; }
-    .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; white-space: nowrap; }
     .tab:hover { border-color: var(--accent); color: var(--text); }
     .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-    .search-wrap { flex: 1; min-width: 200px; }
-    .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: border 0.15s; }
+    .search-wrap { flex: 1; min-width: 160px; position: relative; }
+    .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 32px 7px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: border 0.15s; }
     .search-wrap input:focus { border-color: var(--accent); }
     .search-wrap input::placeholder { color: var(--muted); }
-    .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+    .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0; line-height: 1; display: none; }
+    .search-clear.visible { display: block; }
+    .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; white-space: nowrap; }
     .btn-primary:hover { background: var(--accent-h); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; white-space: nowrap; }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
 
     /* TABLE */
-    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; min-width: 560px; }
     thead { background: var(--surface2); }
-    th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+    th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
     td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(91,110,245,0.05); }
     .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
-    .username a { color: var(--text); text-decoration: none; font-weight: 500; }
-    .username a:hover { color: var(--accent-h); }
+    .username { color: var(--text); font-weight: 500; }
     .amount { font-weight: 600; color: var(--text); }
-    .c-remaining { color: var(--orange); }
+    .c-remaining { color: var(--orange); font-weight: 600; }
     .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
     .thread-link { font-size: 11px; color: var(--accent-h); text-decoration: none; }
     .thread-link:hover { text-decoration: underline; }
@@ -89,9 +106,13 @@
     .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* SKELETON LOADER */
+    .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
     /* ACTIONS */
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .btn-action { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .btn-action { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; white-space: nowrap; }
     .btn-action:hover { opacity: 0.8; }
     .btn-unpaid         { background: rgba(231,76,60,0.2);  color: var(--red); }
     .btn-refund         { background: rgba(136,145,170,0.2); color: var(--muted); }
@@ -104,7 +125,7 @@
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
     .modal-overlay.open { display: flex; }
-    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 92vw; max-height: 90vh; overflow-y: auto; }
     .modal h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
     .modal label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
     .modal input, .modal select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 14px; margin-bottom: 12px; outline: none; }
@@ -116,29 +137,96 @@
     .modal-error { color: var(--red); font-size: 12px; margin-bottom: 8px; display: none; }
 
     /* TOAST */
-    #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 300; max-width: 320px; }
+    #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 300; max-width: 320px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); animation: toastIn 0.2s ease; }
     #toast.show { display: block; }
     #toast.success { border-color: var(--green); color: var(--green); }
     #toast.error   { border-color: var(--red);   color: var(--red); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
     /* SECTION HEADER */
-    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
     .section-title { font-size: 16px; font-weight: 600; color: var(--text); }
 
     /* EMPTY STATE */
     .empty-state { text-align: center; padding: 60px 24px; color: var(--muted); }
     .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: var(--text2); }
+    .empty-state p { font-size: 13px; line-height: 1.6; }
+    .empty-state code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-h); }
 
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* PROGRESS BAR */
+    .progress-wrap { margin-top: 6px; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .progress-bar { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+    /* ================================================================
+       MOBILE RESPONSIVE — everything below 768px
+       ================================================================ */
+    @media (max-width: 768px) {
+      nav { padding: 0 16px; gap: 8px; }
+      .nav-hamburger { display: flex; order: -1; }
+      .nav-brand { font-size: 16px; }
+      .nav-links {
+        display: none; position: fixed; top: 56px; left: 0; right: 0;
+        flex-direction: column; background: var(--surface);
+        border-bottom: 1px solid var(--border); padding: 8px; z-index: 99; gap: 2px;
+      }
+      .nav-links.open { display: flex; }
+      .nav-link { padding: 10px 16px; font-size: 14px; border-radius: 8px; }
+      .nav-user { display: none; }
+      .role-badge { font-size: 10px; padding: 2px 6px; }
+
+      .flashes { padding: 0 16px; }
+
+      main { padding: 12px 16px; }
+
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+      .stat-card { padding: 12px 10px; }
+      .stat-value { font-size: 20px !important; }
+
+      .toolbar { gap: 8px; }
+      .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+      .tabs::-webkit-scrollbar { height: 0; }
+      .tab { font-size: 12px; padding: 6px 12px; }
+
+      .section-header { flex-wrap: wrap; }
+
+      table { min-width: 480px; }
+      th, td { padding: 9px 10px; font-size: 12px; }
+
+      .btn-action { padding: 6px 10px; font-size: 11px; min-height: 30px; }
+      .btn-primary { padding: 7px 12px; font-size: 13px; }
+
+      .modal-overlay.open { align-items: flex-end; }
+      .modal {
+        width: 100%; max-width: 100%; border-radius: 20px 20px 0 0;
+        padding: 20px 20px 32px;
+        border-bottom: none;
+      }
+
+      #toast { left: 12px; right: 12px; bottom: 12px; max-width: none; text-align: center; }
+
+      .empty-state { padding: 40px 16px; }
+    }
+
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-value { font-size: 18px !important; }
+      .stat-label { font-size: 10px; }
+      .btn-logout { padding: 4px 8px; font-size: 11px; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
 
 <nav>
-  <a class="nav-brand" href="/">LoanCentral</a>
-  <div class="nav-links">
+  <button class="nav-hamburger" id="navToggle" aria-label="Menu" onclick="toggleMobileNav()">
+    <span></span><span></span><span></span>
+  </button>
+  <a class="nav-brand" href="/">LC</a>
+  <div class="nav-links" id="navLinks">
     {% if role == 'mod' %}
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
@@ -231,7 +319,23 @@
 <div id="toast"></div>
 
 <script>
-  // ---- Shared modal helpers ----
+  // ---- Mobile nav ----
+  function toggleMobileNav() {
+    const btn = document.getElementById('navToggle');
+    const links = document.getElementById('navLinks');
+    btn.classList.toggle('open');
+    links.classList.toggle('open');
+  }
+  document.addEventListener('click', e => {
+    const nav = document.getElementById('navLinks');
+    const btn = document.getElementById('navToggle');
+    if (nav.classList.contains('open') && !nav.contains(e.target) && !btn.contains(e.target)) {
+      nav.classList.remove('open');
+      btn.classList.remove('open');
+    }
+  });
+
+  // ---- Modal helpers ----
   function openPayModal(loanId, lender, currency) {
     document.getElementById('payLoanId').value = loanId;
     document.getElementById('payLoanIdDisplay').value = loanId;
@@ -240,6 +344,7 @@
     document.getElementById('payAmount').value = '';
     document.getElementById('payError').style.display = 'none';
     document.getElementById('payModal').classList.add('open');
+    setTimeout(() => document.getElementById('payAmount').focus(), 100);
   }
   function openUnpaidModal(loanId, lender) {
     document.getElementById('unpaidLoanId').value = loanId;
@@ -339,6 +444,20 @@
     } catch(e) { toast('Copy failed — try manually.', 'error'); }
   }
 
+  function exportCSV(rows, filename) {
+    if (!rows || !rows.length) { toast('No data to export.', 'error'); return; }
+    const cols = ['loan_id','lender','borrower','amount','amount_repaid','currency','status','date_created'];
+    const header = cols.join(',');
+    const body = rows.map(r => cols.map(c => {
+      const v = r[c] ?? '';
+      return typeof v === 'string' && v.includes(',') ? `"${v}"` : v;
+    }).join(',')).join('\n');
+    const blob = new Blob([header + '\n' + body], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('CSV downloaded!', 'success');
+  }
+
   function statusLabel(s) {
     return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded', disputed: 'Disputed' }[s] || s;
   }
@@ -349,6 +468,22 @@
     el.textContent = msg; el.className = 'show ' + type;
     setTimeout(() => el.className = '', 3500);
   }
+
+  function scoreColor(s) {
+    if (s >= 90) return 'var(--green)';
+    if (s >= 70) return 'var(--accent-h)';
+    if (s >= 50) return 'var(--yellow)';
+    if (s >= 25) return 'var(--orange)';
+    return 'var(--red)';
+  }
+  function scoreLabel(s) {
+    if (s >= 90) return 'Excellent';
+    if (s >= 70) return 'Good';
+    if (s >= 50) return 'Fair';
+    if (s >= 25) return 'Poor';
+    return 'Very Poor';
+  }
+
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
@@ -363,8 +498,8 @@
         <span class="loan-id">${id}</span>
         <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${loan.lender}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
       </td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
-      <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
+      <td class="username">u/${loan.lender}</td>
+      <td class="username">u/${loan.borrower}</td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td>
         ${parseFloat(loan.amount_repaid||0).toFixed(2)}
@@ -374,9 +509,9 @@
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td><div class="actions">
-        ${canPay    ? `<button class="btn-action btn-paid"          onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
-        ${canUnpaid ? `<button class="btn-action btn-unpaid"        onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
-        ${canRefund ? `<button class="btn-action btn-refund"        onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
+        ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
+        ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
         ${isDisputed && isMod ? `<button class="btn-action btn-resolve-unpaid" onclick="openResolveModal('${id}','${loan.lender}','${loan.borrower}')">Resolve</button>` : ''}
       </div></td>
     </tr>`;
