@@ -320,7 +320,7 @@
       const isOverdue = ['confirmed','partially_repaid','unpaid'].includes(loan.status) && daysSince > 30;
       return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
         <td>
-          <span class="loan-id">${id}</span>
+          <span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span>
           <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${ME}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
           ${loan.notes ? `<span class="notes-text" title="${notesEsc}">${loan.notes}</span>` : ''}
           <button class="notes-edit-btn" title="Edit note" onclick="openNotesModal('${id}','${notesEsc}')">✎</button>

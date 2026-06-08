@@ -72,12 +72,11 @@ def process_remind_command(comment):
     currency = loan.get("currency", "USD")
 
     comment.reply(
-        f"u/{borrower} — friendly payment reminder from u/{lender}!\n\n"
-        f"|Loan ID|Original Amount|Repaid|Still Owe|\n"
-        f"|:--:|:--:|:--:|:--:|\n"
-        f"|**{loan_id}**|{amount:.2f} {currency}|{repaid:.2f} {currency}|**{remaining:.2f} {currency}**|\n\n"
-        f"When you're ready to repay, let u/{lender} know and they'll record it with:\n\n"
-        f"    $paid_with_id {loan_id} [amount] {currency}\n\n"
-        f"*LoanCentral — [Dashboard]({DASHBOARD_URL})*"
+        f"u/{borrower} — payment reminder from u/{lender}\n\n"
+        f"**Loan `{loan_id}`** — you still owe **{remaining:.2f} {currency}** "
+        f"({repaid:.2f} repaid of {amount:.2f} total)\n\n"
+        f"u/{lender} will record repayment using:\n\n"
+        f"    $paid {loan_id} {remaining:.2f} {currency}\n\n"
+        f"*[Dashboard]({DASHBOARD_URL})*"
     )
     logger.info(f"$remind: u/{lender} reminded u/{borrower} about loan {loan_id}")

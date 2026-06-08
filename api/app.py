@@ -483,7 +483,7 @@ def get_loan(loan_id):
         cur = conn.cursor()
         cur.execute("""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated
+                   currency, status, date_created, original_thread, last_updated, notes
             FROM loans WHERE id::text = %s OR loan_id = %s
             ORDER BY id DESC LIMIT 1
         """, (loan_id, loan_id))
@@ -495,7 +495,7 @@ def get_loan(loan_id):
             "amount": row[4], "amount_repaid": row[5], "currency": row[6],
             "status": row[7], "date_created": row[8], "original_thread": row[9],
             "remaining": Decimal(str(row[4])) - Decimal(str(row[5])),
-            "last_updated": row[10],
+            "last_updated": row[10], "notes": row[11],
         }
         # Scope check
         if session.get("username") and session.get("role") != "mod":

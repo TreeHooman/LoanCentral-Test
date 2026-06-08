@@ -146,7 +146,7 @@
         const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
         const isOverdue = loan.status === 'unpaid' || (daysSince > 30 && loan.status !== 'repaid');
         return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
-          <td><span class="loan-id">${id}</span></td>
+          <td><span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span></td>
           <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
           <td>
@@ -189,9 +189,10 @@
       }
       tbody.innerHTML = historyLoans.map(loan => {
         const id = loan.loan_id || loan.db_id;
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
+        const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
+          ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
         return `<tr>
-          <td><span class="loan-id">${id}</span></td>
+          <td><span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span></td>
           <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
           <td>

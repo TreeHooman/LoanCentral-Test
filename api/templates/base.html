@@ -389,6 +389,18 @@
   </div>
 </div>
 
+<!-- Loan detail modal -->
+<div class="modal-overlay" id="loanDetailModal">
+  <div class="modal" style="max-width:460px">
+    <div id="loanDetailContent">
+      <div class="table-placeholder"><div class="spinner"></div><br>Loading...</div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn-cancel" onclick="closeModal('loanDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -695,6 +707,72 @@
     }
   }
 
+  async function openLoanModal(loanId) {
+    document.getElementById('loanDetailModal').classList.add('open');
+    const content = document.getElementById('loanDetailContent');
+    content.innerHTML = '<div class="table-placeholder"><div class="spinner"></div><br>Loading...</div>';
+    try {
+      const loan = await apiFetch(`/api/loans/${loanId}`);
+      const id = loan.loan_id || loan.db_id;
+      const amount = parseFloat(loan.amount||0);
+      const repaid = parseFloat(loan.amount_repaid||0);
+      const remaining = amount - repaid;
+      const repayPct = amount > 0 ? Math.round(repaid / amount * 100) : 0;
+      const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
+        ? `<a href="${loan.original_thread}" target="_blank" style="color:var(--accent-h)">View thread ↗</a>` : '—';
+      content.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+          <div>
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Loan ID</div>
+            <div style="font-family:monospace;font-size:18px;font-weight:700;color:var(--accent-h);margin-top:2px">${id}</div>
+          </div>
+          <span class="badge badge-${loan.status}" style="font-size:12px;padding:5px 10px">${statusLabel(loan.status)}</span>
+        </div>
+        <div class="user-profile-grid" style="margin-bottom:12px">
+          <div class="user-stat-item">
+            <div class="label">Lender</div>
+            <div class="value" style="font-size:14px"><span class="user-link" onclick="closeModal('loanDetailModal');openUserModal('${loan.lender}')">u/${loan.lender}</span></div>
+          </div>
+          <div class="user-stat-item">
+            <div class="label">Borrower</div>
+            <div class="value" style="font-size:14px"><span class="user-link" onclick="closeModal('loanDetailModal');openUserModal('${loan.borrower}')">u/${loan.borrower}</span></div>
+          </div>
+          <div class="user-stat-item">
+            <div class="label">Original Amount</div>
+            <div class="value c-accent">${amount.toFixed(2)} ${loan.currency}</div>
+          </div>
+          <div class="user-stat-item">
+            <div class="label">Amount Repaid</div>
+            <div class="value c-green">${repaid.toFixed(2)} ${loan.currency}</div>
+          </div>
+        </div>
+        ${remaining > 0 ? `
+        <div style="background:rgba(243,156,18,0.08);border:1px solid rgba(243,156,18,0.2);border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--muted)">Remaining balance</span>
+            <span style="font-weight:700;color:var(--orange)">${remaining.toFixed(2)} ${loan.currency}</span>
+          </div>
+          <div class="progress-wrap" style="height:6px">
+            <div class="progress-bar" style="background:var(--green);width:${repayPct}%;transition:width 0.8s ease"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${repayPct}% repaid</div>
+        </div>` : `<div style="background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--green)">✓ Fully settled</div>`}
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px">
+          <span>Created: ${(loan.date_created||'').split('T')[0]}</span>
+          <span>${thread}</span>
+        </div>
+        ${loan.notes ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--text2);margin-top:8px"><span style="color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:0.3px">Note: </span>${loan.notes}</div>` : ''}
+        ${loan.last_updated ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">Last updated: ${(loan.last_updated||'').split('T')[0]}</div>` : ''}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-action btn-copy" onclick="(async()=>{await navigator.clipboard.writeText('${id}');toast('Loan ID copied!','success');})()">Copy ID</button>
+          <button class="btn-action btn-copy" style="font-size:10px" onclick="(async()=>{await navigator.clipboard.writeText('\$paid ${id} ${remaining.toFixed(2)} ${loan.currency}');toast('Command copied!','success');})()">Copy $paid</button>
+        </div>
+      `;
+    } catch(e) {
+      content.innerHTML = `<p style="color:var(--muted);text-align:center;padding:24px">Couldn't load loan details: ${e.message}</p>`;
+    }
+  }
+
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
@@ -710,7 +788,7 @@
     const notesEsc = (loan.notes||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
     return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
       <td>
-        <span class="loan-id">${id}</span>
+        <span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span>
         <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${loan.lender}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
         ${loan.notes ? `<div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${notesEsc}">${loan.notes}</div>` : ''}
       </td>
