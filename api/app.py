@@ -33,6 +33,34 @@ API_KEY = os.getenv("API_KEY", "changeme")
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 
 
+def _run_migrations():
+    """Apply incremental schema changes that are safe to re-run."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from services import _get_db
+        conn = _get_db()
+        if not conn:
+            return
+        cur = conn.cursor()
+        migrations = [
+            "ALTER TABLE loans ADD COLUMN IF NOT EXISTS notes TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_loans_lender_status ON loans(lender, status)",
+            "CREATE INDEX IF NOT EXISTS idx_loans_borrower_status ON loans(borrower, status)",
+            "CREATE INDEX IF NOT EXISTS idx_loans_status_date ON loans(status, date_created DESC)",
+        ]
+        for sql in migrations:
+            cur.execute(sql)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        import logging
+        logging.getLogger("LoanCentral").warning(f"Migration warning: {e}")
+
+
+_run_migrations()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -265,14 +293,14 @@ def auth_dev_seed():
             ON CONFLICT (username) DO NOTHING
         """)
         cur.execute("""
-            INSERT INTO loans (loan_id, lender, borrower, amount, amount_repaid, currency, status, date_created, original_thread) VALUES
-              ('LC-001','testlender','testborrower',200.00,50.00,'USD','partially_repaid',NOW()-INTERVAL'5 days','https://reddit.com/r/test/comments/abc1'),
-              ('LC-002','testlender','testborrower2',100.00,0.00,'USD','confirmed',NOW()-INTERVAL'2 days','https://reddit.com/r/test/comments/abc2'),
-              ('LC-003','testlender2','testborrower',500.00,0.00,'GBP','unpaid',NOW()-INTERVAL'30 days','https://reddit.com/r/test/comments/abc3'),
-              ('LC-004','testlender','testborrower3',75.00,75.00,'USD','repaid',NOW()-INTERVAL'15 days','https://reddit.com/r/test/comments/abc4'),
-              ('LC-005','testlender2','testborrower',300.00,100.00,'USD','disputed',NOW()-INTERVAL'7 days','https://reddit.com/r/test/comments/abc5'),
-              ('LC-006','testlender','testborrower',50.00,0.00,'CAD','confirmed',NOW()-INTERVAL'1 day','https://reddit.com/r/test/comments/abc6'),
-              ('LC-007','testlender','testborrower2',250.00,250.00,'USD','repaid',NOW()-INTERVAL'20 days','https://reddit.com/r/test/comments/abc7')
+            INSERT INTO loans (loan_id, lender, borrower, amount, amount_repaid, currency, status, date_created, original_thread, notes) VALUES
+              ('LC-TEST1','testlender','testborrower',200.00,50.00,'USD','partially_repaid',NOW()-INTERVAL'5 days','https://reddit.com/r/test/comments/abc1','Car repair loan'),
+              ('LC-TEST2','testlender','testborrower2',100.00,0.00,'USD','confirmed',NOW()-INTERVAL'2 days','https://reddit.com/r/test/comments/abc2',NULL),
+              ('LC-TEST3','testlender2','testborrower',500.00,0.00,'GBP','unpaid',NOW()-INTERVAL'45 days','https://reddit.com/r/test/comments/abc3','Overdue — 45 days'),
+              ('LC-TEST4','testlender','testborrower3',75.00,75.00,'USD','repaid',NOW()-INTERVAL'15 days','https://reddit.com/r/test/comments/abc4',NULL),
+              ('LC-TEST5','testlender2','testborrower',300.00,100.00,'USD','disputed',NOW()-INTERVAL'7 days','https://reddit.com/r/test/comments/abc5',NULL),
+              ('LC-TEST6','testlender','testborrower',50.00,0.00,'CAD','confirmed',NOW()-INTERVAL'1 day','https://reddit.com/r/test/comments/abc6','Rent shortfall'),
+              ('LC-TEST7','testlender','testborrower2',250.00,250.00,'USD','repaid',NOW()-INTERVAL'20 days','https://reddit.com/r/test/comments/abc7',NULL)
             ON CONFLICT (loan_id) DO NOTHING
         """)
         conn.commit()
@@ -318,6 +346,17 @@ def dashboard_borrower():
 # ---------------------------------------------------------------------------
 # Admin: role management
 # ---------------------------------------------------------------------------
+
+@app.route("/api/admin/migrate", methods=["POST"])
+@require_mod_api
+def run_migrations():
+    """Re-run schema migrations — safe to call multiple times."""
+    try:
+        _run_migrations()
+        return _json({"ok": True, "message": "Migrations applied."})
+    except Exception as e:
+        return _json({"error": str(e)}, 500)
+
 
 @app.route("/api/admin/roles/<username>", methods=["GET"])
 @require_mod_api

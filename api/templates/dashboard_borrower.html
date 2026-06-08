@@ -123,7 +123,12 @@
         apiFetch(`/api/loans?borrower=${ME}&status=partially_repaid&limit=50`),
         apiFetch(`/api/loans?borrower=${ME}&status=unpaid&limit=50`),
       ]);
-      owingLoans = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
+      // Sort: unpaid first, then partially_repaid, then confirmed; within each by date asc
+      const statusOrder = { unpaid: 0, partially_repaid: 1, confirmed: 2 };
+      owingLoans = [...loans, ...partial, ...unpaid].sort((a,b) => {
+        const so = (statusOrder[a.status]||0) - (statusOrder[b.status]||0);
+        return so !== 0 ? so : new Date(a.date_created) - new Date(b.date_created);
+      });
       const countEl = document.getElementById('owingCount');
       if (countEl) countEl.textContent = owingLoans.length > 0 ? `(${owingLoans.length})` : '';
       const tbody = document.getElementById('owingBody');
@@ -131,11 +136,16 @@
         tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>All clear!</h3><p>You have no outstanding loans.</p></div></td></tr>`;
         return;
       }
-      tbody.innerHTML = owingLoans.map(loan => {
-        const owe = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+      const currTotals = {};
+      const rowHtml = owingLoans.map(loan => {
+        const owe = parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0);
+        const c = loan.currency || 'USD';
+        currTotals[c] = (currTotals[c] || 0) + owe;
         const id = loan.loan_id || loan.db_id;
         const canDispute = ['confirmed','partially_repaid'].includes(loan.status);
-        return `<tr>
+        const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
+        const isOverdue = loan.status === 'unpaid' || (daysSince > 30 && loan.status !== 'repaid');
+        return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
           <td><span class="loan-id">${id}</span></td>
           <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
@@ -143,14 +153,25 @@
             ${parseFloat(loan.amount_repaid||0).toFixed(2)}
             ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
           </td>
-          <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+          <td style="font-weight:600;color:var(--orange)">${owe.toFixed(2)} ${loan.currency}</td>
+          <td>
+            <span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>
+            ${isOverdue && daysSince > 0 ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}
+          </td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
           <td><div class="actions">
             ${canDispute ? `<button class="btn-action btn-dispute" onclick="openDisputeModal('${id}','${loan.lender}')">Dispute</button>` : ''}
           </div></td>
         </tr>`;
       }).join('');
+      const summaryHtml = Object.entries(currTotals).map(([c, total]) =>
+        `<tr style="background:var(--surface2);font-weight:600;font-size:12px">
+          <td colspan="4" style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Total owed (${c})</td>
+          <td style="color:var(--orange)">${total.toFixed(2)} ${c}</td>
+          <td colspan="3"></td>
+        </tr>`
+      ).join('');
+      tbody.innerHTML = rowHtml + summaryHtml;
     } catch(e) {
       document.getElementById('owingBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }

@@ -703,11 +703,16 @@
     const canRefund  = !['repaid','refunded','disputed'].includes(loan.status);
     const isDisputed = loan.status === 'disputed';
     const isMod      = typeof window.IS_MOD !== 'undefined';
-    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
-    return `<tr>
+    const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
+      ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
+    const isOverdue = ['confirmed','partially_repaid','unpaid'].includes(loan.status) && daysSince > 30;
+    const notesEsc = (loan.notes||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
       <td>
         <span class="loan-id">${id}</span>
         <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${loan.lender}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
+        ${loan.notes ? `<div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${notesEsc}">${loan.notes}</div>` : ''}
       </td>
       <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
       <td class="username"><span class="user-link" onclick="openUserModal('${loan.borrower}')">u/${loan.borrower}</span></td>
@@ -717,7 +722,10 @@
         ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
       </td>
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td>
+        <span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>
+        ${isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}
+      </td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}',${remaining})">Paid</button>` : ''}

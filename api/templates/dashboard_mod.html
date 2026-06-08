@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Mod Dashboard — LoanCentral{% endblock %}
 
+{% block head %}
+<style>
+  .alert-banner { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; margin-bottom:16px; font-size:13px; }
+  .alert-banner.warn   { background:rgba(243,156,18,0.12);  border:1px solid rgba(243,156,18,0.3);  color:var(--yellow); }
+  .alert-banner.danger { background:rgba(231,76,60,0.1);    border:1px solid rgba(231,76,60,0.3);   color:var(--red); }
+</style>
+{% endblock %}
+
 {% block content %}
+<!-- Alert banner populated by JS -->
+<div id="modAlertBanner" style="display:none"></div>
+
 <!-- Stats — click any card to filter -->
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card clickable" onclick="filterByCard('')" id="card-all">
@@ -197,6 +208,15 @@
           document.title = 'Mod Dashboard — LoanCentral';
         }
       }
+      // Alert banner
+      const parts = [];
+      if (s.disputed_loans > 0) parts.push(`<strong>${s.disputed_loans}</strong> loan${s.disputed_loans>1?'s':''} need resolution`);
+      if (s.unpaid_loans > 0)   parts.push(`<strong>${s.unpaid_loans}</strong> unpaid`);
+      const banner = document.getElementById('modAlertBanner');
+      if (parts.length && banner) {
+        banner.innerHTML = `<div class="alert-banner ${s.disputed_loans>0?'danger':'warn'}">⚠ ${parts.join(' · ')} — <span style="cursor:pointer;text-decoration:underline" onclick="filterByCard('disputed')">view disputed</span></div>`;
+        banner.style.display = '';
+      } else if (banner) { banner.style.display = 'none'; }
     } catch(e) { console.error(e); }
   }
 

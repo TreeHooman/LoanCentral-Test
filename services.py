@@ -796,18 +796,24 @@ def get_lender_stats(lender: str):
                 COUNT(*) FILTER (WHERE status = 'repaid')                  AS repaid,
                 COALESCE(SUM(amount), 0)                                   AS total_lent,
                 COALESCE(SUM(amount_repaid), 0)                            AS total_recovered,
-                COALESCE(SUM(amount) FILTER (WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding
+                COALESCE(SUM(amount) FILTER (WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding,
+                COUNT(DISTINCT borrower)                                   AS unique_borrowers,
+                COUNT(*) FILTER (WHERE date_created >= NOW() - INTERVAL '30 days') AS this_month,
+                COALESCE(AVG(amount), 0)                                   AS avg_loan_size
             FROM loans WHERE lender = %s
         """, (lender.lower(),))
         row = cur.fetchone()
         return {
-            "total_loans":      row[0],
-            "active_loans":     row[1],
-            "unpaid_loans":     row[2],
-            "repaid_loans":     row[3],
-            "total_lent":       row[4],
-            "total_recovered":  row[5],
-            "outstanding":      row[6],
+            "total_loans":       row[0],
+            "active_loans":      row[1],
+            "unpaid_loans":      row[2],
+            "repaid_loans":      row[3],
+            "total_lent":        row[4],
+            "total_recovered":   row[5],
+            "outstanding":       row[6],
+            "unique_borrowers":  row[7],
+            "this_month":        row[8],
+            "avg_loan_size":     row[9],
         }, None
     except Exception as e:
         logger.error(f"get_lender_stats error: {e}", exc_info=True)

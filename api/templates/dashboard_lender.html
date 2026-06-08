@@ -57,6 +57,10 @@
     <div class="stat-label">Outstanding</div><div class="stat-value c-orange" id="s-outstanding">—</div>
     <div class="stat-sub" id="s-recovered"></div>
   </div>
+  <div class="stat-card">
+    <div class="stat-label">Unique Borrowers</div><div class="stat-value c-accent" id="s-borrowers">—</div>
+    <div class="stat-sub" id="s-this-month"></div>
+  </div>
   <div class="stat-card" id="card-score">
     <div class="stat-label">Portfolio Score</div>
     <div class="stat-value" id="s-score" style="font-size:22px">—</div>
@@ -216,6 +220,9 @@
       animateValue(document.getElementById('s-lent'),        s.total_lent,       '$', '', true);
       animateValue(document.getElementById('s-outstanding'), s.outstanding,      '$', '', true);
       document.getElementById('s-recovered').textContent = '$' + fmt(s.total_recovered) + ' recovered';
+      animateValue(document.getElementById('s-borrowers'),   s.unique_borrowers || 0, '', '', false);
+      const thisMonthEl = document.getElementById('s-this-month');
+      if (thisMonthEl) thisMonthEl.textContent = (s.this_month || 0) + ' new this month';
 
       const score = calcPortfolioScore(s);
       const scoreEl = document.getElementById('s-score');
