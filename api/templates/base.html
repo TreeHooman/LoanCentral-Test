@@ -289,6 +289,9 @@
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower</a>
     {% endif %}
+    {% if role in ('lender', 'mod') %}
+      <a class="nav-link {% if request.endpoint == 'api_docs' %}active{% endif %}" href="{{ url_for('api_docs') }}" style="font-size:12px;color:var(--muted)">API</a>
+    {% endif %}
   </div>
   <div class="nav-right">
     <span class="role-badge role-{{ role }}">{{ role }}</span>

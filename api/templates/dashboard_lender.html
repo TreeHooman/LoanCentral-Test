@@ -120,7 +120,7 @@
     <button class="tab" data-status="disputed">Disputed</button>
   </div></div>
   <div class="search-wrap">
-    <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="onSearch()" />
+    <input type="text" id="searchInput" placeholder="Filter by borrower, ID, or note..." oninput="onSearch()" />
     <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
   </div>
   <select id="dateFilter" onchange="filterLoans()" style="background:var(--surface);border:1px solid var(--border);color:var(--text2);padding:7px 10px;border-radius:6px;font-size:13px;cursor:pointer">
@@ -289,7 +289,11 @@
     const days = parseInt(document.getElementById('dateFilter').value) || 0;
     const cutoff = days ? Date.now() - days * 86400000 : 0;
     let filtered = allLoans;
-    if (q) filtered = filtered.filter(l => (l.borrower||'').toLowerCase().includes(q) || (l.loan_id||'').toLowerCase().includes(q));
+    if (q) filtered = filtered.filter(l =>
+      (l.borrower||'').toLowerCase().includes(q) ||
+      (l.loan_id||'').toLowerCase().includes(q) ||
+      (l.notes||'').toLowerCase().includes(q)
+    );
     if (cutoff) filtered = filtered.filter(l => l.date_created && new Date(l.date_created).getTime() >= cutoff);
     renderLoans(filtered);
   }

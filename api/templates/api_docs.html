@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}API Reference — LoanCentral{% endblock %}
+
+{% block head %}
+<style>
+  .docs-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: flex-start; }
+  .docs-sidebar { position: sticky; top: 72px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .docs-sidebar h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 8px; }
+  .docs-nav-link { display: block; padding: 6px 10px; color: var(--text2); text-decoration: none; font-size: 13px; border-radius: 6px; }
+  .docs-nav-link:hover { background: var(--surface2); color: var(--text); }
+  .endpoint { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
+  .endpoint-header { padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .method { font-family: monospace; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
+  .method-get    { background: rgba(46,204,113,0.15);  color: var(--green); }
+  .method-post   { background: rgba(91,110,245,0.2);   color: var(--accent-h); }
+  .method-patch  { background: rgba(241,196,15,0.15);  color: var(--yellow); }
+  .method-delete { background: rgba(231,76,60,0.15);   color: var(--red); }
+  .endpoint-path { font-family: monospace; font-size: 14px; color: var(--text); font-weight: 600; }
+  .endpoint-desc { padding: 14px 16px; font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .endpoint-desc code { background: var(--surface2); padding: 2px 5px; border-radius: 3px; font-size: 12px; color: var(--accent-h); font-family: monospace; }
+  .params-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .params-table th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .params-table td { padding: 8px 10px; font-size: 12px; border-bottom: 1px solid var(--border); color: var(--text2); }
+  .params-table tr:last-child td { border-bottom: none; }
+  .param-name { font-family: monospace; color: var(--accent-h); }
+  .param-req { background: rgba(231,76,60,0.12); color: var(--red); font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+  .param-opt { background: rgba(136,145,170,0.12); color: var(--muted); font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+  .auth-note { background: rgba(91,110,245,0.08); border: 1px solid rgba(91,110,245,0.2); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .auth-note code { color: var(--accent-h); background: var(--surface2); padding: 2px 5px; border-radius: 3px; font-family: monospace; }
+  .section-label { font-size: 18px; font-weight: 700; color: var(--text); margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  @media (max-width: 768px) { .docs-layout { grid-template-columns: 1fr; } .docs-sidebar { position: static; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title" style="font-size:20px">API Reference</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">REST API for LoanCentral — authenticate with session cookie or API key</div>
+  </div>
+</div>
+
+<div class="docs-layout">
+  <!-- Sidebar nav -->
+  <div class="docs-sidebar">
+    <h4>Authentication</h4>
+    <a class="docs-nav-link" href="#auth">Auth Methods</a>
+    <h4 style="margin-top:14px">Endpoints</h4>
+    <a class="docs-nav-link" href="#loans">Loans</a>
+    <a class="docs-nav-link" href="#users">Users</a>
+    <a class="docs-nav-link" href="#stats">Stats</a>
+    <a class="docs-nav-link" href="#admin">Admin</a>
+  </div>
+
+  <div>
+    <!-- Auth -->
+    <div id="auth">
+      <div class="section-label">Authentication</div>
+      <div class="auth-note">
+        All API endpoints require authentication. Two methods are supported:<br><br>
+        <strong>1. API Key</strong> — pass <code>X-API-Key: &lt;key&gt;</code> header, or <code>?api_key=&lt;key&gt;</code> query param. Full access.<br>
+        <strong>2. Session Cookie</strong> — log in at <code>/login</code> and use the session. Role-based access applies.<br><br>
+        Non-mod users can only access their own data. Mods have full access.
+      </div>
+    </div>
+
+    <!-- Loans -->
+    <div id="loans">
+      <div class="section-label">Loans</div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/loans</span>
+        </div>
+        <div class="endpoint-desc">
+          List loans. Non-mods can only query their own loans.
+          <table class="params-table">
+            <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+            <tr><td class="param-name">lender</td><td><span class="param-opt">optional</span></td><td>Filter by lender username</td></tr>
+            <tr><td class="param-name">borrower</td><td><span class="param-opt">optional</span></td><td>Filter by borrower username</td></tr>
+            <tr><td class="param-name">status</td><td><span class="param-opt">optional</span></td><td>Filter by status: <code>confirmed</code>, <code>partially_repaid</code>, <code>repaid</code>, <code>unpaid</code>, <code>refunded</code>, <code>disputed</code>. Comma-separate for multiple.</td></tr>
+            <tr><td class="param-name">search</td><td><span class="param-opt">optional</span></td><td>Search lender/borrower names (mod only)</td></tr>
+            <tr><td class="param-name">limit</td><td><span class="param-opt">optional</span></td><td>Max results (default 200)</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans</span>
+        </div>
+        <div class="endpoint-desc">
+          Create a new loan. Requires lender or mod role.
+          <table class="params-table">
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            <tr><td class="param-name">borrower</td><td><span class="param-req">required</span></td><td>Borrower Reddit username (strip u/ prefix)</td></tr>
+            <tr><td class="param-name">amount</td><td><span class="param-req">required</span></td><td>Loan amount (number)</td></tr>
+            <tr><td class="param-name">currency</td><td><span class="param-opt">optional</span></td><td>3-letter currency code (default: <code>USD</code>)</td></tr>
+            <tr><td class="param-name">thread_url</td><td><span class="param-opt">optional</span></td><td>Reddit thread URL</td></tr>
+            <tr><td class="param-name">notes</td><td><span class="param-opt">optional</span></td><td>Private note (max 500 chars, not shown to borrower)</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/loans/{loan_id}</span>
+        </div>
+        <div class="endpoint-desc">
+          Get a single loan by ID (numeric db_id or LC-XXXXXX loan_id). Non-mods must be the lender or borrower.
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/paid</span>
+        </div>
+        <div class="endpoint-desc">
+          Record a repayment on a loan.
+          <table class="params-table">
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            <tr><td class="param-name">lender</td><td><span class="param-req">required</span></td><td>Lender username (must match loan record)</td></tr>
+            <tr><td class="param-name">amount</td><td><span class="param-req">required</span></td><td>Amount paid</td></tr>
+            <tr><td class="param-name">currency</td><td><span class="param-req">required</span></td><td>Currency (must match loan)</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/unpaid</span>
+        </div>
+        <div class="endpoint-desc">Mark a loan as unpaid. Body: <code>{"lender": "username"}</code></div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/refunded</span>
+        </div>
+        <div class="endpoint-desc">Cancel/refund a loan. Body: <code>{"lender": "username"}</code></div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/dispute</span>
+        </div>
+        <div class="endpoint-desc">Flag a loan for mod review. Body: <code>{"borrower": "username"}</code></div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/dispute/resolve</span>
+        </div>
+        <div class="endpoint-desc">
+          Resolve a disputed loan. Mod only.
+          <table class="params-table">
+            <tr><th>Field</th><th>Description</th></tr>
+            <tr><td class="param-name">final_status</td><td><code>unpaid</code> (borrower defaulted) or <code>confirmed</code> (false dispute)</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-patch">PATCH</span>
+          <span class="endpoint-path">/api/loans/{loan_id}/notes</span>
+        </div>
+        <div class="endpoint-desc">Update a loan's private note. Lender or mod only. Body: <code>{"notes": "text"}</code></div>
+      </div>
+    </div>
+
+    <!-- Users -->
+    <div id="users">
+      <div class="section-label">Users</div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/users/{username}</span>
+        </div>
+        <div class="endpoint-desc">
+          Get a user's stats and recent loans. Non-mods can only fetch their own profile.
+          Returns: <code>loans_as_borrower</code>, <code>loans_as_lender</code>, <code>amount_borrowed</code>, <code>amount_repaid</code>, <code>unpaid_loans</code>, <code>recent_loans</code>.
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/users/{username}/profile</span>
+        </div>
+        <div class="endpoint-desc">
+          Public borrower profile — available to any authenticated user (for vetting). Returns health stats without full loan details.
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="stats">
+      <div class="section-label">Stats</div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/stats</span>
+        </div>
+        <div class="endpoint-desc">
+          Global loan statistics. Returns totals by status, volume, repayment rate, and new-this-week count.
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/stats/lender/{lender}</span>
+        </div>
+        <div class="endpoint-desc">
+          Per-lender stats: total/active/unpaid/repaid loans, total lent, outstanding, recovered, unique borrowers, this_month, avg_loan_size.
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin -->
+    <div id="admin">
+      <div class="section-label">Admin (Mod only)</div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-get">GET</span>
+          <span class="endpoint-path">/api/admin/roles</span>
+        </div>
+        <div class="endpoint-desc">List all users with assigned roles.</div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/admin/roles/{username}</span>
+        </div>
+        <div class="endpoint-desc">Assign a role to a user. Body: <code>{"role": "mod"|"lender"|"borrower"}</code></div>
+      </div>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method method-post">POST</span>
+          <span class="endpoint-path">/api/admin/migrate</span>
+        </div>
+        <div class="endpoint-desc">Re-run database schema migrations (idempotent, safe to call multiple times).</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

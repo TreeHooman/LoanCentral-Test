@@ -319,6 +319,12 @@ def auth_dev_seed():
         conn.close()
 
 
+@app.route("/api-docs")
+@login_required
+def api_docs():
+    return render_template("api_docs.html", username=session["username"], role=session.get("role", "borrower"))
+
+
 @app.route("/dashboard/mod")
 @role_required("mod")
 def dashboard_mod():
@@ -408,15 +414,22 @@ def list_roles():
 @require_auth
 def create_loan_api():
     from services import create_loan
-    if session.get("role") not in ("lender", "mod"):
+    role = session.get("role")
+    if role not in ("lender", "mod"):
         return _json({"error": "Only lenders can create loans."}, 403)
     data = request.get_json() or {}
-    lender   = session.get("username", "").strip().lower()
-    borrower = (data.get("borrower") or "").strip().lower().lstrip("u/")
-    currency = (data.get("currency") or "USD").strip().upper()
-    thread   = (data.get("thread_url") or "").strip() or "https://loancentral.app/dashboard"
-    notes    = (data.get("notes") or "").strip() or None
+    # Mods can specify a different lender; others always use their own username
+    if role == "mod" and data.get("_lender_override"):
+        lender = data["_lender_override"].strip().lower().lstrip("u/")
+    else:
+        lender = session.get("username", "").strip().lower()
+    borrower   = (data.get("borrower") or "").strip().lower().lstrip("u/")
+    currency   = (data.get("currency") or "USD").strip().upper()
+    thread     = (data.get("thread_url") or "").strip() or "https://loancentral.app/dashboard"
+    notes      = (data.get("notes") or "").strip() or None
     raw_amount = data.get("amount")
+    if not lender:
+        return _json({"error": "Lender username is required."}, 400)
     if not borrower:
         return _json({"error": "Borrower username is required."}, 400)
     if not raw_amount:

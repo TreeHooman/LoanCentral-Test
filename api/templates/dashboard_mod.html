@@ -65,6 +65,7 @@
     </div>
     <button class="btn-secondary" onclick="exportCSV(allLoans, 'loans.csv')">↓ CSV</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
+    <button class="btn-primary" onclick="openModNewLoanModal()" style="background:var(--green);border-color:var(--green)">+ Loan</button>
     <button class="btn-secondary" onclick="showTab('roles')">Roles</button>
     <button class="btn-secondary" onclick="promptCheckUser()">Check User</button>
     <button class="btn-secondary" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="Auto-refresh every 5 min">Auto ↻</button>
@@ -311,5 +312,67 @@
 
   function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+
+  function openModNewLoanModal() {
+    ['modLoanLender','modLoanBorrower','modLoanAmount','modLoanThread','modLoanNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('modLoanCurrency').value = 'USD';
+    document.getElementById('modLoanError').style.display = 'none';
+    document.getElementById('modNewLoanModal').classList.add('open');
+    setTimeout(() => document.getElementById('modLoanLender').focus(), 100);
+  }
+
+  async function submitModNewLoan() {
+    const lender   = document.getElementById('modLoanLender').value.trim().replace(/^u\//i,'').toLowerCase();
+    const borrower = document.getElementById('modLoanBorrower').value.trim().replace(/^u\//i,'').toLowerCase();
+    const amount   = document.getElementById('modLoanAmount').value.trim();
+    const currency = document.getElementById('modLoanCurrency').value.trim().toUpperCase();
+    const thread   = document.getElementById('modLoanThread').value.trim();
+    const notes    = document.getElementById('modLoanNotes').value.trim();
+    const errEl    = document.getElementById('modLoanError');
+    if (!lender)   { errEl.textContent = 'Lender username is required.'; errEl.style.display='block'; return; }
+    if (!borrower) { errEl.textContent = 'Borrower username is required.'; errEl.style.display='block'; return; }
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { errEl.textContent = 'Enter a valid amount.'; errEl.style.display='block'; return; }
+    // Temporarily mock lender session — use API key path via body override
+    // For mods, we create the loan by first checking roles, then posting
+    try {
+      // Set lender role temporarily to allow creation on behalf
+      const res = await apiFetch('/api/loans', {
+        method: 'POST',
+        body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined, _lender_override: lender })
+      });
+      closeModal('modNewLoanModal');
+      toast(`Loan ${res.loan_id} created for u/${lender}!`, 'success');
+      loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
 </script>
+
+<!-- Mod: Create Loan Modal -->
+<div class="modal-overlay" id="modNewLoanModal">
+  <div class="modal" style="max-width:420px">
+    <h3>Record Loan <span style="font-size:12px;color:var(--yellow);font-weight:400">(as mod)</span></h3>
+    <div class="modal-error" id="modLoanError"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label>Lender username</label><input type="text" id="modLoanLender" placeholder="u/lender" autocomplete="off" /></div>
+      <div><label>Borrower username</label><input type="text" id="modLoanBorrower" placeholder="u/borrower" autocomplete="off" /></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label>Amount</label><input type="number" id="modLoanAmount" placeholder="0.00" min="0.01" step="0.01" /></div>
+      <div><label>Currency</label>
+        <select id="modLoanCurrency" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px;width:100%">
+          <option>USD</option><option>CAD</option><option>GBP</option><option>EUR</option><option>AUD</option><option>NZD</option>
+        </select>
+      </div>
+    </div>
+    <label>Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+    <input type="url" id="modLoanThread" placeholder="https://reddit.com/..." />
+    <label>Note <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+    <input type="text" id="modLoanNotes" placeholder="Context for this loan..." maxlength="200" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('modNewLoanModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--green)" onclick="submitModNewLoan()">Record Loan</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
