@@ -591,7 +591,8 @@ def get_stats():
                 COALESCE(SUM(amount), 0)                                    AS total_volume,
                 COALESCE(SUM(amount_repaid), 0)                             AS total_repaid,
                 COALESCE(SUM(amount) FILTER (
-                    WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding
+                    WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding,
+                COUNT(*) FILTER (WHERE date_created >= NOW() - INTERVAL '7 days') AS new_this_week
             FROM loans
         """)
         row = cur.fetchone()
@@ -601,7 +602,7 @@ def get_stats():
             "repaid_loans":   row[4], "refunded_loans": row[5],
             "disputed_loans": row[6],
             "total_volume":   row[7], "total_repaid":  row[8],
-            "outstanding":    row[9],
+            "outstanding":    row[9], "new_this_week": row[10],
         })
     finally:
         cur.close()

@@ -30,6 +30,10 @@
     <div class="stat-label">Repayment Rate</div><div class="stat-value" id="s-rate">—</div>
     <div class="stat-sub">of settled loans</div>
   </div>
+  <div class="stat-card clickable" onclick="filterByCard('confirmed,partially_repaid,unpaid,repaid,refunded,disputed')" title="Loans created in the last 7 days">
+    <div class="stat-label">This Week</div><div class="stat-value c-accent" id="s-week">—</div>
+    <div class="stat-sub">new loans (7d)</div>
+  </div>
 </div>
 
 <!-- Loans tab -->
@@ -52,6 +56,7 @@
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
     <button class="btn-secondary" onclick="showTab('roles')">Roles</button>
     <button class="btn-secondary" onclick="promptCheckUser()">Check User</button>
+    <button class="btn-secondary" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="Auto-refresh every 5 min">Auto ↻</button>
   </div>
   <div class="table-wrap">
     <table>
@@ -172,6 +177,7 @@
       animateValue(document.getElementById('s-trepaid'), s.total_repaid, '$', '', true);
       animateValue(document.getElementById('s-disputed'),s.disputed_loans, '', '', false);
       document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      animateValue(document.getElementById('s-week'), s.new_this_week || 0, '', '', false);
       const settled = (s.repaid_loans||0) + (s.unpaid_loans||0);
       const rate = settled > 0 ? Math.round((s.repaid_loans / settled) * 100) : 100;
       const rateEl = document.getElementById('s-rate');
@@ -249,6 +255,24 @@
       toast(`u/${username} → ${role}`, 'success');
       loadRoles();
     } catch(e) { toast(e.message, 'error'); }
+  }
+
+  let _autoRefreshInterval = null;
+  function toggleAutoRefresh() {
+    const btn = document.getElementById('autoRefreshBtn');
+    if (_autoRefreshInterval) {
+      clearInterval(_autoRefreshInterval);
+      _autoRefreshInterval = null;
+      btn.textContent = 'Auto ↻';
+      btn.style.borderColor = '';
+      toast('Auto-refresh off', '');
+    } else {
+      _autoRefreshInterval = setInterval(() => { loadData(); }, 5 * 60 * 1000);
+      btn.textContent = '● Auto ↻';
+      btn.style.borderColor = 'var(--green)';
+      btn.style.color = 'var(--green)';
+      toast('Auto-refresh on (every 5 min)', 'success');
+    }
   }
 
   function promptCheckUser() {
