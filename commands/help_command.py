@@ -58,6 +58,10 @@ The bot tracks loans. History, health scores, stats, and mod tools are on the **
 
     $check u/[username]
 
+**Check remaining balance on a loan**
+
+    $balance [loan_id]
+
 **View your own stats**
 
     $mystats

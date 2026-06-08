@@ -40,8 +40,13 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
 
--- Create indexes for better query performance
+-- Indexes for common single-column queries
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);
 CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
 CREATE INDEX IF NOT EXISTS idx_loans_date_created ON loans(date_created);
+
+-- Compound indexes for common filtered queries
+CREATE INDEX IF NOT EXISTS idx_loans_lender_status ON loans(lender, status);
+CREATE INDEX IF NOT EXISTS idx_loans_borrower_status ON loans(borrower, status);
+CREATE INDEX IF NOT EXISTS idx_loans_status_date ON loans(status, date_created DESC);
