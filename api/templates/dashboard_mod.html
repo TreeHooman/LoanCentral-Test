@@ -169,8 +169,10 @@
           badge.textContent = s.disputed_loans;
           badge.style.display = 'inline-block';
           document.getElementById('card-disputed').style.borderColor = 'rgba(243,156,18,0.5)';
+          document.title = `(${s.disputed_loans}) Mod Dashboard — LoanCentral`;
         } else {
           badge.style.display = 'none';
+          document.title = 'Mod Dashboard — LoanCentral';
         }
       }
     } catch(e) { console.error(e); }

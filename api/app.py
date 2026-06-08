@@ -534,6 +534,21 @@ def get_user_public_profile(username):
     profile, error = get_user_profile(username)
     if error:
         return _json({"error": error}, 500)
+    # Also fetch last_login from user_roles
+    last_login = None
+    from services import _get_db
+    conn = _get_db()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT last_login FROM user_roles WHERE username = %s", (username.lower(),))
+            row = cur.fetchone()
+            if row:
+                last_login = row[0]
+        except Exception:
+            pass
+        finally:
+            cur.close(); conn.close()
     return _json({
         "username": username,
         "loans_as_borrower": profile.get("loans_as_borrower", 0),
@@ -541,6 +556,7 @@ def get_user_public_profile(username):
         "amount_borrowed": profile.get("amount_borrowed", 0),
         "amount_repaid": profile.get("amount_repaid", 0),
         "active_amount": profile.get("active_amount", 0),
+        "last_login": last_login,
     })
 
 
