@@ -3,8 +3,8 @@ services:
     name: loancentral-dashboard
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python startup.py
-    startCommand: gunicorn "api.app:app" --bind 0.0.0.0:$PORT --workers 2
+    buildCommand: pip install -r requirements.txt
+    startCommand: python startup.py && gunicorn "api.app:app" --bind 0.0.0.0:$PORT --workers 2
     envVars:
       - key: LOANCENTRAL_ENV
         value: dev
