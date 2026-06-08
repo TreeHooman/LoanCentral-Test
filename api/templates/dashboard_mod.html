@@ -39,15 +39,20 @@
     </div>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="toggleFilters()">⚙ Filters</button>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('requests')" id="requestsBtn">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('analytics')">📊 Analytics</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('audit')">📋 Audit Log</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('disputes')" id="disputesBtn">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
-    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid var(--red);color:var(--red)" onclick="showTab('overdue')" id="overdueBtn">⏰ Overdue <span id="overdueBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+    <div class="toolbar-dropdown">
+      <button class="btn-primary toolbar-dropdown-btn" onclick="this.closest('.toolbar-dropdown').classList.toggle('open')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">📂 Views</button>
+      <div class="toolbar-dropdown-menu">
+        <button class="btn-primary" onclick="showTab('roles');this.closest('.toolbar-dropdown').classList.remove('open')">👥 Roles</button>
+        <button class="btn-primary" id="requestsBtn" onclick="showTab('requests');this.closest('.toolbar-dropdown').classList.remove('open')">📋 Requests <span id="requestsBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+        <button class="btn-primary" onclick="showTab('analytics');this.closest('.toolbar-dropdown').classList.remove('open')">📊 Analytics</button>
+        <button class="btn-primary" onclick="showTab('audit');this.closest('.toolbar-dropdown').classList.remove('open')">📋 Audit Log</button>
+        <button class="btn-primary" id="disputesBtn" onclick="showTab('disputes');this.closest('.toolbar-dropdown').classList.remove('open')">⚖ Disputes <span id="disputesBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+        <button class="btn-primary" id="overdueBtn" onclick="showTab('overdue');this.closest('.toolbar-dropdown').classList.remove('open')">⏰ Overdue <span id="overdueBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
+        <button class="btn-primary" onclick="showTab('bans');this.closest('.toolbar-dropdown').classList.remove('open')" style="color:var(--red)">🔨 Bans</button>
+      </div>
+    </div>
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
-    <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
     <button class="btn-primary compact-toggle" onclick="toggleCompact()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">⊞ Compact</button>
     <div class="user-lookup-wrap">
       <input type="text" id="userLookupInput" placeholder="Look up user…"
@@ -81,7 +86,7 @@
     </div>
   </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap card-table-wrap">
     <table>
       <thead><tr><th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="cursor:pointer"></th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th class="col-optional">Repaid</th><th class="col-optional">Remaining</th><th>Status</th><th class="col-optional">Date</th><th class="col-optional">Repaid %</th><th class="col-optional">Repaid Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
@@ -849,6 +854,9 @@
     .user-lookup-wrap input { flex: 1; width: auto; min-width: 0; }
     #bulkBar { padding: 8px 12px; }
     #bulkBar .btn-action { flex: 1; min-height: 38px; text-align: center; }
+    .toolbar-dropdown { width: 100%; }
+    .toolbar-dropdown-menu { position: static; box-shadow: none; margin-top: 4px; border-radius: 8px; }
+    .toolbar-dropdown.open .toolbar-dropdown-menu { display: flex; }
   }
 </style>
 {% endblock %}

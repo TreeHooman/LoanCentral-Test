@@ -143,8 +143,10 @@
       .nav-burger { display: block; }
       .nav-right { gap: 6px; }
       .nav-right .btn-logout, .nav-right a.btn-logout { display: none; }
+      .nav-right .nav-link { display: none; }
       .nav-user { display: none; }
-      main { padding: 12px; }
+      .bottom-nav { display: flex; }
+      main { padding: 12px 12px 76px; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .stat-card { padding: 12px; }
       .stat-value { font-size: 20px; }
@@ -166,7 +168,7 @@
       .modal-actions button { width: 100%; padding: 12px; font-size: 14px; }
       .section-header { flex-direction: column; align-items: flex-start; gap: 8px; }
       .section-header > * { width: 100%; }
-      #toast { bottom: 12px; right: 12px; left: 12px; max-width: unset; }
+      #toast { bottom: 66px; right: 12px; left: 12px; max-width: unset; }
       .actions { gap: 6px; }
     }
 
@@ -175,7 +177,7 @@
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
       .stat-value { font-size: 18px; }
       .stat-card { padding: 10px; }
-      main { padding: 8px; }
+      main { padding: 8px 8px 76px; }
       .section-title { font-size: 14px; }
     }
     /* COMPACT MODE */
@@ -195,7 +197,37 @@
     /* Back to top */
     #backToTop { display: none; position: fixed; bottom: 72px; right: 20px; width: 40px; height: 40px; border-radius: 50%; background: var(--accent); border: none; color: #fff; font-size: 18px; cursor: pointer; z-index: 250; box-shadow: 0 4px 14px rgba(91,110,245,0.4); align-items: center; justify-content: center; }
     #backToTop:hover { background: var(--accent-h); }
-    @media (max-width: 768px) { #backToTop { bottom: 64px; right: 14px; width: 36px; height: 36px; font-size: 16px; } }
+    @media (max-width: 768px) { #backToTop { bottom: 80px; right: 14px; width: 36px; height: 36px; font-size: 16px; } }
+    /* BOTTOM NAV */
+    .bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); z-index: 95; padding-bottom: env(safe-area-inset-bottom, 0); }
+    .bottom-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 7px 4px 5px; color: var(--muted); text-decoration: none; font-size: 10px; letter-spacing: 0.2px; min-height: 50px; transition: color 0.15s; gap: 2px; }
+    .bottom-nav-item .bni { font-size: 19px; line-height: 1; }
+    .bottom-nav-item.active, .bottom-nav-item:hover { color: var(--accent-h); }
+    /* TOOLBAR DROPDOWN */
+    .toolbar-dropdown { position: relative; }
+    .toolbar-dropdown-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; min-width: 190px; display: none; flex-direction: column; gap: 2px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+    .toolbar-dropdown.open .toolbar-dropdown-menu { display: flex; }
+    .toolbar-dropdown-menu .btn-primary { width: 100%; text-align: left !important; background: transparent !important; border: none !important; color: var(--text2) !important; padding: 8px 12px !important; border-radius: 6px !important; font-weight: 500; font-size: 13px; }
+    .toolbar-dropdown-menu .btn-primary:hover { background: var(--surface2) !important; color: var(--text) !important; }
+    /* CARD TABLE (mobile) */
+    @media (max-width: 600px) {
+      .card-table-wrap { overflow-x: unset !important; scroll-snap-type: none !important; }
+      .card-table-wrap table { min-width: unset !important; display: block; }
+      .card-table-wrap thead { display: none; }
+      .card-table-wrap tbody { display: flex; flex-direction: column; }
+      .card-table-wrap tr { display: flex !important; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 14px; border: none; border-bottom: 1px solid var(--border); border-left: 3px solid var(--border); }
+      .card-table-wrap tr:hover td { background: transparent; }
+      .card-table-wrap tr.row-overdue { border-left-color: var(--red); }
+      .card-table-wrap tr.row-unpaid { border-left-color: var(--orange); }
+      .card-table-wrap tr.row-partial { border-left-color: var(--yellow); }
+      .card-table-wrap td { display: inline-flex; align-items: center; padding: 0; border: none; background: transparent !important; font-size: 13px; }
+      .card-table-wrap td.col-optional { display: none !important; }
+      .card-table-wrap td.td-check { display: none !important; }
+      .card-table-wrap td.td-status { margin-left: auto; }
+      .card-table-wrap td.td-actions { width: 100%; padding-top: 8px; border-top: 1px solid var(--border); margin-top: 4px; }
+      .card-table-wrap td.td-actions .actions { width: 100%; gap: 4px; }
+      .card-table-wrap td.td-actions .btn-action { flex: 1; text-align: center; min-height: 36px; justify-content: center; }
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -297,6 +329,21 @@
 
 <div id="toast"></div>
 <button id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<!-- Bottom navigation (mobile) -->
+<nav class="bottom-nav">
+  {% if role == 'mod' %}
+    <a class="bottom-nav-item{% if request.endpoint == 'dashboard_mod' %} active{% endif %}" href="{{ url_for('dashboard_mod') }}"><span class="bni">📋</span><span>Mod</span></a>
+    <a class="bottom-nav-item{% if request.endpoint == 'dashboard_lender' %} active{% endif %}" href="{{ url_for('dashboard_lender') }}"><span class="bni">💸</span><span>Lender</span></a>
+    <a class="bottom-nav-item{% if request.endpoint == 'dashboard_borrower' %} active{% endif %}" href="{{ url_for('dashboard_borrower') }}"><span class="bni">📥</span><span>Borrow</span></a>
+  {% elif role == 'lender' %}
+    <a class="bottom-nav-item{% if request.endpoint == 'dashboard_lender' %} active{% endif %}" href="{{ url_for('dashboard_lender') }}"><span class="bni">💸</span><span>My Loans</span></a>
+  {% else %}
+    <a class="bottom-nav-item{% if request.endpoint == 'dashboard_borrower' %} active{% endif %}" href="{{ url_for('dashboard_borrower') }}"><span class="bni">📥</span><span>My Loans</span></a>
+  {% endif %}
+  <a class="bottom-nav-item{% if request.endpoint == 'leaderboard_page' %} active{% endif %}" href="{{ url_for('leaderboard_page') }}"><span class="bni">🏆</span><span>Board</span></a>
+  <a class="bottom-nav-item{% if request.endpoint == 'change_password' %} active{% endif %}" href="{{ url_for('change_password') }}"><span class="bni">⚙</span><span>Settings</span></a>
+</nav>
 
 <script>
   // ---- Hamburger nav ----
@@ -408,18 +455,18 @@
     const isOverdue  = loan.due_date && new Date(loan.due_date) < new Date() && ['confirmed','partially_repaid'].includes(loan.status);
     const rowClass   = isOverdue ? 'row-overdue' : loan.status === 'unpaid' ? 'row-unpaid' : loan.status === 'partially_repaid' ? 'row-partial' : '';
     return `<tr class="${rowClass}">
-      <td style="width:36px"><input type="checkbox" class="loan-check" data-id="${dbId}" style="cursor:pointer"></td>
+      <td class="td-check" style="width:36px"><input type="checkbox" class="loan-check" data-id="${dbId}" style="cursor:pointer"></td>
       <td><span class="loan-id" data-id="${id}" title="Click to copy">${id}</span> ${noteIcon}</td>
       <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
       <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td class="col-optional">${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td class="col-optional ${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="td-status"><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="col-optional date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td class="col-optional" style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
       <td class="col-optional date-cell">${repaidDate}</td>
-      <td><div class="actions">
+      <td class="td-actions"><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
@@ -427,6 +474,13 @@
       </div></td>
     </tr>`;
   }
+
+  // ---- Toolbar dropdown close on outside click ----
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.toolbar-dropdown')) {
+      document.querySelectorAll('.toolbar-dropdown.open').forEach(d => d.classList.remove('open'));
+    }
+  });
 
   // ---- Compact view ----
   (function initCompact() {

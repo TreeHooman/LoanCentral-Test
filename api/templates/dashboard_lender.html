@@ -51,7 +51,7 @@
   <button class="btn-primary compact-toggle" onclick="toggleCompact()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">⊞ Compact</button>
 </div>
 
-<div class="table-wrap">
+<div class="table-wrap card-table-wrap">
   <table>
     <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th class="col-optional">Repaid</th><th class="col-optional">Remaining</th><th>Status</th><th class="col-optional">Date</th><th>Due</th><th class="col-optional">Repaid %</th><th class="col-optional">Repaid Date</th><th>Actions</th></tr></thead>
     <tbody id="loansBody"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
@@ -231,12 +231,12 @@
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td class="col-optional">${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
       <td class="col-optional ${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-      <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+      <td class="td-status"><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="col-optional date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td class="date-cell" style="${dueDateStyle(loan.due_date)}">${dueDateLabel(loan.due_date)}</td>
       <td class="col-optional" style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
       <td class="col-optional date-cell">${repaidDate}</td>
-      <td><div class="actions">
+      <td class="td-actions"><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
