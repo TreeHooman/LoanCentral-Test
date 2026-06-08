@@ -44,6 +44,7 @@ def _run_migrations():
         cur = conn.cursor()
         migrations = [
             "ALTER TABLE loans ADD COLUMN IF NOT EXISTS notes TEXT",
+            "ALTER TABLE loans ADD COLUMN IF NOT EXISTS due_date DATE",
             "CREATE INDEX IF NOT EXISTS idx_loans_lender_status ON loans(lender, status)",
             "CREATE INDEX IF NOT EXISTS idx_loans_borrower_status ON loans(borrower, status)",
             "CREATE INDEX IF NOT EXISTS idx_loans_status_date ON loans(status, date_created DESC)",
@@ -106,7 +107,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
         params.append(limit)
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated, notes
+                   currency, status, date_created, original_thread, last_updated, notes, due_date
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s
         """, params)
@@ -117,7 +118,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
-                "last_updated": r[10], "notes": r[11],
+                "last_updated": r[10], "notes": r[11], "due_date": r[12],
             }
             for r in rows
         ], None
@@ -427,6 +428,7 @@ def create_loan_api():
     currency   = (data.get("currency") or "USD").strip().upper()
     thread     = (data.get("thread_url") or "").strip() or "https://loancentral.app/dashboard"
     notes      = (data.get("notes") or "").strip() or None
+    due_date   = (data.get("due_date") or "").strip() or None
     raw_amount = data.get("amount")
     if not lender:
         return _json({"error": "Lender username is required."}, 400)
@@ -438,7 +440,7 @@ def create_loan_api():
         amount = Decimal(str(raw_amount))
     except Exception:
         return _json({"error": "Invalid amount."}, 400)
-    loan_id, error = create_loan(lender, borrower, amount, currency, thread, notes=notes)
+    loan_id, error = create_loan(lender, borrower, amount, currency, thread, notes=notes, due_date=due_date)
     if error:
         return _json({"error": error}, 400)
     return _json({"loan_id": loan_id, "ok": True}), 201
@@ -496,7 +498,7 @@ def get_loan(loan_id):
         cur = conn.cursor()
         cur.execute("""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated, notes
+                   currency, status, date_created, original_thread, last_updated, notes, due_date
             FROM loans WHERE id::text = %s OR loan_id = %s
             ORDER BY id DESC LIMIT 1
         """, (loan_id, loan_id))
@@ -508,7 +510,7 @@ def get_loan(loan_id):
             "amount": row[4], "amount_repaid": row[5], "currency": row[6],
             "status": row[7], "date_created": row[8], "original_thread": row[9],
             "remaining": Decimal(str(row[4])) - Decimal(str(row[5])),
-            "last_updated": row[10], "notes": row[11],
+            "last_updated": row[10], "notes": row[11], "due_date": row[12],
         }
         # Scope check
         if session.get("username") and session.get("role") != "mod":
@@ -601,6 +603,22 @@ def set_loan_paid(loan_id):
     if not all([lender, amount, currency]):
         return _json({"error": "lender, amount, and currency are required"}, 400)
     result, error = mark_repaid(loan_id, Decimal(str(amount)), currency, lender, actor_role="lender")
+    if error:
+        return _json({"error": error}, 400)
+    return _json(result)
+
+
+@app.route("/api/loans/<loan_id>/forgive", methods=["POST"])
+@require_auth
+def forgive_loan_endpoint(loan_id):
+    from services import forgive_loan
+    data   = request.get_json() or {}
+    lender = data.get("lender", session.get("username", "")).strip().lower()
+    if session.get("role") == "mod" and data.get("lender"):
+        lender = data["lender"].strip().lower()
+    if not lender:
+        return _json({"error": "lender is required"}, 400)
+    result, error = forgive_loan(loan_id, lender)
     if error:
         return _json({"error": error}, 400)
     return _json(result)

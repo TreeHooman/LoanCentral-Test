@@ -320,7 +320,7 @@
   function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
   function openModNewLoanModal() {
-    ['modLoanLender','modLoanBorrower','modLoanAmount','modLoanThread','modLoanNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['modLoanLender','modLoanBorrower','modLoanAmount','modLoanThread','modLoanNotes','modLoanDueDate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('modLoanCurrency').value = 'USD';
     document.getElementById('modLoanError').style.display = 'none';
     document.getElementById('modNewLoanModal').classList.add('open');
@@ -334,6 +334,7 @@
     const currency = document.getElementById('modLoanCurrency').value.trim().toUpperCase();
     const thread   = document.getElementById('modLoanThread').value.trim();
     const notes    = document.getElementById('modLoanNotes').value.trim();
+    const dueDate  = document.getElementById('modLoanDueDate').value.trim();
     const errEl    = document.getElementById('modLoanError');
     if (!lender)   { errEl.textContent = 'Lender username is required.'; errEl.style.display='block'; return; }
     if (!borrower) { errEl.textContent = 'Borrower username is required.'; errEl.style.display='block'; return; }
@@ -344,7 +345,7 @@
       // Set lender role temporarily to allow creation on behalf
       const res = await apiFetch('/api/loans', {
         method: 'POST',
-        body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined, _lender_override: lender })
+        body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined, due_date: dueDate||undefined, _lender_override: lender })
       });
       closeModal('modNewLoanModal');
       toast(`Loan ${res.loan_id} created for u/${lender}!`, 'success');
@@ -370,8 +371,16 @@
         </select>
       </div>
     </div>
-    <label>Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
-    <input type="url" id="modLoanThread" placeholder="https://reddit.com/..." />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Due Date <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+        <input type="date" id="modLoanDueDate" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px" />
+      </div>
+      <div>
+        <label>Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+        <input type="url" id="modLoanThread" placeholder="https://reddit.com/..." />
+      </div>
+    </div>
     <label>Note <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
     <input type="text" id="modLoanNotes" placeholder="Context for this loan..." maxlength="200" />
     <div class="modal-actions">

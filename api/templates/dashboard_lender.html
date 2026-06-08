@@ -240,8 +240,7 @@
   }
 
   function checkAlerts(loans) {
-    const overdue = loans.filter(l => ['confirmed','partially_repaid'].includes(l.status) &&
-      l.date_created && Math.floor((Date.now() - new Date(l.date_created)) / 86400000) > 30);
+    const overdue = loans.filter(l => isLoanOverdue(l));
     const unpaid  = loans.filter(l => l.status === 'unpaid');
     const disputed = loans.filter(l => l.status === 'disputed');
     const parts = [];
@@ -320,8 +319,12 @@
       const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
         ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
       const notesEsc = (loan.notes||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+      const isOverdue = isLoanOverdue(loan);
       const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
-      const isOverdue = ['confirmed','partially_repaid','unpaid'].includes(loan.status) && daysSince > 30;
+      const dueDateStr = loan.due_date ? loan.due_date.split('T')[0] : null;
+      const dueLabel = dueDateStr
+        ? `<div style="font-size:10px;margin-top:2px;color:${isOverdue?'var(--red)':'var(--muted)'}">Due: ${dueDateStr}${isOverdue?' ⚠':''}</div>`
+        : (isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : '');
       return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
         <td>
           <span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span>
@@ -336,11 +339,12 @@
           ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
         </td>
         <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-        <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>${isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}</td>
+        <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>${dueLabel}</td>
         <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
         <td><div class="actions">
           ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}',${remaining})">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
+          ${canPay || canUnpaid ? `<button class="btn-action" style="background:rgba(46,204,113,0.15);color:var(--green);border-color:rgba(46,204,113,0.3)" onclick="openForgiveModal('${id}','${ME}',${remaining},'${loan.currency}')">Forgive</button>` : ''}
           ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
           ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending review</span>` : ''}
         </div></td>
@@ -372,6 +376,7 @@
     document.getElementById('newLoanCurrency').value = 'USD';
     document.getElementById('newLoanThread').value = '';
     document.getElementById('newLoanNotes').value = '';
+    document.getElementById('newLoanDueDate').value = '';
     document.getElementById('newLoanError').style.display = 'none';
     document.getElementById('newLoanModal').classList.add('open');
     setTimeout(() => document.getElementById('newLoanBorrower').focus(), 100);
@@ -383,11 +388,12 @@
     const currency = document.getElementById('newLoanCurrency').value.trim().toUpperCase();
     const thread   = document.getElementById('newLoanThread').value.trim();
     const notes    = document.getElementById('newLoanNotes').value.trim();
+    const dueDate  = document.getElementById('newLoanDueDate').value.trim();
     const errEl    = document.getElementById('newLoanError');
     if (!borrower) { errEl.textContent = 'Borrower username is required.'; errEl.style.display='block'; return; }
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { errEl.textContent = 'Enter a valid amount greater than zero.'; errEl.style.display='block'; return; }
     try {
-      const res = await apiFetch('/api/loans', { method: 'POST', body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined }) });
+      const res = await apiFetch('/api/loans', { method: 'POST', body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined, due_date: dueDate||undefined }) });
       closeModal('newLoanModal');
       toast(`Loan ${res.loan_id} recorded!`, 'success');
       loadData();
@@ -485,8 +491,16 @@
         </select>
       </div>
     </div>
-    <label>Reddit Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
-    <input type="url" id="newLoanThread" placeholder="https://reddit.com/..." autocomplete="off" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Due Date <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+        <input type="date" id="newLoanDueDate" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px" />
+      </div>
+      <div>
+        <label>Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+        <input type="url" id="newLoanThread" placeholder="https://reddit.com/..." autocomplete="off" />
+      </div>
+    </div>
     <label>Note <span style="font-size:11px;color:var(--muted)">(optional — private, not posted to Reddit)</span></label>
     <input type="text" id="newLoanNotes" placeholder="e.g. For car repair, due end of month" maxlength="200" />
     <div class="modal-actions">

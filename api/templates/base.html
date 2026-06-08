@@ -361,6 +361,24 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="forgiveModal">
+  <div class="modal" style="max-width:380px">
+    <h3>Forgive Loan</h3>
+    <div class="modal-error" id="forgiveError"></div>
+    <input type="hidden" id="forgiveLoanId" />
+    <input type="hidden" id="forgiveLender" />
+    <label>Loan ID</label><input type="text" id="forgiveLoanIdDisplay" readonly style="opacity:.6" />
+    <p style="font-size:13px;color:var(--text2);line-height:1.5;margin:12px 0">
+      Write off remaining balance: <strong id="forgiveAmount" style="color:var(--green)"></strong><br>
+      <span style="font-size:12px;color:var(--muted)">Borrower's health score is <em>not</em> affected — use "Unpaid" for defaults.</span>
+    </p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('forgiveModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--green);color:#000" onclick="submitForgive()">Forgive Loan</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="resolveModal">
   <div class="modal">
     <h3>Resolve Dispute</h3>
@@ -554,6 +572,34 @@
     } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
   }
 
+  function openForgiveModal(loanId, lender, remaining, currency) {
+    document.getElementById('forgiveLoanId').value = loanId;
+    document.getElementById('forgiveLoanIdDisplay').value = loanId;
+    document.getElementById('forgiveLender').value = lender;
+    document.getElementById('forgiveAmount').textContent = parseFloat(remaining).toFixed(2) + ' ' + currency;
+    document.getElementById('forgiveError').style.display = 'none';
+    const btn = document.querySelector('#forgiveModal .btn-confirm');
+    if (btn) { btn.dataset.confirmed = ''; btn.textContent = 'Forgive Loan'; btn.style.background = ''; }
+    document.getElementById('forgiveModal').classList.add('open');
+  }
+
+  async function submitForgive() {
+    const loanId = document.getElementById('forgiveLoanId').value;
+    const lender = document.getElementById('forgiveLender').value.trim().toLowerCase();
+    const errEl  = document.getElementById('forgiveError');
+    const btn = document.querySelector('#forgiveModal .btn-confirm');
+    if (btn.dataset.confirmed !== 'yes') {
+      btn.textContent = 'Confirm Forgive'; btn.dataset.confirmed = 'yes';
+      btn.style.background = 'var(--yellow)'; btn.style.color = '#000'; return;
+    }
+    btn.dataset.confirmed = '';
+    try {
+      await apiFetch(`/api/loans/${loanId}/forgive`, { method: 'POST', body: JSON.stringify({ lender }) });
+      closeModal('forgiveModal'); toast('Loan forgiven — balance written off.', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
   function openResolveModal(loanId, lender, borrower) {
     document.getElementById('resolveLoanId').value = loanId;
     document.getElementById('resolveLoanIdDisplay').value = loanId;
@@ -591,7 +637,7 @@
 
   function exportCSV(rows, filename) {
     if (!rows || !rows.length) { toast('No data to export.', 'error'); return; }
-    const cols = ['loan_id','lender','borrower','amount','amount_repaid','currency','status','date_created','notes'];
+    const cols = ['loan_id','lender','borrower','amount','amount_repaid','currency','status','date_created','due_date','notes'];
     const header = cols.join(',');
     const body = rows.map(r => cols.map(c => {
       const v = r[c] ?? '';
@@ -762,7 +808,7 @@
           <div style="font-size:11px;color:var(--muted);margin-top:4px">${repayPct}% repaid</div>
         </div>` : `<div style="background:rgba(46,204,113,0.08);border:1px solid rgba(46,204,113,0.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--green)">✓ Fully settled</div>`}
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px">
-          <span>Created: ${(loan.date_created||'').split('T')[0]}</span>
+          <span>Created: ${(loan.date_created||'').split('T')[0]}${loan.due_date ? ` · Due: <strong style="color:${new Date(loan.due_date)<new Date()&&remaining>0?'var(--red)':'var(--text2)'}">${loan.due_date.split('T')[0]}</strong>` : ''}</span>
           <span>${thread}</span>
         </div>
         ${loan.notes ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--text2);margin-top:8px"><span style="color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:0.3px">Note: </span>${loan.notes}</div>` : ''}
@@ -777,19 +823,32 @@
     }
   }
 
+  function isLoanOverdue(loan) {
+    const active = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+    if (!active) return false;
+    if (loan.due_date) return new Date(loan.due_date) < new Date();
+    const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
+    return daysSince > 30;
+  }
+
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
     const canPay     = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canUnpaid  = ['confirmed','partially_repaid'].includes(loan.status);
+    const canForgive = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canRefund  = !['repaid','refunded','disputed'].includes(loan.status);
     const isDisputed = loan.status === 'disputed';
     const isMod      = typeof window.IS_MOD !== 'undefined';
     const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
       ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
     const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
-    const isOverdue = ['confirmed','partially_repaid','unpaid'].includes(loan.status) && daysSince > 30;
+    const isOverdue = isLoanOverdue(loan);
     const notesEsc = (loan.notes||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    const dueDateStr = loan.due_date ? loan.due_date.split('T')[0] : null;
+    const dueLabel = dueDateStr
+      ? `<div style="font-size:10px;margin-top:2px;color:${isOverdue?'var(--red)':'var(--muted)'}">Due: ${dueDateStr}${isOverdue?' ⚠':''}</div>`
+      : (isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : '');
     return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
       <td>
         <span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span>
@@ -806,12 +865,13 @@
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td>
         <span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>
-        ${isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}
+        ${dueLabel}
       </td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}',${remaining})">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
+        ${canForgive ? `<button class="btn-action" style="background:rgba(46,204,113,0.15);color:var(--green);border-color:rgba(46,204,113,0.3)" onclick="openForgiveModal('${id}','${loan.lender}',${remaining},'${loan.currency}')">Forgive</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
         ${isDisputed && isMod ? `<button class="btn-action btn-resolve-unpaid" onclick="openResolveModal('${id}','${loan.lender}','${loan.borrower}')">Resolve</button>` : ''}
       </div></td>

@@ -123,11 +123,15 @@
         apiFetch(`/api/loans?borrower=${ME}&status=partially_repaid&limit=50`),
         apiFetch(`/api/loans?borrower=${ME}&status=unpaid&limit=50`),
       ]);
-      // Sort: unpaid first, then partially_repaid, then confirmed; within each by date asc
-      const statusOrder = { unpaid: 0, partially_repaid: 1, confirmed: 2 };
+      // Sort: overdue first, then unpaid, then partially_repaid, then confirmed; within each by due_date/date asc
+      const statusOrder = { unpaid: 1, partially_repaid: 2, confirmed: 3 };
       owingLoans = [...loans, ...partial, ...unpaid].sort((a,b) => {
-        const so = (statusOrder[a.status]||0) - (statusOrder[b.status]||0);
-        return so !== 0 ? so : new Date(a.date_created) - new Date(b.date_created);
+        const ao = isLoanOverdue(a) ? 0 : statusOrder[a.status]||9;
+        const bo = isLoanOverdue(b) ? 0 : statusOrder[b.status]||9;
+        if (ao !== bo) return ao - bo;
+        const ad = a.due_date ? new Date(a.due_date) : new Date(a.date_created);
+        const bd = b.due_date ? new Date(b.due_date) : new Date(b.date_created);
+        return ad - bd;
       });
       const countEl = document.getElementById('owingCount');
       if (countEl) countEl.textContent = owingLoans.length > 0 ? `(${owingLoans.length})` : '';
@@ -143,8 +147,12 @@
         currTotals[c] = (currTotals[c] || 0) + owe;
         const id = loan.loan_id || loan.db_id;
         const canDispute = ['confirmed','partially_repaid'].includes(loan.status);
+        const isOverdue = isLoanOverdue(loan);
         const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
-        const isOverdue = loan.status === 'unpaid' || (daysSince > 30 && loan.status !== 'repaid');
+        const dueDateStr = loan.due_date ? loan.due_date.split('T')[0] : null;
+        const dueLabel = dueDateStr
+          ? `<div style="font-size:10px;margin-top:2px;color:${isOverdue?'var(--red)':'var(--muted)'}">Due: ${dueDateStr}${isOverdue?' ⚠':''}</div>`
+          : (isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : '');
         return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
           <td><span class="loan-id" style="cursor:pointer" onclick="openLoanModal('${id}')" title="View details">${id}</span></td>
           <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
@@ -156,7 +164,7 @@
           <td style="font-weight:600;color:var(--orange)">${owe.toFixed(2)} ${loan.currency}</td>
           <td>
             <span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>
-            ${isOverdue && daysSince > 0 ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}
+            ${dueLabel}
           </td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
           <td><div class="actions">

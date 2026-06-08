@@ -37,7 +37,7 @@ def _generate_loan_id():
 # Loan Services
 # ---------------------------------------------------------------------------
 
-def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str, notes: str = None):
+def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str, notes: str = None, due_date=None):
     """
     Confirm and save a new loan to the database.
     Returns (loan_db_id, error_message).
@@ -71,10 +71,10 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         cur.execute('''
             INSERT INTO loans
-            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status, notes, due_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed', notes or None))
+        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed', notes or None, due_date or None))
 
         db_id = cur.fetchone()[0]
 
@@ -511,7 +511,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated, notes
+                   currency, status, date_created, original_thread, last_updated, notes, due_date
             FROM loans {where}
             ORDER BY date_created DESC
             LIMIT %s
@@ -532,6 +532,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 "original_thread": r[9],
                 "last_updated": r[10],
                 "notes": r[11],
+                "due_date": r[12],
             }
             for r in rows
         ]
@@ -558,7 +559,7 @@ def get_active_loans(username: str):
         cur = conn.cursor()
         cur.execute('''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, due_date
             FROM loans
             WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
             ORDER BY date_created ASC
@@ -578,6 +579,7 @@ def get_active_loans(username: str):
                 "status": r[7],
                 "date_created": r[8],
                 "original_thread": r[9],
+                "due_date": r[10],
             }
             for r in rows
         ]
@@ -586,6 +588,49 @@ def get_active_loans(username: str):
     except Exception as e:
         logger.error(f"get_active_loans error: {e}", exc_info=True)
         return None, "Database error fetching active loans."
+    finally:
+        cur.close()
+        conn.close()
+
+
+def forgive_loan(loan_id: str, lender: str):
+    """
+    Lender writes off remaining balance without penalizing the borrower.
+    Marks loan as repaid; borrower health/stats are NOT updated negatively.
+    Returns (result_dict, error_message)
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, borrower, amount, amount_repaid, currency, status
+            FROM loans
+            WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+            ORDER BY id DESC LIMIT 1
+        """, (loan_id, loan_id, lender))
+        row = cur.fetchone()
+        if not row:
+            return None, f"Loan {loan_id} not found in your loans."
+        db_id, public_id, borrower, amount, repaid, currency, status = row
+        if status in ('repaid', 'refunded'):
+            return None, f"Loan {public_id} is already closed (status: {status})."
+        remaining = float(amount) - float(repaid)
+        cur.execute("""
+            UPDATE loans SET amount_repaid = amount, status = 'repaid', last_updated = %s
+            WHERE id = %s
+        """, (datetime.now(), db_id))
+        conn.commit()
+        logger.info(f"forgive_loan: {lender} forgave {remaining:.2f} {currency} on loan {public_id} for {borrower}")
+        return {
+            "loan_id": public_id, "lender": lender, "borrower": borrower,
+            "forgiven": remaining, "currency": currency,
+        }, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"forgive_loan error: {e}", exc_info=True)
+        return None, "Database error while forgiving loan."
     finally:
         cur.close()
         conn.close()
