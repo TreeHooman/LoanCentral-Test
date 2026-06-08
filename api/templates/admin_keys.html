@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Key Management - LoanCentral Admin{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:20px">Lender Key Management</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }} — admin</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn-secondary" onclick="loadKeys()">Refresh</button>
+    <button class="btn-primary" onclick="openCreateModal()">Create Key</button>
+  </div>
+</div>
+
+<div class="callout" style="margin-bottom:18px">
+  <strong>How keys work:</strong> Create a key for a lender's Reddit username. The key is shown <strong>once</strong> — copy it and send it to them via Reddit DM. They visit
+  <code>/auth/key?k=&lt;key&gt;</code> to log in. Keys can be revoked any time.
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Label</th>
+        <th>Status</th>
+        <th>Created By</th>
+        <th>Created</th>
+        <th>Last Used</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="keysBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Create key modal -->
+<div class="modal-overlay" id="createKeyModal">
+  <div class="modal">
+    <h3>Create Lender Key</h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">The key will be shown <strong>once</strong>. Copy it immediately — it cannot be retrieved again.</p>
+    <div class="modal-error" id="createKeyError"></div>
+    <label>Reddit Username <span style="color:var(--red)">*</span></label>
+    <input type="text" id="ckUsername" placeholder="e.g. logistix1" autocomplete="off" />
+    <label>Label <span style="color:var(--muted);font-weight:400;font-size:11px">optional — helps you remember who this is for</span></label>
+    <input type="text" id="ckLabel" placeholder="e.g. Primary lender key" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('createKeyModal')">Cancel</button>
+      <button class="btn-confirm" id="createKeyBtn" onclick="submitCreateKey()">Generate Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- Show new key modal -->
+<div class="modal-overlay" id="showKeyModal">
+  <div class="modal">
+    <h3>Key Created — Copy Now</h3>
+    <p style="color:var(--red);font-size:13px;font-weight:600;margin-bottom:12px">This key will NOT be shown again. Copy it before closing.</p>
+    <div id="newKeyDisplay" style="
+      background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+      padding:14px;font-family:monospace;font-size:13px;word-break:break-all;
+      color:var(--accent-h);margin-bottom:14px;user-select:all;cursor:text;
+    "></div>
+    <div id="newKeyLoginUrl" style="color:var(--muted);font-size:12px;word-break:break-all;margin-bottom:16px"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="copyNewKey()">Copy Key</button>
+      <button class="btn-confirm" onclick="closeModal('showKeyModal');loadKeys()">Done</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const BASE_URL = window.location.origin;
+
+  document.addEventListener('DOMContentLoaded', loadKeys);
+
+  async function loadKeys() {
+    const tbody = document.getElementById('keysBody');
+    try {
+      const keys = await apiFetch('/api/admin/keys');
+      if (!keys.length) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>No keys yet</h3><p>Create a key to give a lender dashboard access.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = keys.map(k => `
+        <tr style="${!k.active ? 'opacity:0.45' : ''}">
+          <td data-label="ID" style="color:var(--muted);font-size:12px">#${k.id}</td>
+          <td data-label="Username" class="username"><a class="profile-link" href="/dashboard/users/${encodeURIComponent(k.username)}">u/${escapeHtml(k.username)}</a></td>
+          <td data-label="Label" style="color:var(--muted);font-size:13px">${escapeHtml(k.label || '—')}</td>
+          <td data-label="Status"><span class="badge ${k.active ? 'badge-repaid' : 'badge-unpaid'}">${k.active ? 'Active' : 'Revoked'}</span></td>
+          <td data-label="Created By" style="font-size:12px;color:var(--muted)">u/${escapeHtml(k.created_by)}</td>
+          <td data-label="Created" class="date-cell">${fmtDate(k.created_at)}</td>
+          <td data-label="Last Used" class="date-cell">${k.last_used ? fmtDate(k.last_used) : '<span style="color:var(--muted)">Never</span>'}</td>
+          <td data-label="Actions">
+            ${k.active
+              ? `<button class="btn-action btn-unpaid" onclick="revokeKey(${k.id},'${escapeHtml(k.username)}')">Revoke</button>`
+              : '<span style="color:var(--muted);font-size:12px">Revoked ${fmtDate(k.revoked_at)}</span>'}
+            <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoginUrl('${escapeHtml(k.username)}')">Copy URL</button>
+          </td>
+        </tr>`).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function openCreateModal() {
+    document.getElementById('ckUsername').value = '';
+    document.getElementById('ckLabel').value = '';
+    document.getElementById('createKeyError').style.display = 'none';
+    document.getElementById('createKeyModal').classList.add('open');
+    setTimeout(() => document.getElementById('ckUsername').focus(), 100);
+  }
+
+  async function submitCreateKey() {
+    const username = document.getElementById('ckUsername').value.trim().toLowerCase();
+    const label = document.getElementById('ckLabel').value.trim();
+    const errEl = document.getElementById('createKeyError');
+    const btn = document.getElementById('createKeyBtn');
+    if (!username) { errEl.textContent = 'Username is required.'; errEl.style.display = 'block'; return; }
+    btn.disabled = true; btn.textContent = 'Generating…';
+    errEl.style.display = 'none';
+    try {
+      const result = await apiFetch('/api/admin/keys', {
+        method: 'POST',
+        body: JSON.stringify({ username, label })
+      });
+      closeModal('createKeyModal');
+      document.getElementById('newKeyDisplay').textContent = result.key;
+      const loginUrl = `${BASE_URL}/auth/key?k=${encodeURIComponent(result.key)}`;
+      document.getElementById('newKeyLoginUrl').innerHTML =
+        `Login URL for u/${escapeHtml(result.username)}:<br><strong>${escapeHtml(loginUrl)}</strong>`;
+      document.getElementById('showKeyModal').classList.add('open');
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Generate Key';
+    }
+  }
+
+  function copyNewKey() {
+    const key = document.getElementById('newKeyDisplay').textContent;
+    navigator.clipboard.writeText(key).then(() => toast('Key copied.', 'success'));
+  }
+
+  function copyLoginUrl(username) {
+    // We don't store the plaintext — just give admin the base URL to send
+    const msg = `To log into LoanCentral, visit: ${BASE_URL}/auth/key?k=YOUR_KEY\n\n(Replace YOUR_KEY with the key you were given.)`;
+    navigator.clipboard.writeText(msg).then(() => toast('Login instructions copied.', 'success'));
+  }
+
+  async function revokeKey(id, username) {
+    if (!confirm(`Revoke this key for u/${username}? They will be locked out immediately.`)) return;
+    try {
+      await apiFetch(`/api/admin/keys/${id}/revoke`, { method: 'POST' });
+      toast(`Key #${id} revoked.`, 'success');
+      loadKeys();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  function escapeHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+</script>
+{% endblock %}

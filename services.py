@@ -838,6 +838,121 @@ def mark_refunded_by_id(loan_id: str, lender: str):
 # User Services
 # ---------------------------------------------------------------------------
 
+def _key_hash(plaintext: str) -> str:
+    import hashlib
+    return hashlib.sha256(plaintext.encode()).hexdigest()
+
+
+def create_lender_key(username: str, created_by: str, label: str = ""):
+    """Generate a new lender key. Returns (plaintext_key, error). Plaintext shown once — only hash stored."""
+    import secrets as _secrets
+    plaintext = "LC-" + _secrets.token_hex(24)
+    hashed = _key_hash(plaintext)
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO lender_keys (username, key_hash, label, created_by)
+            VALUES (%s, %s, %s, %s) RETURNING id
+        """, (username.lower(), hashed, label or None, created_by.lower()))
+        conn.commit()
+        cur.close()
+        return plaintext, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"create_lender_key error: {e}")
+        return None, str(e)
+    finally:
+        conn.close()
+
+
+def validate_lender_key(plaintext: str):
+    """Validate a key. Returns (username, error) — username is None if invalid."""
+    hashed = _key_hash(plaintext)
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT username FROM lender_keys
+            WHERE key_hash = %s AND active = TRUE
+        """, (hashed,))
+        row = cur.fetchone()
+        if not row:
+            return None, "Invalid or revoked key"
+        username = row[0]
+        cur.execute("UPDATE lender_keys SET last_used = NOW() WHERE key_hash = %s", (hashed,))
+        conn.commit()
+        cur.close()
+        return username, None
+    except Exception as e:
+        logger.error(f"validate_lender_key error: {e}")
+        return None, str(e)
+    finally:
+        conn.close()
+
+
+def list_lender_keys(username: str = None):
+    """List all keys (optionally filtered by username). Returns (rows, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        cur = conn.cursor()
+        if username:
+            cur.execute("""
+                SELECT id, username, label, active, created_by, created_at, last_used, revoked_at
+                FROM lender_keys WHERE username = %s ORDER BY created_at DESC
+            """, (username.lower(),))
+        else:
+            cur.execute("""
+                SELECT id, username, label, active, created_by, created_at, last_used, revoked_at
+                FROM lender_keys ORDER BY created_at DESC
+            """)
+        rows = cur.fetchall()
+        cur.close()
+        return [
+            {
+                "id": r[0], "username": r[1], "label": r[2] or "",
+                "active": r[3], "created_by": r[4],
+                "created_at": r[5].isoformat() if r[5] else None,
+                "last_used": r[6].isoformat() if r[6] else None,
+                "revoked_at": r[7].isoformat() if r[7] else None,
+            }
+            for r in rows
+        ], None
+    except Exception as e:
+        logger.error(f"list_lender_keys error: {e}")
+        return [], str(e)
+    finally:
+        conn.close()
+
+
+def revoke_lender_key(key_id: int):
+    """Revoke a key by its DB id. Returns (ok, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE lender_keys SET active = FALSE, revoked_at = NOW()
+            WHERE id = %s
+        """, (key_id,))
+        conn.commit()
+        cur.close()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"revoke_lender_key error: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
+
 def get_user_profile(username: str):
     """
     Get loan stats for a user.

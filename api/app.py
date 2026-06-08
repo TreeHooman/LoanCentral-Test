@@ -403,6 +403,73 @@ def home():
     return redirect(url_for("dashboard_borrower"))
 
 
+@app.route("/auth/key")
+def auth_key():
+    """Log in with a lender API key. GET /auth/key?k=<key>"""
+    from services import validate_lender_key, get_user_role
+    key = request.args.get("k", "").strip()
+    if not key:
+        flash("No key provided.", "error")
+        return redirect(url_for("login"))
+    username, error = validate_lender_key(key)
+    if error or not username:
+        flash("Invalid or revoked key. Contact your admin.", "error")
+        return redirect(url_for("login"))
+    role, _ = get_user_role(username)
+    session["username"] = username
+    session["role"] = role or "lender"
+    session["auth_method"] = "key"
+    return redirect(url_for("home"))
+
+
+@app.route("/dashboard/admin/keys")
+@role_required("admin")
+def admin_keys_page():
+    return render_template("admin_keys.html", username=session.get("username"))
+
+
+@app.route("/api/admin/keys", methods=["GET"])
+@role_required("admin")
+def api_list_keys():
+    from services import list_lender_keys
+    username_filter = request.args.get("username")
+    rows, error = list_lender_keys(username=username_filter)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(rows)
+
+
+@app.route("/api/admin/keys", methods=["POST"])
+@role_required("admin")
+def api_create_key():
+    from services import create_lender_key, set_user_role
+    data = request.get_json() or {}
+    username = (data.get("username") or "").strip().lower()
+    label = (data.get("label") or "").strip()
+    if not username:
+        return _json({"error": "username is required"}, 400)
+    # Ensure user has at least lender role
+    set_user_role(username, "lender")
+    plaintext, error = create_lender_key(
+        username=username,
+        created_by=session.get("username", "admin"),
+        label=label
+    )
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "key": plaintext, "username": username})
+
+
+@app.route("/api/admin/keys/<int:key_id>/revoke", methods=["POST"])
+@role_required("admin")
+def api_revoke_key(key_id):
+    from services import revoke_lender_key
+    ok, error = revoke_lender_key(key_id)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True})
+
+
 @app.route("/terms")
 def terms():
     return render_template("terms.html")

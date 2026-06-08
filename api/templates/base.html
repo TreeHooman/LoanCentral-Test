@@ -398,6 +398,7 @@
     {% if role in ['mod', 'admin'] %}
       {% if role == 'admin' %}
       <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Admin View</a>
+      <a class="nav-link {% if request.endpoint == 'admin_keys_page' %}active{% endif %}" href="{{ url_for('admin_keys_page') }}">🔑 Keys</a>
       {% endif %}
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>

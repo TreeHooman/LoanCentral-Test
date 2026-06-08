@@ -69,6 +69,18 @@
       </div>
     {% endif %}
 
+    <div class="divider"><hr><span>or</span><hr></div>
+    <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
+      <input type="text" id="keyInput" placeholder="Lender key (LC-...)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
+        autocomplete="off" spellcheck="false" />
+      <button type="submit"
+        style="width:100%;padding:11px;background:rgba(91,110,245,0.15);border:1px solid rgba(91,110,245,0.35);border-radius:8px;color:var(--accent-h);font-size:14px;font-weight:600;cursor:pointer">
+        Login with Key
+      </button>
+      <div id="keyError" style="display:none;color:var(--red);font-size:12px;text-align:center"></div>
+    </form>
+
     {% if is_dev %}
       <div class="divider"><hr><span>dev only</span><hr></div>
       <a class="btn-dev" href="/auth/dev-login">
@@ -83,5 +95,15 @@
     </div>
   </div>
 </div>
+<script>
+  function submitKey(e) {
+    e.preventDefault();
+    const key = document.getElementById('keyInput').value.trim();
+    const errEl = document.getElementById('keyError');
+    if (!key) { errEl.textContent = 'Enter your key.'; errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+    window.location.href = '/auth/key?k=' + encodeURIComponent(key);
+  }
+</script>
 </body>
 </html>
