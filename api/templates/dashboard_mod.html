@@ -48,6 +48,7 @@
     <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/export.csv">⬇ Export CSV</a>
     <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid var(--green);color:var(--green)" onclick="sendReminders()" id="remindersBtn">📲 Send Reminders</button>
     <button class="btn-primary" style="background:rgba(231,76,60,0.12);border:1px solid var(--red);color:var(--red)" onclick="showTab('bans')">🔨 Bans</button>
+    <button class="btn-primary compact-toggle" onclick="toggleCompact()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">⊞ Compact</button>
     <div class="user-lookup-wrap">
       <input type="text" id="userLookupInput" placeholder="Look up user…"
              style="background:var(--bg);border:1px solid var(--border);border-right:none;color:var(--text);padding:6px 10px;border-radius:6px 0 0 6px;font-size:13px;outline:none"
@@ -82,7 +83,7 @@
 
   <div class="table-wrap">
     <table>
-      <thead><tr><th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="cursor:pointer"></th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+      <thead><tr><th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" style="cursor:pointer"></th><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th class="col-optional">Repaid</th><th class="col-optional">Remaining</th><th>Status</th><th class="col-optional">Date</th><th class="col-optional">Repaid %</th><th class="col-optional">Repaid Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>

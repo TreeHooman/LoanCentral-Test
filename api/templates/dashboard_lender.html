@@ -48,11 +48,12 @@
   <button class="btn-primary" id="sortBtn" onclick="toggleSort()" title="Toggle sort order">📅 Due Date</button>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
   <a class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none" href="/api/loans/my-export.csv">⬇ Export CSV</a>
+  <button class="btn-primary compact-toggle" onclick="toggleCompact()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">⊞ Compact</button>
 </div>
 
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Due</th><th>Repaid %</th><th>Repaid Date</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th class="col-optional">Repaid</th><th class="col-optional">Remaining</th><th>Status</th><th class="col-optional">Date</th><th>Due</th><th class="col-optional">Repaid %</th><th class="col-optional">Repaid Date</th><th>Actions</th></tr></thead>
     <tbody id="loansBody"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
@@ -222,17 +223,19 @@
     const thread    = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
     const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
     const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
-    return `<tr>
-      <td><span class="loan-id">${id}</span></td>
+    const isOverdue  = loan.due_date && new Date(loan.due_date) < new Date() && ['confirmed','partially_repaid'].includes(loan.status);
+    const rowClass   = isOverdue ? 'row-overdue' : loan.status === 'unpaid' ? 'row-unpaid' : loan.status === 'partially_repaid' ? 'row-partial' : '';
+    return `<tr class="${rowClass}">
+      <td><span class="loan-id" data-id="${id}" title="Click to copy">${id}</span></td>
       <td class="username"><a href="/u/${loan.borrower}" style="color:var(--accent-h)">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-      <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+      <td class="col-optional">${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td class="col-optional ${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-      <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td class="col-optional date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td class="date-cell" style="${dueDateStyle(loan.due_date)}">${dueDateLabel(loan.due_date)}</td>
-      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
-      <td class="date-cell">${repaidDate}</td>
+      <td class="col-optional" style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="col-optional date-cell">${repaidDate}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}

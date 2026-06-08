@@ -178,6 +178,24 @@
       main { padding: 8px; }
       .section-title { font-size: 14px; }
     }
+    /* COMPACT MODE */
+    body.compact .col-optional { display: none !important; }
+    body.compact th, body.compact td { padding: 6px 8px !important; font-size: 12px; }
+    body.compact .btn-action { padding: 4px 8px; font-size: 11px; min-height: 28px; }
+    body.compact .badge { padding: 2px 5px; font-size: 10px; }
+    body.compact table { min-width: 360px !important; }
+    body.compact .stat-value { font-size: 18px; }
+    /* Loan ID copy hint */
+    .loan-id { cursor: pointer; user-select: none; }
+    .loan-id:hover { text-decoration: underline dotted; }
+    /* Row tinting by status */
+    tr.row-unpaid td { background: rgba(231,76,60,0.05) !important; }
+    tr.row-overdue td { background: rgba(231,76,60,0.09) !important; }
+    tr.row-partial td { background: rgba(241,196,15,0.04) !important; }
+    /* Back to top */
+    #backToTop { display: none; position: fixed; bottom: 72px; right: 20px; width: 40px; height: 40px; border-radius: 50%; background: var(--accent); border: none; color: #fff; font-size: 18px; cursor: pointer; z-index: 250; box-shadow: 0 4px 14px rgba(91,110,245,0.4); align-items: center; justify-content: center; }
+    #backToTop:hover { background: var(--accent-h); }
+    @media (max-width: 768px) { #backToTop { bottom: 64px; right: 14px; width: 36px; height: 36px; font-size: 16px; } }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -278,6 +296,7 @@
 </div>
 
 <div id="toast"></div>
+<button id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
 
 <script>
   // ---- Hamburger nav ----
@@ -386,18 +405,20 @@
     const repaidPct  = loan.repaid_pct != null ? loan.repaid_pct.toFixed(1) + '%' : '—';
     const repaidDate = loan.date_repaid ? fmtDate(loan.date_repaid) : '—';
     const noteIcon   = loan.notes ? `<span title="${loan.notes.replace(/"/g,'&quot;')}" style="color:var(--yellow);cursor:help">📝</span> ` : '';
-    return `<tr>
+    const isOverdue  = loan.due_date && new Date(loan.due_date) < new Date() && ['confirmed','partially_repaid'].includes(loan.status);
+    const rowClass   = isOverdue ? 'row-overdue' : loan.status === 'unpaid' ? 'row-unpaid' : loan.status === 'partially_repaid' ? 'row-partial' : '';
+    return `<tr class="${rowClass}">
       <td style="width:36px"><input type="checkbox" class="loan-check" data-id="${dbId}" style="cursor:pointer"></td>
-      <td><span class="loan-id">${id}</span> ${noteIcon}</td>
+      <td><span class="loan-id" data-id="${id}" title="Click to copy">${id}</span> ${noteIcon}</td>
       <td class="username"><a href="/u/${loan.lender}">u/${loan.lender}</a></td>
       <td class="username"><a href="/u/${loan.borrower}">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-      <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+      <td class="col-optional">${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td class="col-optional ${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-      <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
-      <td style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
-      <td class="date-cell">${repaidDate}</td>
+      <td class="col-optional date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+      <td class="col-optional" style="color:${loan.repaid_pct>=100?'var(--green)':loan.repaid_pct>0?'var(--yellow)':'var(--muted)'}">${repaidPct}</td>
+      <td class="col-optional date-cell">${repaidDate}</td>
       <td><div class="actions">
         ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
@@ -406,6 +427,68 @@
       </div></td>
     </tr>`;
   }
+
+  // ---- Compact view ----
+  (function initCompact() {
+    const saved = localStorage.getItem('lcCompact');
+    if (saved === '1' || (saved === null && window.innerWidth < 600)) {
+      document.body.classList.add('compact');
+    }
+  })();
+  function updateCompactBtns() {
+    const on = document.body.classList.contains('compact');
+    document.querySelectorAll('.compact-toggle').forEach(b => {
+      b.textContent = on ? '⊟ Full View' : '⊞ Compact';
+    });
+  }
+  function toggleCompact() {
+    const on = document.body.classList.toggle('compact');
+    localStorage.setItem('lcCompact', on ? '1' : '0');
+    updateCompactBtns();
+  }
+  document.addEventListener('DOMContentLoaded', updateCompactBtns);
+
+  // ---- Back to top ----
+  window.addEventListener('scroll', function() {
+    const btn = document.getElementById('backToTop');
+    if (btn) btn.style.display = window.scrollY > 300 ? 'flex' : 'none';
+  }, { passive: true });
+
+  // ---- Tap-to-copy loan IDs ----
+  document.addEventListener('click', function(e) {
+    const el = e.target.closest('.loan-id');
+    if (!el) return;
+    const id = el.dataset.id || el.textContent.trim();
+    navigator.clipboard?.writeText(id).then(() => toast('Copied: ' + id, 'success')).catch(() => {});
+  });
+
+  // ---- Keyboard shortcuts ----
+  document.addEventListener('keydown', function(e) {
+    if (e.key === '/' && !e.target.matches('input,textarea,select,[contenteditable]')) {
+      const s = document.getElementById('searchInput');
+      if (s) { e.preventDefault(); s.focus(); s.select(); }
+    }
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      const menu = document.getElementById('navMobileMenu');
+      if (menu) menu.classList.remove('open');
+    }
+  });
+
+  // ---- Auto-focus first input when any modal opens ----
+  document.addEventListener('DOMContentLoaded', function() {
+    const obs = new MutationObserver(mutations => {
+      mutations.forEach(({ target, attributeName }) => {
+        if (attributeName === 'class' && target.classList.contains('open') && target.classList.contains('modal-overlay')) {
+          setTimeout(() => {
+            const inp = target.querySelector('input:not([readonly]):not([type=hidden]):not([disabled]), textarea');
+            if (inp) inp.focus();
+          }, 60);
+        }
+      });
+    });
+    document.querySelectorAll('.modal-overlay').forEach(m => obs.observe(m, { attributes: true }));
+  });
 </script>
 {% block scripts %}{% endblock %}
 </body>
