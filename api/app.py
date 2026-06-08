@@ -470,6 +470,149 @@ def api_revoke_key(key_id):
     return _json({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# Borrower OTP helpers
+# ---------------------------------------------------------------------------
+
+def _send_otp_email(to_address: str, code: str):
+    import smtplib
+    from email.message import EmailMessage
+    host = os.getenv("SMTP_HOST", "")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "")
+    pw   = os.getenv("SMTP_PASS", "")
+    frm  = os.getenv("SMTP_FROM", user)
+    if not host:
+        raise RuntimeError("SMTP_HOST not configured.")
+    msg = EmailMessage()
+    msg["Subject"] = f"LoanCentral login code: {code}"
+    msg["From"]    = frm
+    msg["To"]      = to_address
+    msg.set_content(
+        f"Your LoanCentral login code is:\n\n  {code}\n\n"
+        "It expires in 10 minutes. If you didn't request this, ignore it."
+    )
+    with smtplib.SMTP(host, port) as s:
+        s.starttls()
+        if user:
+            s.login(user, pw)
+        s.send_message(msg)
+
+
+def _send_otp_sms(to_number: str, code: str):
+    sid   = os.getenv("TWILIO_ACCOUNT_SID", "")
+    token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    frm   = os.getenv("TWILIO_FROM_NUMBER", "")
+    if not sid or not token or not frm:
+        raise RuntimeError("Twilio credentials not configured.")
+    try:
+        from twilio.rest import Client
+    except ImportError:
+        raise RuntimeError("twilio package not installed. Add it to requirements.txt.")
+    client = Client(sid, token)
+    client.messages.create(
+        body=f"Your LoanCentral login code is {code}. Expires in 10 min.",
+        from_=frm,
+        to=to_number,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Borrower auth routes
+# ---------------------------------------------------------------------------
+
+@app.route("/login/borrower")
+def borrower_login_page():
+    return render_template("login_borrower.html")
+
+
+@app.route("/api/auth/borrower/claim", methods=["POST"])
+def api_borrower_claim():
+    """Step 1: verify username+loan_id, send OTP to chosen contact."""
+    from services import (verify_borrower_loan_claim, get_borrower_contact,
+                          create_borrower_otp, set_borrower_contact)
+    data = request.get_json(silent=True) or {}
+    username  = (data.get("username") or "").strip().lower()
+    loan_id   = (data.get("loan_id") or "").strip()
+    via       = (data.get("via") or "email").strip()          # 'email' | 'sms'
+    new_email = (data.get("new_email") or "").strip() or None
+    new_phone = (data.get("new_phone") or "").strip() or None
+
+    if not username or not loan_id:
+        return _json({"error": "Username and loan ID are required."}, 400)
+
+    matched, err = verify_borrower_loan_claim(username, loan_id)
+    if err:
+        return _json({"error": err}, 500)
+    if not matched:
+        return _json({"error": "No loan found for that username and loan ID."}, 400)
+
+    # Allow borrower to register contact info on first claim
+    if new_email or new_phone:
+        set_borrower_contact(username, contact_email=new_email, contact_phone=new_phone)
+
+    email, phone = get_borrower_contact(username)
+
+    if via == "sms":
+        contact = phone
+        if not contact:
+            return _json({"error": "No phone number on file. Please provide one."}, 400)
+    else:
+        contact = email
+        if not contact:
+            return _json({"error": "No email address on file. Please provide one."}, 400)
+
+    code, err = create_borrower_otp(username, contact, via)
+    if err:
+        return _json({"error": err}, 500)
+
+    try:
+        if via == "sms":
+            _send_otp_sms(contact, code)
+        else:
+            _send_otp_email(contact, code)
+    except Exception as e:
+        logger.error(f"OTP send failed: {e}", exc_info=True)
+        return _json({"error": f"Failed to send code: {e}"}, 500)
+
+    masked = contact[:2] + "***" + contact[-4:] if len(contact) > 6 else "***"
+    return _json({"ok": True, "masked": masked, "via": via})
+
+
+@app.route("/api/auth/borrower/verify", methods=["POST"])
+def api_borrower_verify():
+    """Step 2: verify OTP, set session."""
+    from services import verify_borrower_otp, get_user_role, update_last_login
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
+    code     = (data.get("code") or "").strip()
+    if not username or not code:
+        return _json({"error": "Username and code are required."}, 400)
+    ok, err = verify_borrower_otp(username, code)
+    if not ok:
+        return _json({"error": err or "Invalid code."}, 400)
+    role, _ = get_user_role(username)
+    session.permanent = True
+    session["username"]    = username
+    session["role"]        = role or "borrower"
+    session["auth_method"] = "otp"
+    update_last_login(username)
+    return _json({"ok": True, "redirect": url_for("home")})
+
+
+@app.route("/api/admin/borrower-contact/<username>", methods=["POST"])
+@role_required("mod")
+def api_set_borrower_contact(username):
+    from services import set_borrower_contact
+    data  = request.get_json(silent=True) or {}
+    email = (data.get("contact_email") or "").strip() or None
+    phone = (data.get("contact_phone") or "").strip() or None
+    ok, err = set_borrower_contact(username, contact_email=email, contact_phone=phone)
+    if not ok:
+        return _json({"error": err}, 500)
+    return _json({"ok": True})
+
+
 @app.route("/api/admin/integrity")
 @role_required("mod")
 def api_integrity_checks():
@@ -671,10 +814,14 @@ def list_roles():
         return _json({"error": "Database connection failed"}, 500)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT username, role, subscription_status, last_login FROM user_roles ORDER BY role, username")
+        cur.execute("""
+            SELECT username, role, subscription_status, last_login, contact_email, contact_phone
+            FROM user_roles ORDER BY role, username
+        """)
         rows = cur.fetchall()
         return _json([
-            {"username": r[0], "role": r[1], "subscription_status": r[2], "last_login": r[3]}
+            {"username": r[0], "role": r[1], "subscription_status": r[2],
+             "last_login": r[3], "contact_email": r[4], "contact_phone": r[5]}
             for r in rows
         ])
     finally:

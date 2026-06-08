@@ -93,8 +93,8 @@
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Username</th><th>Role</th><th>Subscription</th><th>Last Login</th><th>Actions</th></tr></thead>
-      <tbody id="rolesBody"><tr><td colspan="5" class="table-placeholder">Loading...</td></tr></tbody>
+      <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Phone</th><th>Last Login</th><th>Actions</th></tr></thead>
+      <tbody id="rolesBody"><tr><td colspan="6" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -141,6 +141,23 @@
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Remaining</th>{% endif %}<th>Date Funded</th><th>Thread</th><th>Actions</th></tr></thead>
       <tbody id="disputesBody"><tr><td colspan="{% if can_view_money %}8{% else %}5{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Contact info modal -->
+<div class="modal-overlay" id="contactModal">
+  <div class="modal">
+    <h3>Set Contact Info — <span id="contactModalUser" style="color:var(--accent-h)"></span></h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Used for borrower OTP login (email or SMS). Leave blank to keep existing value.</p>
+    <div class="modal-error" id="contactModalErr"></div>
+    <label>Email</label>
+    <input type="email" id="contactEmail" placeholder="borrower@example.com" autocomplete="off" />
+    <label>Phone</label>
+    <input type="tel" id="contactPhone" placeholder="+1 555 000 0000" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('contactModal')">Cancel</button>
+      <button class="btn-confirm" id="contactSaveBtn" onclick="saveContact()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -608,16 +625,18 @@
       const tbody = document.getElementById('rolesBody');
       tbody.innerHTML = roles.length ? roles.map(r => `
         <tr>
-          <td class="username">u/${r.username}</td>
-          <td><span class="badge badge-${r.role === 'confirmed' ? 'confirmed' : ''}" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${r.role}</span></td>
-          <td style="color:var(--muted)">${r.subscription_status}</td>
+          <td class="username">u/${escapeHtml(r.username)}</td>
+          <td><span class="badge" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${escapeHtml(r.role)}</span></td>
+          <td style="color:var(--muted);font-size:12px">${r.contact_email ? escapeHtml(r.contact_email) : '<span style="color:var(--border)">—</span>'}</td>
+          <td style="color:var(--muted);font-size:12px">${r.contact_phone ? escapeHtml(r.contact_phone) : '<span style="color:var(--border)">—</span>'}</td>
           <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
           <td><div class="actions">
-            <button class="btn-action btn-paid" onclick="quickRole('${r.username}','lender')">→ Lender</button>
-            <button class="btn-action btn-unpaid" onclick="quickRole('${r.username}','borrower')">→ Borrower</button>
-            <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${r.username}','mod')">→ Mod</button>
+            <button class="btn-action btn-paid" onclick="quickRole('${escapeHtml(r.username)}','lender')">→ Lender</button>
+            <button class="btn-action btn-unpaid" onclick="quickRole('${escapeHtml(r.username)}','borrower')">→ Borrower</button>
+            <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
+            <button class="btn-action" style="background:rgba(46,204,113,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
           </div></td>
-        </tr>`).join('') : '<tr><td colspan="5" class="table-placeholder">No roles configured.</td></tr>';
+        </tr>`).join('') : '<tr><td colspan="6" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }
   }
 
@@ -697,6 +716,40 @@
     showTab,
     loadIntegrity
   });
+
+  let contactModalUsername = '';
+  function openContactModal(username, email, phone) {
+    contactModalUsername = username;
+    document.getElementById('contactModalUser').textContent = 'u/' + username;
+    document.getElementById('contactEmail').value = email || '';
+    document.getElementById('contactPhone').value = phone || '';
+    document.getElementById('contactModalErr').style.display = 'none';
+    document.getElementById('contactModal').classList.add('open');
+    setTimeout(() => document.getElementById('contactEmail').focus(), 80);
+  }
+
+  async function saveContact() {
+    const btn = document.getElementById('contactSaveBtn');
+    const errEl = document.getElementById('contactModalErr');
+    const email = document.getElementById('contactEmail').value.trim() || null;
+    const phone = document.getElementById('contactPhone').value.trim() || null;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    errEl.style.display = 'none';
+    try {
+      await apiFetch(`/api/admin/borrower-contact/${encodeURIComponent(contactModalUsername)}`, {
+        method: 'POST',
+        body: JSON.stringify({ contact_email: email, contact_phone: phone })
+      });
+      closeModal('contactModal');
+      toast('Contact info saved.', 'success');
+      loadRoles();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save';
+    }
+  }
 
   async function loadIntegrity() {
     const tbody = document.getElementById('integrityBody');

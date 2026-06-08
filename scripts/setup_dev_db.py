@@ -46,6 +46,7 @@ MIGRATIONS = [
     os.path.join(ROOT, "scripts", "migrations", "003_reddit_actions.sql"),
     os.path.join(ROOT, "scripts", "migrations", "004_interest_tracking.sql"),
     os.path.join(ROOT, "scripts", "migrations", "005_lender_keys.sql"),
+    os.path.join(ROOT, "scripts", "migrations", "006_borrower_auth.sql"),
 ]
 
 

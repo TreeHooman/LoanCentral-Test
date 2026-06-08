@@ -2083,3 +2083,152 @@ def run_integrity_checks():
     except Exception as e:
         logger.error(f"run_integrity_checks error: {e}", exc_info=True)
         return None, str(e)
+
+
+# ---------------------------------------------------------------------------
+# Borrower contact info + OTP auth
+# ---------------------------------------------------------------------------
+
+def set_borrower_contact(username: str, contact_email: str = None, contact_phone: str = None):
+    """Update contact_email and/or contact_phone on a user_roles row."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE user_roles
+               SET contact_email = COALESCE(%s, contact_email),
+                   contact_phone = COALESCE(%s, contact_phone)
+             WHERE lower(username) = lower(%s)
+        """, (contact_email or None, contact_phone or None, username))
+        if cur.rowcount == 0:
+            cur.execute("""
+                INSERT INTO user_roles (username, role, contact_email, contact_phone)
+                VALUES (lower(%s), 'borrower', %s, %s)
+                ON CONFLICT (username) DO UPDATE
+                   SET contact_email = COALESCE(EXCLUDED.contact_email, user_roles.contact_email),
+                       contact_phone = COALESCE(EXCLUDED.contact_phone, user_roles.contact_phone)
+            """, (username, contact_email or None, contact_phone or None))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"set_borrower_contact error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_borrower_contact(username: str):
+    """Return (email, phone) or (None, None) if not set."""
+    conn = _get_db()
+    if not conn:
+        return None, None
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT contact_email, contact_phone FROM user_roles WHERE lower(username) = lower(%s)", (username,))
+        row = cur.fetchone()
+        return (row[0], row[1]) if row else (None, None)
+    except Exception:
+        return None, None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _otp_hash(code: str) -> str:
+    import hashlib
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def create_borrower_otp(username: str, contact: str, contact_type: str):
+    """
+    Generate a 6-digit OTP, store hashed, return plaintext code.
+    contact_type: 'email' | 'sms'
+    """
+    import random
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        code = f"{random.SystemRandom().randint(0, 999999):06d}"
+        hashed = _otp_hash(code)
+        cur = conn.cursor()
+        # Invalidate previous unused OTPs for this user
+        cur.execute("""
+            UPDATE borrower_otp_sessions SET used = TRUE
+            WHERE username = lower(%s) AND used = FALSE
+        """, (username,))
+        cur.execute("""
+            INSERT INTO borrower_otp_sessions (username, otp_hash, contact, contact_type, expires_at)
+            VALUES (lower(%s), %s, %s, %s, NOW() + INTERVAL '10 minutes')
+        """, (username, hashed, contact, contact_type))
+        conn.commit()
+        return code, None
+    except Exception as e:
+        logger.error(f"create_borrower_otp error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def verify_borrower_otp(username: str, code: str):
+    """
+    Verify OTP. Returns (True, None) on success or (False, error_msg).
+    Marks the OTP as used on success.
+    """
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed."
+    try:
+        hashed = _otp_hash(code.strip())
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id FROM borrower_otp_sessions
+            WHERE lower(username) = lower(%s)
+              AND otp_hash = %s
+              AND used = FALSE
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (username, hashed))
+        row = cur.fetchone()
+        if not row:
+            return False, "Invalid or expired code."
+        cur.execute("UPDATE borrower_otp_sessions SET used = TRUE WHERE id = %s", (row[0],))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"verify_borrower_otp error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def verify_borrower_loan_claim(username: str, loan_id: str):
+    """
+    Check that loan_id exists and borrower matches username.
+    Returns (True, None) or (False, error_msg).
+    """
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1 FROM loans
+            WHERE (loan_id = %s OR CAST(id AS TEXT) = %s)
+              AND lower(borrower) = lower(%s)
+            LIMIT 1
+        """, (loan_id, loan_id, username))
+        found = cur.fetchone() is not None
+        return found, None if found else "Loan ID not found for that username."
+    except Exception as e:
+        logger.error(f"verify_borrower_loan_claim error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
