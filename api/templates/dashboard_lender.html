@@ -30,6 +30,9 @@
     <button class="tab" data-status="refunded">Refunded</button>
     <button class="tab" data-status="disputed">Disputed</button>
   </div>
+  <div class="search-wrap" style="min-width:160px">
+    <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="filterLoans()" />
+  </div>
   <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
 </div>
 
@@ -45,6 +48,7 @@
 <script>
   const ME = '{{ username }}';
   let currentStatus = '';
+  let allLoans = [];
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
@@ -77,37 +81,52 @@
     let url = `/api/loans?lender=${ME}&limit=200`;
     if (currentStatus) url += `&status=${currentStatus}`;
     try {
-      const loans = await apiFetch(url);
-      const tbody = document.getElementById('loansBody');
-      if (!loans.length) {
-        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
-        return;
-      }
-      tbody.innerHTML = loans.map(loan => {
-        const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
-        const id = loan.loan_id || loan.db_id;
-        const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
-        const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
-        const canRefund = !['repaid','refunded'].includes(loan.status);
-        const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
-        return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.borrower}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
-          <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-          <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
-          <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
-          <td><div class="actions">
-            ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
-            ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
-            ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
-          </div></td>
-        </tr>`;
-      }).join('');
+      allLoans = await apiFetch(url);
+      renderLoans(allLoans);
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  function filterLoans() {
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    const filtered = q ? allLoans.filter(l => (l.borrower||'').toLowerCase().includes(q) || (l.loan_id||'').toLowerCase().includes(q)) : allLoans;
+    renderLoans(filtered);
+  }
+
+  function renderLoans(loans) {
+    const tbody = document.getElementById('loansBody');
+    if (!loans.length) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No loans found</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record a loan.</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = loans.map(loan => {
+      const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
+      const id = loan.loan_id || loan.db_id;
+      const canPay     = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+      const canUnpaid  = ['confirmed','partially_repaid'].includes(loan.status);
+      const canRefund  = !['repaid','refunded','disputed'].includes(loan.status);
+      const isDisputed = loan.status === 'disputed';
+      const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+      return `<tr>
+        <td>
+          <span class="loan-id">${id}</span>
+          <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${ME}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
+        </td>
+        <td class="username">u/${loan.borrower}</td>
+        <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+        <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+        <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
+        <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+        <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
+        <td><div class="actions">
+          ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
+          ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
+          ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
+          ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending mod review</span>` : ''}
+        </div></td>
+      </tr>`;
+    }).join('');
   }
 
   function loadData() { loadLoans(); loadStats(); }

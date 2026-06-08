@@ -26,7 +26,7 @@
 
 <div class="table-wrap" style="margin-bottom:24px">
   <table>
-    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th></tr></thead>
+    <thead><tr><th>Loan ID</th><th>Lender</th><th>Total Amount</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Since</th><th>Actions</th></tr></thead>
     <tbody id="owingBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
@@ -39,6 +39,7 @@
     <button class="tab" data-status="repaid">Repaid</button>
     <button class="tab" data-status="unpaid">Unpaid</button>
     <button class="tab" data-status="refunded">Refunded</button>
+    <button class="tab" data-status="disputed">Disputed</button>
   </div>
 </div>
 
@@ -94,12 +95,13 @@
       const all = [...loans, ...partial, ...unpaid].sort((a,b) => new Date(a.date_created) - new Date(b.date_created));
       const tbody = document.getElementById('owingBody');
       if (!all.length) {
-        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>All clear! 🎉</h3><p>You have no outstanding loans.</p></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>All clear!</h3><p>You have no outstanding loans.</p></div></td></tr>`;
         return;
       }
       tbody.innerHTML = all.map(loan => {
         const owe = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
         const id = loan.loan_id || loan.db_id;
+        const canDispute = ['confirmed','partially_repaid'].includes(loan.status);
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
@@ -108,10 +110,13 @@
           <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
+          <td><div class="actions">
+            ${canDispute ? `<button class="btn-action btn-dispute" onclick="openDisputeModal('${id}','${loan.lender}')">Dispute</button>` : ''}
+          </div></td>
         </tr>`;
       }).join('');
     } catch(e) {
-      document.getElementById('owingBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      document.getElementById('owingBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
   }
 
@@ -170,5 +175,42 @@
     if (s >= 25) return 'Poor';
     return 'Very Poor';
   }
+
+  function openDisputeModal(loanId, lender) {
+    document.getElementById('disputeLoanId').value = loanId;
+    document.getElementById('disputeLoanIdDisplay').value = loanId;
+    document.getElementById('disputeLenderName').textContent = 'u/' + lender;
+    document.getElementById('disputeError').style.display = 'none';
+    document.getElementById('disputeModal').classList.add('open');
+  }
+
+  async function submitDispute() {
+    const loanId = document.getElementById('disputeLoanId').value;
+    const errEl = document.getElementById('disputeError');
+    try {
+      await apiFetch(`/api/loans/${loanId}/dispute`, { method: 'POST', body: JSON.stringify({ borrower: ME }) });
+      closeModal('disputeModal');
+      toast('Loan flagged for mod review.', 'success');
+      loadAll();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
 </script>
+
+<div class="modal-overlay" id="disputeModal">
+  <div class="modal">
+    <h3>Dispute Loan</h3>
+    <div class="modal-error" id="disputeError"></div>
+    <input type="hidden" id="disputeLoanId" />
+    <label>Loan ID</label><input type="text" id="disputeLoanIdDisplay" readonly style="opacity:.6" />
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Lender: <span id="disputeLenderName" style="color:var(--text)"></span><br>
+      This flags the loan for mod review. Use only if the loan record is incorrect.
+    </p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('disputeModal')">Cancel</button>
+      <button class="btn-confirm" style="background:var(--orange);border-color:var(--orange)" onclick="submitDispute()">Flag for Review</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

@@ -93,9 +93,13 @@
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .btn-action { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
     .btn-action:hover { opacity: 0.8; }
-    .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
-    .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
-    .btn-paid    { background: rgba(46,204,113,0.2); color: var(--green); }
+    .btn-unpaid         { background: rgba(231,76,60,0.2);  color: var(--red); }
+    .btn-refund         { background: rgba(136,145,170,0.2); color: var(--muted); }
+    .btn-paid           { background: rgba(46,204,113,0.2); color: var(--green); }
+    .btn-copy           { background: rgba(91,110,245,0.15); color: var(--accent-h); }
+    .btn-dispute        { background: rgba(243,156,18,0.2);  color: var(--orange); }
+    .btn-resolve-unpaid { background: rgba(231,76,60,0.2);   color: var(--red); }
+    .btn-resolve-active { background: rgba(46,204,113,0.2);  color: var(--green); }
 
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
@@ -205,6 +209,25 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="resolveModal">
+  <div class="modal">
+    <h3>Resolve Dispute</h3>
+    <div class="modal-error" id="resolveError"></div>
+    <input type="hidden" id="resolveLoanId" />
+    <label>Loan ID</label><input type="text" id="resolveLoanIdDisplay" readonly style="opacity:.6" />
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Between <span id="resolveLender" style="color:var(--text)"></span> (lender) and <span id="resolveBorrower" style="color:var(--text)"></span> (borrower)</p>
+    <label>Resolution</label>
+    <select id="resolveAction" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:14px;margin-bottom:12px;width:100%;outline:none">
+      <option value="unpaid">Mark Unpaid — borrower defaulted</option>
+      <option value="confirmed">Revert to Active — false dispute</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('resolveModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitResolve()">Resolve Dispute</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -280,6 +303,42 @@
     } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
   }
 
+  function openResolveModal(loanId, lender, borrower) {
+    document.getElementById('resolveLoanId').value = loanId;
+    document.getElementById('resolveLoanIdDisplay').value = loanId;
+    document.getElementById('resolveLender').textContent = 'u/' + lender;
+    document.getElementById('resolveBorrower').textContent = 'u/' + borrower;
+    document.getElementById('resolveError').style.display = 'none';
+    document.getElementById('resolveAction').value = 'unpaid';
+    document.getElementById('resolveModal').classList.add('open');
+  }
+
+  async function submitResolve() {
+    const loanId = document.getElementById('resolveLoanId').value;
+    const finalStatus = document.getElementById('resolveAction').value;
+    const errEl = document.getElementById('resolveError');
+    try {
+      await apiFetch(`/api/loans/${loanId}/dispute/resolve`, { method: 'POST', body: JSON.stringify({ final_status: finalStatus }) });
+      closeModal('resolveModal');
+      toast(finalStatus === 'unpaid' ? 'Marked unpaid.' : 'Reverted to active.', 'success');
+      if (typeof loadData === 'function') loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+  }
+
+  async function copyLoanCommands(loanId, lender, borrower, amount, currency) {
+    const lines = [
+      `Full repayment:    $paid_with_id ${loanId} ${parseFloat(amount).toFixed(2)} ${currency}`,
+      `Partial payment:   $paid_with_id ${loanId} [amount] ${currency}`,
+      `Mark unpaid:       $unpaid ${loanId}`,
+      `Cancel/refund:     $refunded ${loanId}`,
+      `Dispute (borrower):$dispute ${loanId}`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(lines);
+      toast('Commands copied!', 'success');
+    } catch(e) { toast('Copy failed — try manually.', 'error'); }
+  }
+
   function statusLabel(s) {
     return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded', disputed: 'Disputed' }[s] || s;
   }
@@ -293,12 +352,17 @@
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
-    const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
-    const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
-    const canRefund = !['repaid','refunded'].includes(loan.status);
+    const canPay     = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
+    const canUnpaid  = ['confirmed','partially_repaid'].includes(loan.status);
+    const canRefund  = !['repaid','refunded','disputed'].includes(loan.status);
+    const isDisputed = loan.status === 'disputed';
+    const isMod      = typeof window.IS_MOD !== 'undefined';
     const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
     return `<tr>
-      <td><span class="loan-id">${id}</span></td>
+      <td>
+        <span class="loan-id">${id}</span>
+        <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${loan.lender}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
+      </td>
       <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
       <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
@@ -307,9 +371,10 @@
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td><div class="actions">
-        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
-        ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
-        ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+        ${canPay    ? `<button class="btn-action btn-paid"          onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
+        ${canUnpaid ? `<button class="btn-action btn-unpaid"        onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
+        ${canRefund ? `<button class="btn-action btn-refund"        onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
+        ${isDisputed && isMod ? `<button class="btn-action btn-resolve-unpaid" onclick="openResolveModal('${id}','${loan.lender}','${loan.borrower}')">Resolve</button>` : ''}
       </div></td>
     </tr>`;
   }

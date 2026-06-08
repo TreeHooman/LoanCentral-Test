@@ -428,6 +428,19 @@ def set_loan_disputed(loan_id):
     return _json(result)
 
 
+@app.route("/api/loans/<loan_id>/dispute/resolve", methods=["POST"])
+@require_mod_api
+def resolve_dispute_endpoint(loan_id):
+    from services import resolve_dispute
+    data = request.get_json() or {}
+    mod = session.get("username") or data.get("mod", "system")
+    final_status = data.get("final_status", "").strip().lower()
+    result, error = resolve_dispute(loan_id, mod, final_status)
+    if error:
+        return _json({"error": error}, 400)
+    return _json(result)
+
+
 @app.route("/api/loans/<loan_id>/paid", methods=["POST"])
 @require_auth
 def set_loan_paid(loan_id):

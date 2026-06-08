@@ -702,6 +702,50 @@ def dispute_loan(loan_id: str, borrower: str):
         conn.close()
 
 
+def resolve_dispute(loan_id: str, mod: str, final_status: str):
+    """
+    Mod resolves a disputed loan.
+    final_status: 'unpaid' (borrower defaulted) or 'confirmed' (false dispute, revert to active)
+    Returns (result_dict, error_message)
+    """
+    if final_status not in ('unpaid', 'confirmed'):
+        return None, "final_status must be 'unpaid' or 'confirmed'."
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, lender, borrower, amount, currency, status "
+            "FROM loans WHERE (id::text = %s OR loan_id = %s) ORDER BY id DESC LIMIT 1",
+            (loan_id, loan_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None, "Loan not found."
+        db_id, lender, borrower, amount, currency, status = row
+        if status != 'disputed':
+            return None, f"Loan is not disputed (current status: {status})."
+        cur.execute(
+            "UPDATE loans SET status = %s, last_updated = %s WHERE id = %s",
+            (final_status, datetime.now(), db_id)
+        )
+        conn.commit()
+        logger.info(f"Dispute resolved on loan {db_id} by mod {mod}: → {final_status}")
+        return {
+            "db_id": db_id, "lender": lender, "borrower": borrower,
+            "amount": Decimal(amount), "currency": currency,
+            "final_status": final_status,
+        }, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"resolve_dispute error: {e}", exc_info=True)
+        return None, "Database error while resolving dispute."
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_lender_stats(lender: str):
     """
     Get lending stats for a specific lender.
