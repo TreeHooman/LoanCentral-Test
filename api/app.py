@@ -16,6 +16,8 @@ from functools import wraps
 
 # Parent directory on path so we can import services / utils
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# api directory on path so we can import auth
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dotenv import load_dotenv
 from flask import (Flask, flash, redirect, render_template,
