@@ -180,6 +180,10 @@
     /* ================================================================
        MOBILE RESPONSIVE — everything below 768px
        ================================================================ */
+    /* TOP LOADING BAR */
+    #topbar { position: fixed; top: 0; left: 0; height: 2px; background: var(--accent); z-index: 500; width: 0; transition: width 0.3s ease, opacity 0.3s; opacity: 0; }
+    #topbar.active { opacity: 1; }
+
     /* Prevent 300ms tap delay on mobile */
     button, a, [onclick] { touch-action: manipulation; }
 
@@ -250,6 +254,7 @@
 </head>
 <body>
 
+<div id="topbar"></div>
 <nav>
   <button class="nav-hamburger" id="navToggle" aria-label="Menu" onclick="toggleMobileNav()">
     <span></span><span></span><span></span>
@@ -416,11 +421,32 @@
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
   document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
 
+  let _barTimer = null;
+  function showTopBar() {
+    const b = document.getElementById('topbar');
+    b.style.width = '30%'; b.classList.add('active');
+    clearTimeout(_barTimer);
+    _barTimer = setTimeout(() => { b.style.width = '70%'; }, 300);
+  }
+  function hideTopBar() {
+    const b = document.getElementById('topbar');
+    b.style.width = '100%';
+    setTimeout(() => { b.classList.remove('active'); b.style.width = '0'; }, 250);
+  }
+
+  let _pendingFetches = 0;
   async function apiFetch(path, options = {}) {
-    const res = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+    _pendingFetches++;
+    if (_pendingFetches === 1) showTopBar();
+    try {
+      const res = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    } finally {
+      _pendingFetches--;
+      if (_pendingFetches === 0) hideTopBar();
+    }
   }
 
   async function submitPayment() {
@@ -515,7 +541,16 @@
     return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded', disputed: 'Disputed' }[s] || s;
   }
   function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-  function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
+  function fmtDate(d) {
+    if (!d) return '—';
+    const abs = d.split('T')[0];
+    const diff = Math.floor((Date.now() - new Date(d)) / 86400000);
+    if (diff === 0) return `<span title="${abs}">Today</span>`;
+    if (diff === 1) return `<span title="${abs}">Yesterday</span>`;
+    if (diff < 30)  return `<span title="${abs}">${diff}d ago</span>`;
+    if (diff < 365) return `<span title="${abs}">${Math.floor(diff/30)}mo ago</span>`;
+    return `<span title="${abs}">${Math.floor(diff/365)}y ago</span>`;
+  }
   function toast(msg, type='') {
     const el = document.getElementById('toast');
     el.textContent = msg; el.className = 'show ' + type;
