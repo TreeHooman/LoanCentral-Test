@@ -507,7 +507,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, last_updated
             FROM loans {where}
             ORDER BY date_created DESC
             LIMIT %s
@@ -526,6 +526,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 "status": r[7],
                 "date_created": r[8],
                 "original_thread": r[9],
+                "last_updated": r[10],
             }
             for r in rows
         ]

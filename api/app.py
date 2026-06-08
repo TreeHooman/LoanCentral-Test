@@ -71,7 +71,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
         params.append(limit)
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, last_updated
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s
         """, params)
@@ -82,6 +82,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
+                "last_updated": r[10],
             }
             for r in rows
         ], None
@@ -409,7 +410,7 @@ def get_loan(loan_id):
         cur = conn.cursor()
         cur.execute("""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread
+                   currency, status, date_created, original_thread, last_updated
             FROM loans WHERE id::text = %s OR loan_id = %s
             ORDER BY id DESC LIMIT 1
         """, (loan_id, loan_id))
@@ -421,6 +422,7 @@ def get_loan(loan_id):
             "amount": row[4], "amount_repaid": row[5], "currency": row[6],
             "status": row[7], "date_created": row[8], "original_thread": row[9],
             "remaining": Decimal(str(row[4])) - Decimal(str(row[5])),
+            "last_updated": row[10],
         }
         # Scope check
         if session.get("username") and session.get("role") != "mod":

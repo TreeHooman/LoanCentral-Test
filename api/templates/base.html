@@ -366,7 +366,10 @@
       <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>
       <td class="username"><a href="#" onclick="return false">u/${loan.borrower}</a></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-      <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+      <td>
+        ${parseFloat(loan.amount_repaid||0).toFixed(2)}
+        ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
+      </td>
       <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>

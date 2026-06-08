@@ -106,7 +106,10 @@
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+          <td>
+            ${parseFloat(loan.amount_repaid||0).toFixed(2)}
+            ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
+          </td>
           <td style="font-weight:600;color:var(--orange)">${owe} ${loan.currency}</td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
@@ -137,7 +140,10 @@
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
-          <td>${parseFloat(loan.amount_repaid||0).toFixed(2)}</td>
+          <td>
+            ${parseFloat(loan.amount_repaid||0).toFixed(2)}
+            ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
+          </td>
           <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
           <td class="date-cell">${fmtDate(loan.date_created)}</td>
           <td>${thread}</td>
