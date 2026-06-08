@@ -133,7 +133,7 @@
         const canDispute = ['confirmed','partially_repaid'].includes(loan.status);
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
+          <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
           <td>
             ${parseFloat(loan.amount_repaid||0).toFixed(2)}
@@ -167,7 +167,7 @@
         const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '—';
         return `<tr>
           <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
+          <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
           <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
           <td>
             ${parseFloat(loan.amount_repaid||0).toFixed(2)}

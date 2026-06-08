@@ -188,7 +188,7 @@
           <span class="loan-id">${id}</span>
           <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${ME}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
         </td>
-        <td class="username">u/${loan.borrower}</td>
+        <td class="username"><span class="user-link" onclick="openUserModal('${loan.borrower}')">u/${loan.borrower}</span></td>
         <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
         <td>
           ${parseFloat(loan.amount_repaid||0).toFixed(2)}

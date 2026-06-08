@@ -90,6 +90,8 @@
     tr:hover td { background: rgba(91,110,245,0.05); }
     .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
     .username { color: var(--text); font-weight: 500; }
+    .user-link { cursor: pointer; color: var(--text2); font-weight: 500; transition: color 0.15s; }
+    .user-link:hover { color: var(--accent-h); text-decoration: underline; }
     .amount { font-weight: 600; color: var(--text); }
     .c-remaining { color: var(--orange); font-weight: 600; }
     .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -153,8 +155,20 @@
     .empty-state p { font-size: 13px; line-height: 1.6; }
     .empty-state code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--accent-h); }
 
+    /* STICKY TABLE HEADER */
+    thead { position: sticky; top: 56px; z-index: 10; }
+
     /* ADMIN TABLE */
     .role-select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* USER PROFILE MODAL */
+    .user-profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .user-stat-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+    .user-stat-item .label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    .user-stat-item .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+    .user-link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .user-link-row .username-large { font-size: 16px; font-weight: 700; color: var(--text); }
+    .user-link-row .role-badge { font-size: 11px; }
 
     /* PROGRESS BAR */
     .progress-wrap { margin-top: 6px; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
@@ -312,6 +326,18 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('resolveModal')">Cancel</button>
       <button class="btn-confirm" onclick="submitResolve()">Resolve Dispute</button>
+    </div>
+  </div>
+</div>
+
+<!-- User profile quick-view modal -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <div id="userModalContent">
+      <div class="table-placeholder"><div class="spinner"></div><br>Loading...</div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn-cancel" onclick="closeModal('userModal')">Close</button>
     </div>
   </div>
 </div>
@@ -484,6 +510,46 @@
     return 'Very Poor';
   }
 
+  async function openUserModal(username) {
+    document.getElementById('userModal').classList.add('open');
+    const content = document.getElementById('userModalContent');
+    content.innerHTML = '<div class="table-placeholder"><div class="spinner"></div><br>Loading...</div>';
+    try {
+      const p = await apiFetch(`/api/users/${username}/profile`);
+      const total = p.loans_as_borrower || 0;
+      const unpaid = p.unpaid_loans || 0;
+      const borrowed = parseFloat(p.amount_borrowed || 0);
+      const repaid = parseFloat(p.amount_repaid || 0);
+      const outstanding = parseFloat(p.active_amount || 0);
+      let health = 100;
+      if (total > 0) {
+        const lr = (total - unpaid) / total;
+        const pr = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
+        health = Math.round((lr * 0.7 + pr * 0.3) * 100);
+      }
+      content.innerHTML = `
+        <div class="user-link-row">
+          <span class="username-large">u/${username}</span>
+          <span style="color:${scoreColor(health)};font-weight:700;font-size:13px">${health}/100 ${scoreLabel(health)}</span>
+        </div>
+        <div class="progress-wrap" style="margin-bottom:16px">
+          <div class="progress-bar" style="background:${scoreColor(health)};width:${health}%;transition:width 0.8s ease"></div>
+        </div>
+        <div class="user-profile-grid">
+          <div class="user-stat-item"><div class="label">Total Loans</div><div class="value c-accent">${total}</div></div>
+          <div class="user-stat-item"><div class="label">Unpaid</div><div class="value c-red">${unpaid}</div></div>
+          <div class="user-stat-item"><div class="label">Borrowed</div><div class="value">$${fmt(borrowed)}</div></div>
+          <div class="user-stat-item"><div class="label">Repaid</div><div class="value c-green">$${fmt(repaid)}</div></div>
+          <div class="user-stat-item"><div class="label">Outstanding</div><div class="value c-orange">$${fmt(outstanding)}</div></div>
+          <div class="user-stat-item"><div class="label">Score</div><div class="value" style="color:${scoreColor(health)}">${health}/100</div></div>
+        </div>
+        ${unpaid > 0 ? `<div style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--red)">⚠ ${unpaid} unpaid loan${unpaid>1?'s':''} on record</div>` : ''}
+      `;
+    } catch(e) {
+      content.innerHTML = `<p style="color:var(--muted);text-align:center;padding:24px">No profile data for u/${username}</p>`;
+    }
+  }
+
   function loanRow(loan) {
     const remaining = (parseFloat(loan.amount||0) - parseFloat(loan.amount_repaid||0)).toFixed(2);
     const id = loan.loan_id || loan.db_id;
@@ -498,8 +564,8 @@
         <span class="loan-id">${id}</span>
         <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${loan.lender}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
       </td>
-      <td class="username">u/${loan.lender}</td>
-      <td class="username">u/${loan.borrower}</td>
+      <td class="username"><span class="user-link" onclick="openUserModal('${loan.lender}')">u/${loan.lender}</span></td>
+      <td class="username"><span class="user-link" onclick="openUserModal('${loan.borrower}')">u/${loan.borrower}</span></td>
       <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
       <td>
         ${parseFloat(loan.amount_repaid||0).toFixed(2)}

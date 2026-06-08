@@ -526,6 +526,24 @@ def get_user(username):
     return _json(profile)
 
 
+@app.route("/api/users/<username>/profile", methods=["GET"])
+@require_auth
+def get_user_public_profile(username):
+    """Public borrower profile — available to any authenticated user."""
+    from services import get_user_profile
+    profile, error = get_user_profile(username)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({
+        "username": username,
+        "loans_as_borrower": profile.get("loans_as_borrower", 0),
+        "unpaid_loans": profile.get("unpaid_loans", 0),
+        "amount_borrowed": profile.get("amount_borrowed", 0),
+        "amount_repaid": profile.get("amount_repaid", 0),
+        "active_amount": profile.get("active_amount", 0),
+    })
+
+
 @app.route("/api/users/me", methods=["GET"])
 @login_required
 def get_me():
