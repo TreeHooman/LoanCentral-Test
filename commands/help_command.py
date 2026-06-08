@@ -62,6 +62,10 @@ The bot tracks loans. History, health scores, stats, and mod tools are on the **
 
     $mystats
 
+**View the community leaderboard**
+
+    $leaderboard
+
 ---
 
 **Dashboard:** https://loancentral.app

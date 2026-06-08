@@ -605,6 +605,31 @@ def get_lender_stats(lender):
     return _json(stats)
 
 
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def not_found(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Not found"}, 404)
+    return render_template("error.html", code=404, message="Page not found."), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Internal server error"}, 500)
+    return render_template("error.html", code=500, message="Something went wrong on our end."), 500
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Forbidden"}, 403)
+    return render_template("error.html", code=403, message="You don't have permission to access this."), 403
+
+
 if __name__ == "__main__":
     port  = int(os.getenv("API_PORT", 5000))
     debug = IS_DEV
