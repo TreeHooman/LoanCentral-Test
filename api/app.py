@@ -238,6 +238,51 @@ def auth_logout():
     return redirect(url_for("login"))
 
 
+@app.route("/auth/dev-seed")
+def auth_dev_seed():
+    """Dev-only: seed the database with test users and loans."""
+    if not IS_DEV:
+        return redirect(url_for("login"))
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return "<h2>DB connection failed</h2>", 500
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role) VALUES
+              ('testmod', 'mod'), ('testlender', 'lender'),
+              ('testlender2', 'lender'), ('testborrower', 'borrower'),
+              ('testborrower2', 'borrower'), ('testborrower3', 'borrower')
+            ON CONFLICT (username) DO NOTHING
+        """)
+        cur.execute("""
+            INSERT INTO loans (loan_id, lender, borrower, amount, amount_repaid, currency, status, date_created, original_thread) VALUES
+              ('LC-001','testlender','testborrower',200.00,50.00,'USD','partially_repaid',NOW()-INTERVAL'5 days','https://reddit.com/r/test/comments/abc1'),
+              ('LC-002','testlender','testborrower2',100.00,0.00,'USD','confirmed',NOW()-INTERVAL'2 days','https://reddit.com/r/test/comments/abc2'),
+              ('LC-003','testlender2','testborrower',500.00,0.00,'GBP','unpaid',NOW()-INTERVAL'30 days','https://reddit.com/r/test/comments/abc3'),
+              ('LC-004','testlender','testborrower3',75.00,75.00,'USD','repaid',NOW()-INTERVAL'15 days','https://reddit.com/r/test/comments/abc4'),
+              ('LC-005','testlender2','testborrower',300.00,100.00,'USD','disputed',NOW()-INTERVAL'7 days','https://reddit.com/r/test/comments/abc5'),
+              ('LC-006','testlender','testborrower',50.00,0.00,'CAD','confirmed',NOW()-INTERVAL'1 day','https://reddit.com/r/test/comments/abc6'),
+              ('LC-007','testlender','testborrower2',250.00,250.00,'USD','repaid',NOW()-INTERVAL'20 days','https://reddit.com/r/test/comments/abc7')
+            ON CONFLICT (loan_id) DO NOTHING
+        """)
+        conn.commit()
+        return """
+        <html><body style="background:#0f1117;color:#e2e6f0;font-family:sans-serif;padding:40px;text-align:center">
+        <h2 style="color:#2ecc71">Test data seeded!</h2>
+        <p>Logins: <code>testmod</code> / <code>testlender</code> / <code>testborrower</code></p>
+        <a href="/auth/dev-login" style="color:#7b8cff">Go to dev login →</a>
+        </body></html>
+        """
+    except Exception as e:
+        conn.rollback()
+        return f"<h2>Error: {e}</h2>", 500
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/dashboard/mod")
 @role_required("mod")
 def dashboard_mod():
