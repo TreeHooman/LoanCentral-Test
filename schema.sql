@@ -46,6 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);
 CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
 CREATE INDEX IF NOT EXISTS idx_loans_date_created ON loans(date_created);
 
+-- Optional notes field (lender can annotate each loan)
+ALTER TABLE loans ADD COLUMN IF NOT EXISTS notes TEXT;
+
 -- Compound indexes for common filtered queries
 CREATE INDEX IF NOT EXISTS idx_loans_lender_status ON loans(lender, status);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower_status ON loans(borrower, status);

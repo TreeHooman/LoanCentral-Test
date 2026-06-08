@@ -16,7 +16,7 @@ def process_unpaid_command(comment):
     """
     from services import mark_unpaid, update_last_login
 
-    match = re.search(r'\$unpaid\s+(\w+)', comment.body, re.IGNORECASE)
+    match = re.search(r'\$unpaid\s+([\w-]+)', comment.body, re.IGNORECASE)
     if not match:
         return
 
@@ -34,15 +34,10 @@ def process_unpaid_command(comment):
     current_subreddit = comment.subreddit.display_name
 
     response = (
-        f"u/{lender} has marked their loan to u/{borrower} as unpaid.\n\n"
-        f"|Lender|Borrower|Amount|Amount Repaid|\n"
-        f"|:--:|:--:|:--:|:--:|\n"
-        f"|u/{lender}|u/{borrower}|{result['loan_amount']:.2f} {result['currency']}"
-        f"|{result['amount_repaid']:.2f} {result['currency']}|\n\n"
-        f"[Submit unpaid post](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true"
-        f"&title=UNPAID:%20/u/{borrower}%20{result['loan_amount']}%20{result['currency']})\n\n"
-        f"If this is in error, u/{borrower} can comment `$dispute {loan_id}` to flag for mod review.\n\n"
-        f"*Manage this at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
+        f"⚠ Loan `{loan_id}` marked **unpaid** — u/{borrower} owes u/{lender} "
+        f"{result['loan_amount']:.2f} {result['currency']}\n\n"
+        f"u/{borrower} — if this is incorrect, reply with `$dispute {loan_id}`\n\n"
+        f"*[Dashboard]({DASHBOARD_URL})*"
     )
 
     comment.reply(response)

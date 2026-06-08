@@ -14,7 +14,7 @@ def process_balance_command(comment):
     """
     from services import get_loan_history, update_last_login
 
-    match = re.search(r'\$balance\s+(\S+)', comment.body, re.IGNORECASE)
+    match = re.search(r'\$balance\s+([\w-]+)', comment.body, re.IGNORECASE)
     if not match:
         return
 

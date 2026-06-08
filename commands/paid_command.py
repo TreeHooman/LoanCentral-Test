@@ -4,27 +4,26 @@ from decimal import Decimal
 
 logger = logging.getLogger("LoanCentral")
 
-COMMAND_TRIGGER = "$paid_with_id"
+COMMAND_TRIGGER = "$paid"
+DASHBOARD_URL = "https://loancentral.app"
+
+_PATTERN = r'\$paid(?:_with_id)?\s+([\w-]+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})'
 
 
 def _parse_paid(text):
-    """Parse $paid_with_id from text. Returns (loan_id, amount, currency) or None."""
-    pattern = r'\$paid_with_id\s+(\d+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})'
-    match = re.search(pattern, text, re.IGNORECASE)
+    """Parse $paid or $paid_with_id. Returns (loan_id, amount, currency) or None."""
+    match = re.search(_PATTERN, text, re.IGNORECASE)
     if match:
         return match.group(1), Decimal(match.group(2)), match.group(3).upper()
     for block in re.findall(r'```\s*(.*?)\s*```', text, re.DOTALL):
-        match = re.search(pattern, block, re.IGNORECASE)
+        match = re.search(_PATTERN, block, re.IGNORECASE)
         if match:
             return match.group(1), Decimal(match.group(2)), match.group(3).upper()
     return None
 
 
-DASHBOARD_URL = "https://loancentral.app"
-
-
 def process_paid_command(comment):
-    """Process $paid_with_id command - lender records a repayment."""
+    """Process $paid or $paid_with_id — lender records a repayment."""
     from services import mark_repaid, update_last_login
 
     parsed = _parse_paid(comment.body)
@@ -36,21 +35,16 @@ def process_paid_command(comment):
     update_last_login(lender)
 
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")
-
     if error:
         comment.reply(f"Error: {error}")
         return
 
     remaining = result["remaining"]
-    response = (
-        f"u/{result['borrower']} has now repaid u/{result['lender']} {amount_paid:.2f} {result['currency']}.\n\n"
-        f"|Lender|Borrower|Amount Given|Amount Repaid|Remaining|\n"
-        f"|:--:|:--:|:--:|:--:|:--:|\n"
-        f"|{result['lender']}|{result['borrower']}|{result['loan_amount']:.2f} {result['currency']}"
-        f"|{result['new_repaid']:.2f} {result['currency']}|{remaining:.2f} {result['currency']}|\n\n"
-        f"amount specified: {amount_paid:.2f} {result['currency']}, remaining: {remaining:.2f} {result['currency']}"
+    status_line = "✓ Fully repaid!" if remaining <= 0 else f"Remaining: **{remaining:.2f} {result['currency']}**"
+    comment.reply(
+        f"Payment recorded — u/{result['borrower']} paid u/{result['lender']} "
+        f"**{amount_paid:.2f} {result['currency']}**\n\n"
+        f"{status_line}\n\n"
+        f"*[Dashboard]({DASHBOARD_URL})*"
     )
-
-    response += f"\n\n---\n*View full history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
-    comment.reply(response)
     logger.info(f"Payment recorded on loan {loan_id} by lender {lender}")

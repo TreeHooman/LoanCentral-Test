@@ -16,6 +16,12 @@
   .cmd-item:hover { border-color: var(--accent); }
   .cmd-item-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px; }
   .cmd-item-code { font-family: monospace; font-size: 12px; color: var(--accent-h); word-break: break-all; }
+  .alert-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  .alert-banner.warn { background: rgba(243,156,18,0.12); border: 1px solid rgba(243,156,18,0.3); color: var(--yellow); }
+  .alert-banner.danger { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); }
+  .notes-text { font-size: 11px; color: var(--muted); font-style: italic; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; margin-top: 2px; }
+  .notes-edit-btn { font-size: 10px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 0 3px; opacity: 0.6; }
+  .notes-edit-btn:hover { opacity: 1; color: var(--accent); }
 </style>
 {% endblock %}
 
@@ -25,7 +31,13 @@
     <div class="section-title" style="font-size:20px">My Lending Dashboard</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
   </div>
+  <button class="btn-primary" onclick="openNewLoanModal()" style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:16px;line-height:1">+</span> New Loan
+  </button>
 </div>
+
+<!-- Alert banner (populated by JS) -->
+<div id="alertBanner" style="display:none"></div>
 
 <!-- Stats — click Active/Unpaid/Repaid cards to filter -->
 <div class="stats-grid" id="statsGrid">
@@ -67,9 +79,9 @@
         <div class="cmd-item-label">Record a loan</div>
         <div class="cmd-item-code">$loan [amount] [currency] u/[borrower]</div>
       </div>
-      <div class="cmd-item" onclick="copyText('$paid_with_id [loan_id] [amount] [currency]')" title="Copy">
+      <div class="cmd-item" onclick="copyText('$paid [loan_id] [amount] [currency]')" title="Copy">
         <div class="cmd-item-label">Record repayment</div>
-        <div class="cmd-item-code">$paid_with_id [loan_id] [amount] [currency]</div>
+        <div class="cmd-item-code">$paid [loan_id] [amount] [currency]</div>
       </div>
       <div class="cmd-item" onclick="copyText('$unpaid [loan_id]')" title="Copy">
         <div class="cmd-item-label">Mark unpaid</div>
@@ -220,6 +232,23 @@
     } catch(e) { console.error(e); }
   }
 
+  function checkAlerts(loans) {
+    const overdue = loans.filter(l => ['confirmed','partially_repaid'].includes(l.status) &&
+      l.date_created && Math.floor((Date.now() - new Date(l.date_created)) / 86400000) > 30);
+    const unpaid  = loans.filter(l => l.status === 'unpaid');
+    const disputed = loans.filter(l => l.status === 'disputed');
+    const parts = [];
+    if (overdue.length)  parts.push(`<strong>${overdue.length}</strong> loan${overdue.length>1?'s':''} outstanding 30+ days`);
+    if (unpaid.length)   parts.push(`<strong>${unpaid.length}</strong> unpaid`);
+    if (disputed.length) parts.push(`<strong>${disputed.length}</strong> disputed`);
+    const banner = document.getElementById('alertBanner');
+    if (parts.length && banner) {
+      const cls = unpaid.length || disputed.length ? 'danger' : 'warn';
+      banner.innerHTML = `<div class="alert-banner ${cls}">⚠ ${parts.join(' · ')} — <span style="cursor:pointer;text-decoration:underline" onclick="filterByCard('unpaid')">view unpaid</span></div>`;
+      banner.style.display = '';
+    } else if (banner) { banner.style.display = 'none'; }
+  }
+
   function calcPortfolioScore(s) {
     const total = s.total_loans || 0;
     if (!total) return 100;
@@ -242,6 +271,7 @@
     try {
       allLoans = await apiFetch(url);
       renderLoans(allLoans);
+      checkAlerts(allLoans);
     } catch(e) {
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
@@ -264,7 +294,7 @@
       const isEmpty = !allLoans.length;
       if (countEl) countEl.textContent = '';
       tbody.innerHTML = isEmpty
-        ? `<tr><td colspan="8"><div class="empty-state"><h3>No loans recorded yet</h3><p>Use <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit to record your first loan.</p></div></td></tr>`
+        ? `<tr><td colspan="8"><div class="empty-state"><h3>No loans recorded yet</h3><p>Use the <strong>+ New Loan</strong> button, or post <code>$loan [amount] [currency] u/[borrower]</code> in the subreddit.</p></div></td></tr>`
         : `<tr><td colspan="8"><div class="empty-state"><h3>No loans match</h3><p>Try a different filter or clear the search.</p></div></td></tr>`;
       return;
     }
@@ -276,11 +306,17 @@
       const canUnpaid  = ['confirmed','partially_repaid'].includes(loan.status);
       const canRefund  = !['repaid','refunded','disputed'].includes(loan.status);
       const isDisputed = loan.status === 'disputed';
-      const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
-      return `<tr>
+      const thread = loan.original_thread && !loan.original_thread.includes('loancentral.app')
+        ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+      const notesEsc = (loan.notes||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+      const daysSince = loan.date_created ? Math.floor((Date.now() - new Date(loan.date_created)) / 86400000) : 0;
+      const isOverdue = ['confirmed','partially_repaid','unpaid'].includes(loan.status) && daysSince > 30;
+      return `<tr${isOverdue ? ' style="background:rgba(231,76,60,0.04)"' : ''}>
         <td>
           <span class="loan-id">${id}</span>
           <button class="btn-action btn-copy" style="margin-left:4px;padding:2px 6px;font-size:10px" title="Copy Reddit commands" onclick="copyLoanCommands('${id}','${ME}','${loan.borrower}','${parseFloat(loan.amount).toFixed(2)}','${loan.currency}')">copy</button>
+          ${loan.notes ? `<span class="notes-text" title="${notesEsc}">${loan.notes}</span>` : ''}
+          <button class="notes-edit-btn" title="Edit note" onclick="openNotesModal('${id}','${notesEsc}')">✎</button>
         </td>
         <td class="username"><span class="user-link" onclick="openUserModal('${loan.borrower}')">u/${loan.borrower}</span></td>
         <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
@@ -289,7 +325,7 @@
           ${parseFloat(loan.amount_repaid||0)>0 && loan.last_updated ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(loan.last_updated)}</div>` : ''}
         </td>
         <td class="${parseFloat(remaining)>0?'c-remaining':''}">${remaining}</td>
-        <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
+        <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span>${isOverdue ? `<div style="font-size:10px;color:var(--red);margin-top:2px">${daysSince}d old</div>` : ''}</td>
         <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
         <td><div class="actions">
           ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}',${remaining})">Paid</button>` : ''}
@@ -318,6 +354,58 @@
       document.getElementById('cmdToggle')?.classList.add('open');
     });
   }
+  // ---- New Loan Modal ----
+  function openNewLoanModal() {
+    document.getElementById('newLoanBorrower').value = '';
+    document.getElementById('newLoanAmount').value = '';
+    document.getElementById('newLoanCurrency').value = 'USD';
+    document.getElementById('newLoanThread').value = '';
+    document.getElementById('newLoanNotes').value = '';
+    document.getElementById('newLoanError').style.display = 'none';
+    document.getElementById('newLoanModal').classList.add('open');
+    setTimeout(() => document.getElementById('newLoanBorrower').focus(), 100);
+  }
+
+  async function submitNewLoan() {
+    const borrower = document.getElementById('newLoanBorrower').value.trim().replace(/^u\//i,'').toLowerCase();
+    const amount   = document.getElementById('newLoanAmount').value.trim();
+    const currency = document.getElementById('newLoanCurrency').value.trim().toUpperCase();
+    const thread   = document.getElementById('newLoanThread').value.trim();
+    const notes    = document.getElementById('newLoanNotes').value.trim();
+    const errEl    = document.getElementById('newLoanError');
+    if (!borrower) { errEl.textContent = 'Borrower username is required.'; errEl.style.display='block'; return; }
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) { errEl.textContent = 'Enter a valid amount greater than zero.'; errEl.style.display='block'; return; }
+    try {
+      const res = await apiFetch('/api/loans', { method: 'POST', body: JSON.stringify({ borrower, amount: parseFloat(amount), currency, thread_url: thread||undefined, notes: notes||undefined }) });
+      closeModal('newLoanModal');
+      toast(`Loan ${res.loan_id} recorded!`, 'success');
+      loadData();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  // ---- Notes Modal ----
+  let _notesLoanId = null;
+  function openNotesModal(loanId, currentNotes) {
+    _notesLoanId = loanId;
+    document.getElementById('notesLoanId').textContent = loanId;
+    document.getElementById('notesText').value = currentNotes || '';
+    document.getElementById('notesError').style.display = 'none';
+    document.getElementById('notesModal').classList.add('open');
+    setTimeout(() => document.getElementById('notesText').focus(), 100);
+  }
+
+  async function submitNotes() {
+    if (!_notesLoanId) return;
+    const notes = document.getElementById('notesText').value.trim();
+    const errEl = document.getElementById('notesError');
+    try {
+      await apiFetch(`/api/loans/${_notesLoanId}/notes`, { method: 'PATCH', body: JSON.stringify({ notes }) });
+      closeModal('notesModal');
+      toast('Note saved.', 'success');
+      loadLoans();
+    } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
   async function copyRedditTable() {
     const loans = allLoans.filter(l => l.status !== 'refunded');
     if (!loans.length) { toast('No loans to copy.', 'error'); return; }
@@ -344,6 +432,8 @@
     } catch(e) { toast('Copy failed', 'error'); }
   }
 
+  function loadData() { loadLoans(); loadStats(); }
+
   function renderCurrencySummary(loans) {
     // Build per-currency totals for the rendered loans
     const totals = {};
@@ -368,4 +458,45 @@
     }).join('');
   }
 </script>
+
+<!-- New Loan Modal -->
+<div class="modal-overlay" id="newLoanModal">
+  <div class="modal" style="max-width:400px">
+    <h3>Record New Loan</h3>
+    <div class="modal-error" id="newLoanError"></div>
+    <label>Borrower (Reddit username)</label>
+    <input type="text" id="newLoanBorrower" placeholder="e.g. u/username or username" autocomplete="off" spellcheck="false" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label>Amount</label><input type="number" id="newLoanAmount" placeholder="0.00" min="0.01" step="0.01" /></div>
+      <div><label>Currency</label>
+        <select id="newLoanCurrency" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px;width:100%">
+          <option>USD</option><option>CAD</option><option>GBP</option><option>EUR</option><option>AUD</option><option>NZD</option>
+        </select>
+      </div>
+    </div>
+    <label>Reddit Thread URL <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+    <input type="url" id="newLoanThread" placeholder="https://reddit.com/..." autocomplete="off" />
+    <label>Note <span style="font-size:11px;color:var(--muted)">(optional — private, not posted to Reddit)</span></label>
+    <input type="text" id="newLoanNotes" placeholder="e.g. For car repair, due end of month" maxlength="200" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('newLoanModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitNewLoan()">Record Loan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notes Edit Modal -->
+<div class="modal-overlay" id="notesModal">
+  <div class="modal" style="max-width:380px">
+    <h3>Edit Note — <span id="notesLoanId" style="font-family:monospace;font-size:14px;color:var(--muted)"></span></h3>
+    <div class="modal-error" id="notesError"></div>
+    <label>Note <span style="font-size:11px;color:var(--muted)">(private — not shared with borrower)</span></label>
+    <textarea id="notesText" rows="3" placeholder="Add a note about this loan..." maxlength="500" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:7px;font-size:13px;resize:vertical;font-family:inherit"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('notesModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitNotes()">Save Note</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

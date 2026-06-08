@@ -61,9 +61,16 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
     try:
         cur = conn.cursor()
         conditions, params = [], []
+        # Support comma-separated status values (e.g. "confirmed,partially_repaid")
         if status:
-            conditions.append("status = %s")
-            params.append(status)
+            statuses = [s.strip() for s in status.split(",") if s.strip()]
+            if len(statuses) == 1:
+                conditions.append("status = %s")
+                params.append(statuses[0])
+            else:
+                placeholders = ",".join(["%s"] * len(statuses))
+                conditions.append(f"status IN ({placeholders})")
+                params.extend(statuses)
         if search:
             conditions.append("(lender ILIKE %s OR borrower ILIKE %s)")
             params += [f"%{search}%", f"%{search}%"]
@@ -71,7 +78,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
         params.append(limit)
         cur.execute(f"""
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated
+                   currency, status, date_created, original_thread, last_updated, notes
             FROM loans {where}
             ORDER BY date_created DESC LIMIT %s
         """, params)
@@ -82,7 +89,7 @@ def _get_all_loans_from_db(status=None, search=None, limit=200):
                 "amount": r[4], "amount_repaid": r[5], "currency": r[6],
                 "status": r[7], "date_created": r[8], "original_thread": r[9],
                 "remaining": Decimal(str(r[4])) - Decimal(str(r[5])),
-                "last_updated": r[10],
+                "last_updated": r[10], "notes": r[11],
             }
             for r in rows
         ], None
@@ -358,6 +365,33 @@ def list_roles():
 # Loans API
 # ---------------------------------------------------------------------------
 
+@app.route("/api/loans", methods=["POST"])
+@require_auth
+def create_loan_api():
+    from services import create_loan
+    if session.get("role") not in ("lender", "mod"):
+        return _json({"error": "Only lenders can create loans."}, 403)
+    data = request.get_json() or {}
+    lender   = session.get("username", "").strip().lower()
+    borrower = (data.get("borrower") or "").strip().lower().lstrip("u/")
+    currency = (data.get("currency") or "USD").strip().upper()
+    thread   = (data.get("thread_url") or "").strip() or "https://loancentral.app/dashboard"
+    notes    = (data.get("notes") or "").strip() or None
+    raw_amount = data.get("amount")
+    if not borrower:
+        return _json({"error": "Borrower username is required."}, 400)
+    if not raw_amount:
+        return _json({"error": "Amount is required."}, 400)
+    try:
+        amount = Decimal(str(raw_amount))
+    except Exception:
+        return _json({"error": "Invalid amount."}, 400)
+    loan_id, error = create_loan(lender, borrower, amount, currency, thread, notes=notes)
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"loan_id": loan_id, "ok": True}), 201
+
+
 @app.route("/api/loans", methods=["GET"])
 @require_auth
 def get_loans():
@@ -485,6 +519,20 @@ def resolve_dispute_endpoint(loan_id):
     mod = session.get("username") or data.get("mod", "system")
     final_status = data.get("final_status", "").strip().lower()
     result, error = resolve_dispute(loan_id, mod, final_status)
+    if error:
+        return _json({"error": error}, 400)
+    return _json(result)
+
+
+@app.route("/api/loans/<loan_id>/notes", methods=["PATCH"])
+@require_auth
+def update_notes(loan_id):
+    from services import update_loan_notes
+    data      = request.get_json() or {}
+    actor     = session.get("username", "").strip().lower()
+    role      = session.get("role", "borrower")
+    notes_val = (data.get("notes") or "").strip()
+    result, error = update_loan_notes(loan_id, actor, role, notes_val)
     if error:
         return _json({"error": error}, 400)
     return _json(result)

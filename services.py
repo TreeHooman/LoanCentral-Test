@@ -25,15 +25,19 @@ def _get_db():
 # ---------------------------------------------------------------------------
 
 def _generate_loan_id():
-    """Generate a unique loan ID based on current timestamp."""
-    return str(int(time.time()))
+    """Generate a short, readable loan ID like LC-A3F2K9."""
+    import random
+    import string
+    chars = string.ascii_uppercase + string.digits
+    suffix = ''.join(random.choices(chars, k=6))
+    return f"LC-{suffix}"
 
 
 # ---------------------------------------------------------------------------
 # Loan Services
 # ---------------------------------------------------------------------------
 
-def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str):
+def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str, notes: str = None):
     """
     Confirm and save a new loan to the database.
     Returns (loan_db_id, error_message).
@@ -67,10 +71,10 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         cur.execute('''
             INSERT INTO loans
-            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (loan_id, lender, borrower, amount, currency, date_created, original_thread, status, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed'))
+        ''', (loan_id, lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed', notes or None))
 
         db_id = cur.fetchone()[0]
 
@@ -507,7 +511,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
 
         cur.execute(f'''
             SELECT id, loan_id, lender, borrower, amount, amount_repaid,
-                   currency, status, date_created, original_thread, last_updated
+                   currency, status, date_created, original_thread, last_updated, notes
             FROM loans {where}
             ORDER BY date_created DESC
             LIMIT %s
@@ -527,6 +531,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 "date_created": r[8],
                 "original_thread": r[9],
                 "last_updated": r[10],
+                "notes": r[11],
             }
             for r in rows
         ]
@@ -581,6 +586,32 @@ def get_active_loans(username: str):
     except Exception as e:
         logger.error(f"get_active_loans error: {e}", exc_info=True)
         return None, "Database error fetching active loans."
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_loan_notes(loan_id: str, actor: str, actor_role: str, notes: str):
+    """Update the notes field on a loan. Actor must be the lender or a mod."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        cur = conn.cursor()
+        if actor_role == "mod":
+            cur.execute("SELECT id, lender FROM loans WHERE id::text = %s OR loan_id = %s ORDER BY id DESC LIMIT 1", (loan_id, loan_id))
+        else:
+            cur.execute("SELECT id, lender FROM loans WHERE (id::text = %s OR loan_id = %s) AND lender = %s ORDER BY id DESC LIMIT 1", (loan_id, loan_id, actor))
+        row = cur.fetchone()
+        if not row:
+            return None, "Loan not found or you don't have permission to edit it."
+        cur.execute("UPDATE loans SET notes = %s, last_updated = %s WHERE id = %s", (notes or None, datetime.now(), row[0]))
+        conn.commit()
+        return {"ok": True}, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"update_loan_notes error: {e}", exc_info=True)
+        return None, "Database error updating notes."
     finally:
         cur.close()
         conn.close()

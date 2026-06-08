@@ -563,11 +563,10 @@
 
   async function copyLoanCommands(loanId, lender, borrower, amount, currency) {
     const lines = [
-      `Full repayment:    $paid_with_id ${loanId} ${parseFloat(amount).toFixed(2)} ${currency}`,
-      `Partial payment:   $paid_with_id ${loanId} [amount] ${currency}`,
-      `Mark unpaid:       $unpaid ${loanId}`,
-      `Cancel/refund:     $refunded ${loanId}`,
-      `Dispute (borrower):$dispute ${loanId}`,
+      `$paid ${loanId} ${parseFloat(amount).toFixed(2)} ${currency}`,
+      `$paid ${loanId} [amount] ${currency}`,
+      `$unpaid ${loanId}`,
+      `$refunded ${loanId}`,
     ].join('\n');
     try {
       await navigator.clipboard.writeText(lines);
@@ -728,7 +727,7 @@
       </div></td>
     </tr>`;
   }
-</script>
+
   // ---- URL param helpers for filter persistence ----
   function getURLParam(k) { return new URL(location).searchParams.get(k) || ''; }
   function setURLParam(k, v) {
@@ -738,7 +737,6 @@
 
   // ---- Keyboard shortcuts ----
   document.addEventListener('keydown', e => {
-    // Escape closes any open modal
     if (e.key === 'Escape') {
       document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
       document.getElementById('navLinks')?.classList.remove('open');
@@ -747,15 +745,16 @@
     }
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    // r = refresh
     if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
       if (typeof loadData === 'function') { e.preventDefault(); loadData(); }
       else if (typeof loadAll === 'function') { e.preventDefault(); loadAll(); }
     }
-    // / = focus search
     if (e.key === '/') {
       const s = document.getElementById('searchInput');
       if (s) { e.preventDefault(); s.focus(); s.select(); }
+    }
+    if (e.key === 'n' && !e.ctrlKey && !e.metaKey) {
+      if (typeof openNewLoanModal === 'function') { e.preventDefault(); openNewLoanModal(); }
     }
   });
 
@@ -775,7 +774,6 @@
       return dir * (av > bv ? 1 : av < bv ? -1 : 0);
     });
     rows.forEach(r => tbody.appendChild(r));
-    // Update sort arrow on header
     const table = tbody.closest('table');
     table?.querySelectorAll('th').forEach((th, i) => {
       th.classList.remove('sort-asc', 'sort-desc');
@@ -783,6 +781,7 @@
     });
   }
 
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -16,7 +16,7 @@ def process_refund_command(comment):
     """
     from services import mark_refunded_by_id, update_last_login
 
-    match = re.search(r'\$refunded\s+(\w+)', comment.body, re.IGNORECASE)
+    match = re.search(r'\$refunded\s+([\w-]+)', comment.body, re.IGNORECASE)
     if not match:
         return
 
@@ -52,9 +52,7 @@ def process_refund_command(comment):
         logger.error(f"Failed to notify mods of refund: {e}")
 
     comment.reply(
-        f"Loan `{loan_id}` marked as refunded.\n\n"
-        f"The loan from u/{lender} to u/{borrower} for {amount:.2f} {currency} "
-        f"has been removed from both users' statistics.\n\n"
-        f"---\n*View loan history at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
+        f"✓ Loan `{loan_id}` refunded — u/{lender} → u/{borrower} {amount:.2f} {currency} removed from records.\n\n"
+        f"*[Dashboard]({DASHBOARD_URL})*"
     )
     logger.info(f"Loan {loan_id} refunded: {lender} -> {borrower} {amount} {currency}")

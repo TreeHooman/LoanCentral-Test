@@ -35,8 +35,7 @@ def process_dispute_command(comment):
         return
 
     comment.reply(
-        f"u/{username} — Loan **{loan_id}** has been flagged as **disputed** and is now in the mod review queue.\n\n"
-        f"A mod will review and reach out. In the meantime the loan status is frozen.\n\n"
-        f"View your loan history: {DASHBOARD_URL}"
+        f"✓ Loan `{loan_id}` flagged for mod review — status frozen pending investigation.\n\n"
+        f"*[Dashboard]({DASHBOARD_URL})*"
     )
     logger.info(f"Loan {loan_id} disputed by {username}")
