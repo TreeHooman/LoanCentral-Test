@@ -37,9 +37,6 @@
     </div>
   </section>
 
-  <aside class="callout">
-    <strong>Safe REQ flow:</strong> find and agree to terms on Reddit first, then paste the bot's REQ-ID into Record Loan. LoanCentral logs what happened; it does not match lenders with borrowers.
-  </aside>
 </div>
 
 <div class="callout" id="schemaWarning" style="display:none;margin-bottom:16px;border-color:rgba(243,156,18,0.35);background:rgba(243,156,18,0.08)">
@@ -89,11 +86,28 @@
         <th><button class="sort-head" onclick="setSort('status')">Status</button></th>
         <th><button class="sort-head" onclick="setSort('repay_date')">Due</button></th>
         <th><button class="sort-head" onclick="setSort('days_funded')">Days Funded</button></th>
+        <th><button class="sort-head" onclick="setSort('interest_amount')">Interest $</button></th>
+        <th><button class="sort-head" onclick="setSort('interest_rate')">Rate %</button></th>
         <th>Notes</th><th>Actions</th>
       </tr>
     </thead>
-    <tbody id="loansBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <tbody id="loansBody"><tr><td colspan="14" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
+</div>
+
+<div class="modal-overlay" id="filesModal">
+  <div class="modal">
+    <h3>Loan Files</h3>
+    <div class="modal-error" id="filesError"></div>
+    <input type="hidden" id="filesLoanId" />
+    <div id="filesList" style="margin-bottom:14px;min-height:40px"></div>
+    <label>Upload File <span style="color:var(--muted);font-weight:400;font-size:11px">jpg, png, gif, pdf, txt, csv — max 10 MB</span></label>
+    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.gif,.pdf,.txt,.csv" style="margin-bottom:8px" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('filesModal')">Close</button>
+      <button class="btn-confirm" id="uploadBtn" onclick="uploadFile()">Upload</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="termsModal">
@@ -107,6 +121,10 @@
     <input type="number" id="termsRepayAmount" step="0.01" min="0.01" />
     <label>Due Date</label>
     <input type="date" id="termsRepayDate" />
+    <label>Agreed Interest Amount <span style="color:var(--muted);font-weight:400;font-size:11px">(optional — recorded in DB only, never shown on Reddit)</span></label>
+    <input type="number" id="termsInterestAmount" step="0.01" min="0" placeholder="e.g. 30.00" />
+    <label>Interest Rate % <span style="color:var(--muted);font-weight:400;font-size:11px">(optional — auto-calculated if left blank)</span></label>
+    <input type="number" id="termsInterestRate" step="0.01" min="0" placeholder="e.g. 25.00" />
     <label>Private Note</label>
     <textarea id="termsNotes" rows="3" placeholder="Optional lender note"></textarea>
     <div class="modal-actions">
@@ -162,14 +180,7 @@
     .due-alert-item:nth-child(n+3) { display:none; }
     .due-alert-meta { margin-top:6px; }
     .panel-grid { display:none; }
-    .lender-loans-table td[data-label="Select"] {
-      display: flex;
-      justify-content: flex-end;
-      min-height: 32px;
-      padding-bottom: 0;
-      border-bottom: 0;
-    }
-    .lender-loans-table td[data-label="Select"]::before { content: "Select for bulk paid"; margin-right: auto; }
+    .lender-loans-table td[data-label="Select"] { display: none; }
     .lender-loans-table td[data-label="Actions"] {
       display: block;
       padding-top: 12px;
@@ -180,9 +191,34 @@
     }
     .lender-loans-table td[data-label="Loan"] {
       background: rgba(91,110,245,0.055);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 46px;
+    }
+    .lender-loans-table td[data-label="Loan"]::before { display: none; }
+    .mobile-loan-head {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .mobile-select {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.025);
+      flex: 0 0 auto;
+    }
+    .mobile-select input {
+      width: 18px;
+      height: 18px;
     }
     .lender-loans-table td[data-label="Actions"] .actions {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 </style>
@@ -268,7 +304,7 @@
       return true;
     }).sort(compareLoans);
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><h3>No loans found</h3><p>Record a loan after terms are agreed on Reddit.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="14"><div class="empty-state"><h3>No loans found</h3><p>Record a loan after terms are agreed on Reddit.</p></div></td></tr>`;
       return;
     }
     tbody.innerHTML = rows.map(loan => {
@@ -291,7 +327,10 @@
         : `<button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
       return `<tr class="${overdue ? 'row-overdue' : dueSoon ? 'row-due-soon' : ''}">
         <td data-label="Select"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></td>
-        <td data-label="Loan"><span class="loan-id">${escapeHtml(id)}</span><div>${thread}</div></td>
+        <td data-label="Loan">
+          <div class="mobile-loan-head"><span class="loan-id">${escapeHtml(id)}</span><div>${thread}</div></div>
+          <label class="mobile-select" title="Select for bulk paid"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></label>
+        </td>
         <td data-label="Borrower" class="username">${redditUser(loan.borrower)}</td>
         <td data-label="Lent"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
         <td data-label="Due Back"><span class="amount">${fmt(repayAmount)} ${escapeHtml(loan.currency)}</span></td>
@@ -300,9 +339,11 @@
         <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
         <td data-label="Due" class="date-cell">${due || fmtDate(loan.date_created)}</td>
         <td data-label="Days Funded" class="date-cell">${daysFunded}</td>
+        <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Rate %">${loan.interest_rate != null ? escapeHtml(String(loan.interest_rate)) + '%' : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Notes">${noteHtml}</td>
         <td data-label="Actions"><div class="actions">
-          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Files</button>
+          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openTermsModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Terms</button>
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
           ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
@@ -405,7 +446,9 @@
       repay_date: loan.repay_date ? parseLocalDate(loan.repay_date).getTime() : 9999999999999,
       days_funded: daysSince(loan.date_created),
       date_created: loan.date_created ? new Date(loan.date_created).getTime() : 0,
-      relevance: relevanceScore(loan)
+      relevance: relevanceScore(loan),
+      interest_amount: parseFloat(loan.interest_amount || 0),
+      interest_rate: parseFloat(loan.interest_rate || 0)
     };
     return values[key] ?? '';
   }
@@ -519,7 +562,7 @@
   }
 
   async function bulkMarkPaid() {
-    const ids = [...document.querySelectorAll('.loan-select:checked')].map(box => box.value);
+    const ids = [...new Set([...document.querySelectorAll('.loan-select:checked')].map(box => box.value))];
     if (!ids.length) { toast('Select at least one active loan.', 'error'); return; }
     if (!confirm(`Mark ${ids.length} selected loan(s) fully paid?`)) return;
     try {
@@ -535,11 +578,14 @@
   }
 
   function openTermsModal(loanId, repayAmount, repayDate) {
+    const loan = findLoan(loanId);
     document.getElementById('termsLoanId').value = loanId;
     document.getElementById('termsLoanIdDisplay').value = loanId;
     document.getElementById('termsRepayAmount').value = repayAmount;
     document.getElementById('termsRepayDate').value = repayDate || '';
     document.getElementById('termsNotes').value = getLoanNote(loanId);
+    document.getElementById('termsInterestAmount').value = loan?.interest_amount != null ? fmtRaw(loan.interest_amount) : '';
+    document.getElementById('termsInterestRate').value = loan?.interest_rate != null ? loan.interest_rate : '';
     document.getElementById('termsError').style.display = 'none';
     document.getElementById('termsModal').classList.add('open');
   }
@@ -549,13 +595,18 @@
     const repayAmount = parseFloat(document.getElementById('termsRepayAmount').value);
     const repayDate = document.getElementById('termsRepayDate').value;
     const notes = document.getElementById('termsNotes').value.trim();
+    const interestAmountRaw = document.getElementById('termsInterestAmount').value.trim();
+    const interestRateRaw = document.getElementById('termsInterestRate').value.trim();
     const errEl = document.getElementById('termsError');
     if (!repayAmount || repayAmount <= 0) { errEl.textContent = 'Repay amount is required.'; errEl.style.display = 'block'; return; }
     if (!repayDate) { errEl.textContent = 'Due date is required.'; errEl.style.display = 'block'; return; }
+    const body = { repay_amount: repayAmount, repay_date: repayDate, notes };
+    if (interestAmountRaw !== '') body.interest_amount = parseFloat(interestAmountRaw);
+    if (interestRateRaw !== '') body.interest_rate = parseFloat(interestRateRaw);
     try {
       await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/terms`, {
         method: 'PUT',
-        body: JSON.stringify({ repay_amount: repayAmount, repay_date: repayDate, notes })
+        body: JSON.stringify(body)
       });
       closeModal('termsModal');
       toast('Loan terms updated.', 'success');
@@ -603,6 +654,60 @@
     return `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(raw)}">u/${escapeHtml(raw)}</a>`;
   }
 
+  async function openFilesModal(loanId) {
+    document.getElementById('filesLoanId').value = loanId;
+    document.getElementById('filesError').style.display = 'none';
+    document.getElementById('fileInput').value = '';
+    document.getElementById('filesList').innerHTML = '<span style="color:var(--muted);font-size:13px">Loading…</span>';
+    document.getElementById('filesModal').classList.add('open');
+    await refreshFilesList(loanId);
+  }
+
+  async function refreshFilesList(loanId) {
+    const el = document.getElementById('filesList');
+    try {
+      const files = await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/attachments`);
+      if (!files.length) {
+        el.innerHTML = '<span style="color:var(--muted);font-size:13px">No files uploaded yet.</span>';
+        return;
+      }
+      el.innerHTML = files.map(f => `
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1;font-size:13px;word-break:break-all">${escapeHtml(f.original_name)}</span>
+          <span style="color:var(--muted);font-size:11px;white-space:nowrap">${(f.file_size/1024).toFixed(1)} KB</span>
+          <a class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h);text-decoration:none" href="${escapeAttr(f.url)}" target="_blank" download>Download</a>
+        </div>`).join('');
+    } catch(e) {
+      el.innerHTML = `<span style="color:var(--red);font-size:13px">Error: ${escapeHtml(e.message)}</span>`;
+    }
+  }
+
+  async function uploadFile() {
+    const loanId = document.getElementById('filesLoanId').value;
+    const input = document.getElementById('fileInput');
+    const errEl = document.getElementById('filesError');
+    const btn = document.getElementById('uploadBtn');
+    if (!input.files.length) { errEl.textContent = 'Select a file first.'; errEl.style.display = 'block'; return; }
+    const file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) { errEl.textContent = 'File must be under 10 MB.'; errEl.style.display = 'block'; return; }
+    const form = new FormData();
+    form.append('file', file);
+    btn.disabled = true; btn.textContent = 'Uploading…';
+    errEl.style.display = 'none';
+    try {
+      const resp = await fetch(`/api/loans/${encodeURIComponent(loanId)}/attachments`, {
+        method: 'POST',
+        headers: { 'X-API-Key': window.__apiKey || '' },
+        body: form
+      });
+      if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Upload failed'); }
+      input.value = '';
+      toast('File uploaded.', 'success');
+      await refreshFilesList(loanId);
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    finally { btn.disabled = false; btn.textContent = 'Upload'; }
+  }
+
   Object.assign(window, {
     bulkMarkPaid,
     copyLoanSummary,
@@ -612,8 +717,10 @@
     loadData,
     loadLoans,
     loadReminders,
+    openFilesModal,
     openTermsModal,
     openVerificationModal,
+    refreshFilesList,
     renderLoans,
     setRelevanceSort,
     setSort,
@@ -622,7 +729,8 @@
     showOverdueOnly,
     submitTermsEdit,
     submitVerificationApplication,
-    toggleAllLoans
+    toggleAllLoans,
+    uploadFile
   });
 </script>
 {% endblock %}

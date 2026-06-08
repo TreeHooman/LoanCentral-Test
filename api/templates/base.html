@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LoanCentral{% endblock %}</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
     :root {
       --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
       --accent: #5b6ef5; --accent-h: #7b8cff;
       --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --yellow: #f1c40f;
       --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
     }
+    html, body { max-width: 100%; overflow-x: hidden; }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; -webkit-text-size-adjust: 100%; }
 
     /* NAV */
@@ -24,6 +25,7 @@
     .nav-right { display: flex; align-items: center; gap: 10px; }
     .role-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
     .role-mod      { background: rgba(241,196,15,0.15); color: var(--yellow); }
+    .role-admin    { background: rgba(231,76,60,0.15);  color: var(--red); }
     .role-lender   { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
     .role-borrower { background: rgba(46,204,113,0.15); color: var(--green); }
     .nav-user { font-size: 13px; color: var(--text2); }
@@ -43,7 +45,7 @@
     main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 
     /* STATS GRID */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
     .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
     .stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
@@ -51,21 +53,22 @@
     .c-accent { color: var(--accent-h); } .c-green { color: var(--green); } .c-red { color: var(--red); } .c-orange { color: var(--orange); } .c-yellow { color: var(--yellow); } .c-muted { color: var(--muted); }
 
     /* TOOLBAR */
-    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-    .tabs { display: flex; gap: 4px; }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; max-width: 100%; }
+    .tabs { display: flex; gap: 4px; max-width: 100%; flex-wrap: wrap; }
     .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
     .tab:hover { border-color: var(--accent); color: var(--text); }
     .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-    .search-wrap { flex: 1; min-width: 200px; }
+    .search-wrap { flex: 1 1 min(200px, 100%); min-width: 0; }
     .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: border 0.15s; }
     .search-wrap input:focus { border-color: var(--accent); }
     .search-wrap input::placeholder { color: var(--muted); }
     .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
     .btn-primary:hover { background: var(--accent-h); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary, .btn-secondary { max-width: 100%; overflow-wrap: anywhere; }
     .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
     .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
-    .panel-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: 16px; margin-bottom: 22px; }
+    .panel-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(min(320px, 100%), .8fr); gap: 16px; margin-bottom: 22px; }
     .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
     .panel-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
     .panel-copy { color: var(--muted); font-size: 13px; line-height: 1.45; }
@@ -73,7 +76,7 @@
     .mini-stat { background: rgba(255,255,255,0.025); border: 1px solid var(--border); border-radius: 6px; padding: 10px; min-height: 62px; }
     .mini-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
     .mini-value { color: var(--text); font-size: 18px; font-weight: 700; margin-top: 4px; }
-    .callout { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; }
+    .callout { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
     .callout strong { color: var(--text); }
     .profile-link { color: var(--text); text-decoration: none; font-weight: 600; }
     .profile-link:hover { color: var(--accent-h); }
@@ -127,6 +130,16 @@
     .btn-confirm { background: var(--accent); border: none; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
     .btn-confirm:hover { background: var(--accent-h); }
     .modal-error { color: var(--red); font-size: 12px; margin-bottom: 8px; display: none; }
+    .flow-steps { display: grid; gap: 8px; margin: 0 0 14px; }
+    .flow-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.025); }
+    .flow-step-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(91,110,245,0.18); color: var(--accent-h); font-weight: 800; font-size: 12px; }
+    .flow-step-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .flow-step-copy { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .req-tips { margin: 0 0 14px; padding: 11px 12px; border: 1px solid rgba(243,156,18,0.25); border-radius: 8px; background: rgba(243,156,18,0.07); }
+    .req-tips-title { color: var(--orange); font-size: 12px; font-weight: 800; margin-bottom: 6px; }
+    .req-tips ul { padding-left: 17px; color: var(--text2); font-size: 12px; line-height: 1.5; }
+    .req-field-grid { display: grid; grid-template-columns: 1fr 108px; gap: 8px; margin-bottom: 12px; }
+    .req-field-grid .btn-primary { width: 100%; min-height: 38px; }
 
     /* TOAST */
     #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px 20px; border-radius: 8px; font-size: 13px; display: none; z-index: 300; max-width: 320px; }
@@ -190,6 +203,7 @@
       .role-badge { padding: 3px 7px; }
       .btn-logout { padding: 5px 9px; }
       main { padding: 14px 10px 20px; }
+      main > * { max-width: 100%; }
       footer { padding: 0 12px 18px; }
       .session-warning { margin: 10px 10px 0; font-size: 12px; }
       .section-header {
@@ -200,10 +214,13 @@
       }
       .section-header > div:last-child {
         width: 100%;
-        display: flex;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        min-width: 0;
       }
       .section-header .btn-secondary,
-      .section-header .btn-primary { flex: 1; justify-content: center; text-align: center; }
+      .section-header .btn-primary { width: 100%; justify-content: center; text-align: center; padding-left: 8px; padding-right: 8px; }
       .panel-grid { gap: 10px; margin-bottom: 12px; }
       .panel { padding: 12px; }
       .panel-title { font-size: 14px; }
@@ -214,13 +231,13 @@
       .mini-label { font-size: 9px; }
       .mini-value { font-size: 15px; }
       .stats-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         margin-bottom: 12px;
       }
-      .stat-card { padding: 9px; border-radius: 8px; min-height: 62px; }
+      .stat-card { padding: 9px; border-radius: 8px; min-height: 62px; overflow: hidden; }
       .stat-label { font-size: 9px; }
-      .stat-value { font-size: 17px; margin-top: 4px; }
+      .stat-value { font-size: 17px; margin-top: 4px; overflow-wrap: anywhere; }
       .stat-sub { font-size: 10px; margin-top: 2px; }
       .toolbar {
         display: grid;
@@ -237,17 +254,41 @@
         min-height: 38px;
         padding: 8px 10px;
       }
+      .toolbar select {
+        width: 100%;
+        min-height: 38px;
+      }
       .tabs {
         gap: 6px;
         padding-bottom: 2px;
         scrollbar-width: none;
       }
       .tabs::-webkit-scrollbar { display: none; }
+      .section-header > .tabs {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        overflow: visible;
+      }
+      .section-header > .tabs .tab {
+        width: 100%;
+      }
       .tab {
         flex: 0 0 auto;
         padding: 8px 12px;
         min-height: 36px;
         white-space: nowrap;
+      }
+      .callout, .empty-state, .panel, .stat-card, .table-wrap {
+        max-width: 100%;
+      }
+      .callout {
+        display: block;
+        width: 100%;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        overflow: visible;
       }
       .search-wrap { min-width: 0; }
       .search-wrap input { min-height: 40px; font-size: 16px; }
@@ -328,6 +369,13 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
       }
+      .modal [style*="grid-template-columns:1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+      }
+      .flow-step { grid-template-columns: 24px minmax(0, 1fr); padding: 9px; }
+      .flow-step-num { width: 24px; height: 24px; }
+      .req-field-grid { grid-template-columns: 1fr; gap: 0; }
+      .req-field-grid .btn-primary { margin-bottom: 12px; }
       .btn-cancel, .btn-confirm {
         min-height: 42px;
       }
@@ -347,7 +395,10 @@
 <nav>
   <a class="nav-brand" href="/">LoanCentral</a>
   <div class="nav-links">
-    {% if role == 'mod' %}
+    {% if role in ['mod', 'admin'] %}
+      {% if role == 'admin' %}
+      <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Admin View</a>
+      {% endif %}
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
@@ -425,16 +476,46 @@
 <div class="modal-overlay" id="newLoanModal">
   <div class="modal" style="width:480px">
     <h3>Record New Loan</h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Enter the REQ-ID from a Reddit thread after you and the borrower have already agreed to terms.</p>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="flow-step-num">1</div>
+        <div>
+          <div class="flow-step-title">Agree on Reddit first</div>
+          <div class="flow-step-copy">Use the Reddit thread or DMs to agree on amount, repay amount, due date, and payment method.</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">2</div>
+        <div>
+          <div class="flow-step-title">Paste the REQ-ID</div>
+          <div class="flow-step-copy">If the bot gave the post a REQ-ID, paste it here and click Look Up to auto-fill the record.</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">3</div>
+        <div>
+          <div class="flow-step-title">Review before recording</div>
+          <div class="flow-step-copy">Confirm the terms match what was agreed. Recording creates the Paid ID used for Reddit repayment commands.</div>
+        </div>
+      </div>
+    </div>
+    <div class="req-tips">
+      <div class="req-tips-title">Quick checks</div>
+      <ul>
+        <li>Do not record a loan before funds are actually sent.</li>
+        <li>Use the borrower Reddit username only, with no u/ prefix.</li>
+        <li>Keep payment screenshots or notes in the loan detail after saving.</li>
+      </ul>
+    </div>
     <div class="modal-error" id="newLoanError"></div>
 
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div style="flex:1">
+    <div class="req-field-grid">
+      <div>
         <label>Request ID (optional)</label>
         <input type="text" id="nlReqId" placeholder="e.g. REQ-0042" style="text-transform:uppercase" />
       </div>
-      <div style="display:flex;align-items:flex-end;padding-bottom:12px">
-        <button class="btn-primary" onclick="lookupRequest()" style="white-space:nowrap">Look Up</button>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn-primary" onclick="lookupRequest()" style="white-space:nowrap" title="Auto-fill loan details from a known REQ-ID">Look Up</button>
       </div>
     </div>
 
@@ -470,6 +551,17 @@
       <div>
         <label>Due Date <span style="color:var(--red)">*</span></label>
         <input type="date" id="nlRepayDate" />
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label>Interest Amount <span style="color:var(--muted);font-weight:400;font-size:11px">optional</span></label>
+        <input type="number" id="nlInterestAmount" placeholder="e.g. 30.00" step="0.01" min="0" />
+      </div>
+      <div>
+        <label>Interest Rate % <span style="color:var(--muted);font-weight:400;font-size:11px">optional</span></label>
+        <input type="number" id="nlInterestRate" placeholder="e.g. 25.00" step="0.01" min="0" />
       </div>
     </div>
 
@@ -560,6 +652,7 @@
     const errEl = document.getElementById('payError');
     if (!lender || !amount || !currency) { errEl.textContent = 'All fields required.'; errEl.style.display='block'; return; }
     try {
+      let result;
       await apiFetch(`/api/loans/${loanId}/paid`, { method: 'POST', body: JSON.stringify({ lender, amount, currency }) });
       closeModal('payModal'); toast('Payment recorded!', 'success');
       if (typeof loadData === 'function') loadData();
@@ -599,6 +692,8 @@
     document.getElementById('nlRepayDate').value = '';
     document.getElementById('nlPaymentMethod').value = '';
     document.getElementById('nlThreadLink').value = '';
+    document.getElementById('nlInterestAmount').value = '';
+    document.getElementById('nlInterestRate').value = '';
     document.getElementById('nlAutoFillBanner').style.display = 'none';
     document.getElementById('nlDuplicateWarning').style.display = 'none';
     document.getElementById('nlRejectWrap').style.display = 'none';
@@ -647,8 +742,10 @@
     const amount      = parseFloat(document.getElementById('nlAmount').value);
     const currency    = document.getElementById('nlCurrency').value.trim().toUpperCase() || 'USD';
     const repayAmount = parseFloat(document.getElementById('nlRepayAmount').value);
-    const repayDate   = document.getElementById('nlRepayDate').value.trim();
-    const threadLink  = document.getElementById('nlThreadLink').value.trim();
+    const repayDate       = document.getElementById('nlRepayDate').value.trim();
+    const threadLink      = document.getElementById('nlThreadLink').value.trim();
+    const interestAmountR = document.getElementById('nlInterestAmount').value.trim();
+    const interestRateR   = document.getElementById('nlInterestRate').value.trim();
 
     if (!borrower)           { errEl.textContent = 'Borrower username is required.';  errEl.style.display='block'; return; }
     if (!amount || amount<=0){ errEl.textContent = 'Amount must be greater than 0.';  errEl.style.display='block'; return; }
@@ -657,28 +754,24 @@
 
     try {
       if (reqId) {
-        // Fund via request ID
-        await apiFetch(`/api/requests/${reqId}/fund`, {
+        result = await apiFetch(`/api/requests/${reqId}/fund`, {
           method: 'POST',
           body: JSON.stringify({ lender: ME || session_user, repay_amount: repayAmount, repay_date: repayDate })
         });
       } else {
-        // Manual loan — no request ID
-        await apiFetch('/api/loans/create', {
-          method: 'POST',
-          body: JSON.stringify({
-            borrower,
-            amount,
-            currency,
-            repay_amount: repayAmount,
-            repay_date: repayDate,
-            payment_method: document.getElementById('nlPaymentMethod').value.trim(),
-            thread_link: threadLink
-          })
-        });
+        const body = {
+          borrower, amount, currency,
+          repay_amount: repayAmount,
+          repay_date: repayDate,
+          payment_method: document.getElementById('nlPaymentMethod').value.trim(),
+          thread_link: threadLink
+        };
+        if (interestAmountR !== '') body.interest_amount = parseFloat(interestAmountR);
+        if (interestRateR   !== '') body.interest_rate   = parseFloat(interestRateR);
+        result = await apiFetch('/api/loans/create', { method: 'POST', body: JSON.stringify(body) });
       }
       closeModal('newLoanModal');
-      toast('Loan recorded successfully!', 'success');
+      toast(`Loan recorded. Paid ID: ${result.paid_id || result.loan_id}`, 'success');
       if (typeof loadData === 'function') loadData();
     } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }

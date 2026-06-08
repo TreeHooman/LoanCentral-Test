@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- User roles table for dashboard access control
 CREATE TABLE IF NOT EXISTS user_roles (
     username TEXT PRIMARY KEY,
-    role TEXT NOT NULL DEFAULT 'borrower',       -- 'mod', 'lender', 'borrower'
+    role TEXT NOT NULL DEFAULT 'borrower',       -- 'admin', 'mod', 'lender', 'borrower'
     subscription_status TEXT NOT NULL DEFAULT 'free',  -- 'free', 'paid'
     created_at TIMESTAMP DEFAULT NOW(),
     last_login TIMESTAMP

@@ -80,6 +80,7 @@ REQUESTS = [
 ]
 
 ROLES = [
+    ("testadmin",         "admin"),
     ("testmod",           "mod"),
     ("testlender",        "lender"),
     ("testborrower",      "borrower"),

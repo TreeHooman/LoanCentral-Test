@@ -35,6 +35,7 @@
   <div class="stat-card"><div class="stat-label">Unpaid Loans</div><div class="stat-value c-red" id="p-unpaid">-</div></div>
   <div class="stat-card"><div class="stat-label">Unpaid Amount</div><div class="stat-value c-red" id="p-unpaid-amount">-</div></div>
   <div class="stat-card"><div class="stat-label">Standing</div><div class="stat-value" id="p-standing" style="font-size:22px">-</div></div>
+  <div class="stat-card"><div class="stat-label">Health Score</div><div class="stat-value" id="p-health" style="font-size:22px">-</div><div class="stat-sub" id="p-health-label"></div></div>
 </div>
 
 <div class="section-header">
@@ -51,8 +52,8 @@
 
 <div class="table-wrap">
   <table class="mobile-cards">
-    <thead><tr><th>Loan</th><th>Lender</th><th>Borrower</th><th>Lent</th><th>Due Back</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Due</th><th>Date</th><th>Thread</th></tr></thead>
-    <tbody id="profileLoans"><tr><td colspan="11" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <thead><tr><th>Loan</th><th>Lender</th><th>Borrower</th><th>Lent</th><th>Due Back</th><th>Repaid</th><th>Still Owe</th><th>Status</th><th>Due</th><th>Date</th><th>Interest $</th><th>Rate %</th><th>Thread</th></tr></thead>
+    <tbody id="profileLoans"><tr><td colspan="13" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 {% endblock %}
@@ -94,8 +95,15 @@
       standingEl.textContent = standing;
       standingEl.className = 'stat-value ' + (standing === 'Clear' ? 'c-green' : 'c-red');
 
-      renderLoans(p.recent_loans || []);
-      renderTimeline(p.recent_loans || []);
+      const loans = p.recent_loans || [];
+      const score = calcHealth(loans);
+      const healthEl = document.getElementById('p-health');
+      healthEl.textContent = score === null ? 'N/A' : score + '/100';
+      healthEl.className = 'stat-value ' + healthColor(score);
+      document.getElementById('p-health-label').textContent = healthLabel(score);
+
+      renderLoans(loans);
+      renderTimeline(loans);
     } catch(e) {
       document.getElementById('profileLoans').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
       document.getElementById('profileTimeline').innerHTML = `<div class="empty-state" style="color:var(--red)">Error: ${escapeHtml(e.message)}</div>`;
@@ -105,7 +113,7 @@
   function renderLoans(loans) {
     const tbody = document.getElementById('profileLoans');
     if (!loans.length) {
-      tbody.innerHTML = '<tr><td colspan="11" class="table-placeholder">No recorded loans found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" class="table-placeholder">No recorded loans found.</td></tr>';
       return;
     }
     tbody.innerHTML = loans.map(loan => {
@@ -126,6 +134,8 @@
         <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
         <td data-label="Due" class="date-cell">${dueLabel(loan.repay_date) || '-'}</td>
         <td data-label="Date" class="date-cell">${fmtDate(loan.date_created)}</td>
+        <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Rate %">${loan.interest_rate != null ? escapeHtml(String(loan.interest_rate)) + '%' : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Thread">${thread}</td>
       </tr>`;
     }).join('');
@@ -162,6 +172,43 @@
         </div>
       </div>`;
     }).join('');
+  }
+
+  function calcHealth(loans) {
+    if (!loans.length) return null;
+    let score = 100;
+    loans.forEach(loan => {
+      const status = String(loan.status || '').toLowerCase();
+      if (status === 'unpaid') score -= 38;
+      if (status === 'disputed') score -= 12;
+      if (loan.repay_date && ['confirmed','partially_repaid','unpaid'].includes(status)) {
+        const due = new Date(loan.repay_date); due.setHours(0,0,0,0);
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (due < today) {
+          const daysLate = Math.round((today - due) / 86400000);
+          score -= Math.min(28, 10 + daysLate * 2);
+        }
+      }
+    });
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  function healthColor(s) {
+    if (s === null) return 'c-muted';
+    if (s >= 90) return 'c-green';
+    if (s >= 70) return 'c-accent';
+    if (s >= 50) return 'c-yellow';
+    if (s >= 25) return 'c-orange';
+    return 'c-red';
+  }
+
+  function healthLabel(s) {
+    if (s === null) return 'No history yet';
+    if (s >= 90) return 'Excellent';
+    if (s >= 70) return 'Good';
+    if (s >= 50) return 'Fair';
+    if (s >= 25) return 'Poor';
+    return 'Very Poor';
   }
 
   function userLink(username) {

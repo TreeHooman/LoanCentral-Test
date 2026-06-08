@@ -313,7 +313,9 @@ def handle_new_post(post):
             if request_id:
                 reply_parts.append(
                     f"LoanCentral request ID: `{request_id}`\n\n"
-                    "Use this ID only after lender and borrower agree to terms on Reddit. "
+                    "After lender and borrower agree to terms on Reddit, a verified lender can fund it with:\n\n"
+                    f"`$fund {request_id} [repay_amount] [currency] [YYYY-MM-DD]`\n\n"
+                    "Funding returns a Paid ID for `$paid_with_id`, `$unpaid`, and `$refunded`. "
                     "LoanCentral is a record-keeping tool and does not handle funds."
                 )
             elif error:

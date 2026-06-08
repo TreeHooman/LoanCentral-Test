@@ -26,7 +26,8 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("25"))
         self.assertEqual(fake_db.loans[0]["status"], "partially_repaid")
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("25"))
-        self.assertIn("remaining: 75.00 USD", comment.replies[0])
+        self.assertIn("75.00 USD", comment.replies[0])
+        self.assertNotIn("Loan fully repaid", comment.replies[0])
 
     def test_lender_can_record_full_payment_by_public_loan_id(self):
         fake_db = FakeDb(
@@ -39,7 +40,7 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("100"))
         self.assertEqual(fake_db.loans[0]["status"], "repaid")
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("100"))
-        self.assertIn("remaining: 0.00 USD", comment.replies[0])
+        self.assertIn("Loan fully repaid", comment.replies[0])
 
     def test_wrong_lender_gets_clear_auth_error(self):
         fake_db = FakeDb(loans=[loan_record(db_id=12, lender="real_lender")])
@@ -92,7 +93,8 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("50"))
         self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
         self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("50"))
-        self.assertIn("remaining: 50.00 USD", comment.replies[0])
+        self.assertIn("50.00 USD", comment.replies[0])
+        self.assertNotIn("Loan fully repaid", comment.replies[0])
 
     def test_full_payment_on_unpaid_loan_clears_one_unpaid_count_and_remaining_amount(self):
         fake_db = FakeDb(
@@ -107,7 +109,7 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("100"))
         self.assertEqual(fake_db.users["borrower"]["unpaid_loans"], 1)
         self.assertEqual(fake_db.users["borrower"]["unpaid_amount"], Decimal("50"))
-        self.assertIn("remaining: 0.00 USD", comment.replies[0])
+        self.assertIn("Loan fully repaid", comment.replies[0])
 
     def test_zero_payment_is_rejected(self):
         fake_db = FakeDb(loans=[loan_record(db_id=12)])

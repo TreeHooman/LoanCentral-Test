@@ -326,7 +326,8 @@ def update_reddit_action_status(action_id: int, status: str, actor: str = None, 
 # ---------------------------------------------------------------------------
 
 def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str,
-                repay_amount: Decimal = None, repay_date: str = None, payment_method: str = None):
+                repay_amount: Decimal = None, repay_date: str = None, payment_method: str = None,
+                interest_amount: Decimal = None, interest_rate: Decimal = None):
     """
     Confirm and save a new loan to the database.
     Returns (loan_db_id, error_message).
@@ -358,17 +359,25 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         loan_id = _generate_loan_id()
 
+        # Derive interest from repay_amount if not explicitly provided
+        if repay_amount and repay_amount > amount:
+            if interest_amount is None:
+                interest_amount = repay_amount - amount
+            if interest_rate is None and amount > 0:
+                interest_rate = ((repay_amount - amount) / amount * 100).quantize(Decimal("0.01"))
+
         inserted_public_id = True
         try:
             cur.execute('''
                 INSERT INTO loans
                 (loan_id, lender, borrower, amount, currency, date_created, original_thread,
-                 status, repay_amount, repay_date, payment_method)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 status, repay_amount, repay_date, payment_method, interest_amount, interest_rate)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             ''', (
                 loan_id, lender, borrower, amount, currency, datetime.now(), thread_url,
-                'confirmed', repay_amount, repay_date or None, payment_method or None
+                'confirmed', repay_amount, repay_date or None, payment_method or None,
+                interest_amount, interest_rate
             ))
         except Exception as e:
             if not _looks_like_missing_column(e):
@@ -935,7 +944,8 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
             cur.execute(f'''
                 SELECT id, loan_id, lender, borrower, amount, amount_repaid,
                        currency, status, date_created, original_thread, repay_date, notes, repay_amount,
-                       payment_method, borrower_acknowledged_at, borrower_acknowledged_note
+                       payment_method, borrower_acknowledged_at, borrower_acknowledged_note,
+                       interest_amount, interest_rate
                 FROM loans {where}
                 ORDER BY date_created DESC
                 LIMIT %s
@@ -975,6 +985,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 currency, status, date_created, original_thread = r[5], r[6], r[7], r[8]
                 repay_date, notes, raw_repay_amount, payment_method = None, None, None, None
                 ack_at, ack_note = None, None
+                interest_amount, interest_rate = None, None
             else:
                 db_id, public_id = r[0], r[1] or str(r[0])
                 lender, borrower, amount, amount_repaid = r[2], r[3], r[4], r[5]
@@ -985,6 +996,8 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 payment_method = r[13] if schema_mode == "dashboard" else None
                 ack_at = r[14] if schema_mode == "dashboard" else None
                 ack_note = r[15] if schema_mode == "dashboard" else None
+                interest_amount = r[16] if schema_mode == "dashboard" else None
+                interest_rate = r[17] if schema_mode == "dashboard" else None
             repay_amount = Decimal(raw_repay_amount) if raw_repay_amount is not None else Decimal(amount)
             loans.append({
                 "db_id": db_id,
@@ -1004,6 +1017,8 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 "borrower_acknowledged_note": ack_note,
                 "repay_amount": repay_amount,
                 "remaining": repay_amount - Decimal(amount_repaid),
+                "interest_amount": Decimal(interest_amount) if interest_amount is not None else None,
+                "interest_rate": Decimal(interest_rate) if interest_rate is not None else None,
                 "schema_outdated": schema_mode != "dashboard",
             })
         return loans, None
@@ -1498,7 +1513,7 @@ def expire_old_requests(days: int = None):
 def get_user_role(username: str):
     """
     Get dashboard role for a user.
-    Returns ('borrower'|'lender'|'mod', error_message).
+    Returns ('borrower'|'lender'|'mod'|'admin', error_message).
     Defaults to 'borrower' if user not in user_roles table.
     """
     conn = _get_db()
@@ -1520,11 +1535,11 @@ def get_user_role(username: str):
 def set_user_role(username: str, role: str):
     """
     Set or update a user's dashboard role.
-    role must be 'mod', 'lender', or 'borrower'.
+    role must be 'admin', 'mod', 'lender', or 'borrower'.
     Returns (True, None) on success or (None, error_message).
     """
-    if role not in ("mod", "lender", "borrower"):
-        return None, "Role must be 'mod', 'lender', or 'borrower'."
+    if role not in ("admin", "mod", "lender", "borrower"):
+        return None, "Role must be 'admin', 'mod', 'lender', or 'borrower'."
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."

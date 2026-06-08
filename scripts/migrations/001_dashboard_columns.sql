@@ -15,6 +15,16 @@ CREATE INDEX IF NOT EXISTS idx_loans_borrower ON loans(borrower);
 CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
 CREATE INDEX IF NOT EXISTS idx_loans_date_created ON loans(date_created);
 
+CREATE TABLE IF NOT EXISTS user_roles (
+    username TEXT PRIMARY KEY,
+    role TEXT NOT NULL DEFAULT 'borrower',
+    subscription_status TEXT NOT NULL DEFAULT 'free',
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
+
 CREATE TABLE IF NOT EXISTS loan_attachments (
     id SERIAL PRIMARY KEY,
     loan_id TEXT NOT NULL,

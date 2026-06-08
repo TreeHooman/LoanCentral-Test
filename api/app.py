@@ -43,6 +43,12 @@ logging.basicConfig(
 logger = logging.getLogger("LoanCentral.api")
 API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
 _api_rate_hits = {}
+MONEY_FIELDS = {"amount", "amount_repaid", "repay_amount", "remaining"}
+PAYMENT_ROUTE_FIELDS = {"payment_method"}
+MONEY_DETAIL_KEYS = {
+    "amount", "amount_paid", "currency", "remaining", "loan_amount",
+    "repay_amount", "amount_repaid", "payment_method",
+}
 
 
 def _looks_like_missing_column(error):
@@ -111,6 +117,62 @@ def _reminder_level(days_until):
     if days_until <= 3:
         return "due_soon"
     return "upcoming"
+
+
+def _is_admin():
+    return session.get("role") == "admin"
+
+
+def _is_mod_or_admin():
+    return session.get("role") in ("mod", "admin")
+
+
+def _redact_money_value(value=None):
+    return None
+
+
+def _redact_loan_money(loan):
+    if _is_admin():
+        return loan
+    clean = dict(loan)
+    for field in MONEY_FIELDS | PAYMENT_ROUTE_FIELDS:
+        if field in clean:
+            clean[field] = _redact_money_value(clean.get(field))
+    clean["money_redacted"] = True
+    return clean
+
+
+def _redact_loans_money(loans):
+    if _is_admin():
+        return loans
+    return [_redact_loan_money(loan) for loan in loans]
+
+
+def _redact_request_money(req):
+    if _is_admin():
+        return req
+    clean = dict(req)
+    for field in ("amount", "repay_amount", "payment_method"):
+        if field in clean:
+            clean[field] = _redact_money_value(clean.get(field))
+    clean["money_redacted"] = True
+    return clean
+
+
+def _redact_activity_money(events):
+    if _is_admin():
+        return events
+    redacted = []
+    for event in events:
+        clean = dict(event)
+        details = clean.get("details")
+        if isinstance(details, dict):
+            clean["details"] = {
+                key: ("redacted" if key in MONEY_DETAIL_KEYS else value)
+                for key, value in details.items()
+            }
+        redacted.append(clean)
+    return redacted
 
 
 @app.before_request
@@ -265,15 +327,28 @@ def require_auth(f):
 
 
 def require_mod_api(f):
-    """API endpoints that only mods can call."""
+    """API endpoints that mods/admins can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key") or request.args.get("api_key")
         if key == API_KEY:
             return f(*args, **kwargs)
-        if session.get("role") == "mod":
+        if _is_mod_or_admin():
             return f(*args, **kwargs)
         return _json({"error": "Mod access required."}, 403)
+    return decorated
+
+
+def require_admin_api(f):
+    """API endpoints that only owner/admin can call."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        if key == API_KEY:
+            return f(*args, **kwargs)
+        if _is_admin():
+            return f(*args, **kwargs)
+        return _json({"error": "Admin access required."}, 403)
     return decorated
 
 
@@ -284,7 +359,7 @@ def _can_view_user_profile(target_username):
     viewer = session.get("username")
     if not viewer:
         return False
-    if session.get("role") == "mod":
+    if _is_mod_or_admin():
         return True
 
     viewer = viewer.lower()
@@ -319,6 +394,8 @@ def home():
     if not session.get("username"):
         return redirect(url_for("login"))
     role = session.get("role", "borrower")
+    if role == "admin":
+        return redirect(url_for("dashboard_admin"))
     if role == "mod":
         return redirect(url_for("dashboard_mod"))
     elif role == "lender":
@@ -386,10 +463,15 @@ def auth_dev_login():
     if not IS_DEV:
         return redirect(url_for("login"))
     if request.method == "POST":
-        from services import get_user_role, update_last_login
+        from services import get_user_role, set_user_role, update_last_login
         username = next((value.strip().lower() for value in request.form.getlist("username") if value.strip()), "")
+        force_role = request.form.get("force_role", "").strip().lower()
         if username:
-            role, _ = get_user_role(username)
+            if force_role in ("borrower", "lender", "mod", "admin"):
+                set_user_role(username, force_role)
+                role = force_role
+            else:
+                role, _ = get_user_role(username)
             update_last_login(username)
             session.permanent = True
             session["username"] = username
@@ -423,15 +505,27 @@ def auth_logout():
 
 
 @app.route("/dashboard/mod")
-@role_required("mod")
+@role_required("mod", "admin")
 def dashboard_mod():
     return render_template("dashboard_mod.html",
                            username=session["username"],
-                           role=session["role"])
+                           role=session["role"],
+                           can_view_money=False,
+                           view_label="Mod Dashboard")
+
+
+@app.route("/dashboard/admin")
+@role_required("admin")
+def dashboard_admin():
+    return render_template("dashboard_mod.html",
+                           username=session["username"],
+                           role=session["role"],
+                           can_view_money=True,
+                           view_label="Admin Dashboard")
 
 
 @app.route("/dashboard/lender")
-@role_required("lender", "mod")
+@role_required("lender", "mod", "admin")
 def dashboard_lender():
     return render_template("dashboard_lender.html",
                            username=session["username"],
@@ -478,6 +572,8 @@ def set_role(username):
     from services import set_user_role
     data = request.get_json() or {}
     role = data.get("role", "").strip().lower()
+    if role == "admin" and not _is_admin():
+        return _json({"error": "Only an admin can assign admin access."}, 403)
     result, err = set_user_role(username, role)
     if err:
         return _json({"error": err}, 400)
@@ -519,8 +615,8 @@ def get_loans():
     search   = request.args.get("search")
     limit    = int(request.args.get("limit", 200))
 
-    # Non-mods can only see their own data
-    if session.get("username") and session.get("role") != "mod":
+    # Non-mod/admins can only see their own data.
+    if session.get("username") and not _is_mod_or_admin():
         me = session["username"]
         if lender and lender.lower() != me:
             return _json({"error": "You can only view your own loans."}, 403)
@@ -546,6 +642,8 @@ def get_loans():
         if "remaining" not in loan:
             loan["remaining"] = float(loan["amount"]) - float(loan["amount_repaid"])
 
+    if session.get("role") == "mod" and not (lender or borrower):
+        loans = _redact_loans_money(loans)
     return _json(loans)
 
 
@@ -558,7 +656,7 @@ def export_loans_csv():
 
     if not lender and not borrower:
         return _json({"error": "lender or borrower is required"}, 400)
-    if session.get("username") and session.get("role") != "mod":
+    if session.get("username") and not _is_mod_or_admin():
         me = session["username"]
         if lender and lender.lower() != me:
             return _json({"error": "You can only export your own loans."}, 403)
@@ -573,6 +671,8 @@ def export_loans_csv():
         return _json({"error": error}, 500)
     if status:
         loans = [loan for loan in loans if loan["status"] == status]
+    if session.get("role") == "mod":
+        return _json({"error": "Admin access required to export loan money routes."}, 403)
 
     out = StringIO()
     writer = csv.writer(out)
@@ -685,10 +785,12 @@ def get_loan(loan_id):
             "schema_outdated": schema_mode != "dashboard",
         }
         # Scope check
-        if session.get("username") and session.get("role") != "mod":
+        if session.get("username") and not _is_mod_or_admin():
             me = session["username"]
             if loan["lender"] != me and loan["borrower"] != me:
                 return _json({"error": "You can only view your own loans."}, 403)
+        if session.get("role") == "mod":
+            loan = _redact_loan_money(loan)
         return _json(loan)
     finally:
         cur.close()
@@ -703,6 +805,8 @@ def update_loan_terms(loan_id):
     repay_amount = data.get("repay_amount")
     repay_date = data.get("repay_date", "").strip()
     notes = (data.get("notes") or "").strip()
+    interest_amount = data.get("interest_amount")
+    interest_rate = data.get("interest_rate")
 
     if not repay_amount:
         return _json({"error": "repay_amount is required"}, 400)
@@ -715,6 +819,11 @@ def update_loan_terms(loan_id):
         return _json({"error": "repay_amount must be a valid number"}, 400)
     if repay_amount_dec <= 0:
         return _json({"error": "repay_amount must be greater than zero"}, 400)
+    try:
+        interest_amount_dec = Decimal(str(interest_amount)) if interest_amount is not None else None
+        interest_rate_dec = Decimal(str(interest_rate)) if interest_rate is not None else None
+    except Exception:
+        return _json({"error": "interest values must be valid numbers"}, 400)
 
     conn = _get_db()
     if not conn:
@@ -732,7 +841,7 @@ def update_loan_terms(loan_id):
             return _json({"error": "Loan not found"}, 404)
 
         db_id, lender, amount_repaid, status = row
-        if session.get("username") and session.get("role") != "mod":
+        if session.get("username") and not _is_mod_or_admin():
             if lender != session["username"]:
                 return _json({"error": "Only the lender can edit loan terms."}, 403)
         if status in ("repaid", "refunded"):
@@ -745,9 +854,11 @@ def update_loan_terms(loan_id):
             SET repay_amount = %s,
                 repay_date = %s,
                 notes = COALESCE(NULLIF(%s, ''), notes),
+                interest_amount = COALESCE(%s, interest_amount),
+                interest_rate = COALESCE(%s, interest_rate),
                 last_updated = NOW()
             WHERE id = %s
-        """, (repay_amount_dec, repay_date, notes, db_id))
+        """, (repay_amount_dec, repay_date, notes, interest_amount_dec, interest_rate_dec, db_id))
         conn.commit()
         log_event(
             "loan_terms_edited",
@@ -780,7 +891,7 @@ def bulk_mark_paid():
         return _json({"error": "lender is required"}, 400)
     if not isinstance(loan_ids, list) or not loan_ids:
         return _json({"error": "loan_ids must be a non-empty list"}, 400)
-    if session.get("username") and session.get("role") != "mod" and lender != session["username"]:
+    if session.get("username") and not _is_mod_or_admin() and lender != session["username"]:
         return _json({"error": "You can only mark your own loans paid."}, 403)
 
     results = []
@@ -901,7 +1012,7 @@ def acknowledge_loan(loan_id):
             return _json({"error": "Loan not found"}, 404)
 
         db_id, lender, loan_borrower, status, ack_at = row
-        if session.get("role") != "mod" and loan_borrower != borrower:
+        if not _is_mod_or_admin() and loan_borrower != borrower:
             return _json({"error": "Only the borrower can acknowledge this loan."}, 403)
         if status in ("refunded",):
             return _json({"error": "Refunded loans cannot be acknowledged."}, 400)
@@ -930,6 +1041,71 @@ def acknowledge_loan(loan_id):
         conn.rollback()
         if _looks_like_missing_column(e):
             return _json({"error": "Database migration required before acknowledging loans."}, 400)
+        return _json({"error": str(e)}, 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/loans/<loan_id>/report-payment", methods=["POST"])
+@require_auth
+def report_payment(loan_id):
+    """Borrower self-reports a payment — stored as a note, does not change loan status."""
+    from services import _get_db, log_event
+    data = request.get_json() or {}
+    amount = data.get("amount")
+    currency = (data.get("currency") or "USD").strip().upper()
+    note = (data.get("note") or "").strip()
+    borrower = session.get("username", "").strip().lower()
+
+    if not amount or float(amount) <= 0:
+        return _json({"error": "amount is required"}, 400)
+
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, borrower, lender, status
+            FROM loans WHERE id::text = %s OR loan_id = %s
+            ORDER BY id DESC LIMIT 1
+        """, (loan_id, loan_id))
+        row = cur.fetchone()
+        if not row:
+            return _json({"error": "Loan not found"}, 404)
+        db_id, loan_borrower, lender, status = row
+        if loan_borrower != borrower:
+            return _json({"error": "Only the borrower can report a payment on this loan."}, 403)
+        if status in ("repaid", "refunded"):
+            return _json({"error": "This loan is already closed."}, 400)
+
+        report_text = f"[Borrower payment report] {float(amount):.2f} {currency} sent."
+        if note:
+            report_text += f" Note: {note}"
+
+        cur.execute("""
+            UPDATE loans
+            SET notes = CASE
+                WHEN notes IS NULL OR notes = '' THEN %s
+                ELSE notes || E'\n' || %s
+            END,
+            last_updated = NOW()
+            WHERE id = %s
+        """, (report_text, report_text, db_id))
+        conn.commit()
+        log_event(
+            "borrower_payment_reported",
+            actor=borrower,
+            actor_role=session.get("role"),
+            target_user=lender,
+            loan_id=loan_id,
+            source="dashboard",
+            details={"amount": str(amount), "currency": currency, "note": note}
+        )
+        return _json({"ok": True})
+    except Exception as e:
+        conn.rollback()
         return _json({"error": str(e)}, 500)
     finally:
         cur.close()
@@ -966,6 +1142,12 @@ def get_user(username):
     if error:
         return _json({"error": error}, 500)
     loans, _ = get_loan_history(username, role="both", limit=50)
+    if session.get("role") == "mod":
+        profile = dict(profile)
+        for field in ("amount_borrowed", "amount_lent", "amount_repaid", "unpaid_amount", "active_amount"):
+            if field in profile:
+                profile[field] = None
+        loans = _redact_loans_money(loans or [])
     profile["recent_loans"] = loans or []
     return _json(profile)
 
@@ -1092,14 +1274,20 @@ def get_stats():
             FROM loans
         """)
         row = cur.fetchone()
-        return _json({
+        stats = {
             "total_loans":    row[0], "active_loans":  row[1],
             "partial_loans":  row[2], "unpaid_loans":  row[3],
             "repaid_loans":   row[4], "refunded_loans": row[5],
             "disputed_loans": row[6],
             "total_volume":   row[7], "total_repaid":  row[8],
             "outstanding":    row[9],
-        })
+        }
+        if session.get("role") == "mod":
+            stats["total_volume"] = None
+            stats["total_repaid"] = None
+            stats["outstanding"] = None
+            stats["money_redacted"] = True
+        return _json(stats)
     finally:
         cur.close()
         conn.close()
@@ -1109,12 +1297,17 @@ def get_stats():
 @require_auth
 def get_lender_stats(lender):
     from services import get_lender_stats
-    if session.get("username") and session.get("role") not in ("mod",):
+    if session.get("username") and not _is_mod_or_admin():
         if lender.lower() != session["username"]:
             return _json({"error": "You can only view your own stats."}, 403)
     stats, error = get_lender_stats(lender)
     if error:
         return _json({"error": error}, 500)
+    if session.get("role") == "mod" and lender.lower() != session.get("username", "").lower():
+        stats["total_lent"] = None
+        stats["total_recovered"] = None
+        stats["outstanding"] = None
+        stats["money_redacted"] = True
     return _json(stats)
 
 
@@ -1126,6 +1319,8 @@ def get_activity():
     events, error = get_recent_activity(limit=limit)
     if error:
         return _json({"error": error}, 500)
+    if session.get("role") == "mod":
+        events = _redact_activity_money(events)
     return _json(events)
 
 
@@ -1182,7 +1377,7 @@ def get_reminders():
     limit = min(max(int(request.args.get("limit", 200)), 1), 500)
     days = min(max(int(request.args.get("days", 3)), 0), 30)
 
-    if session.get("username") and session.get("role") != "mod":
+    if session.get("username") and not _is_mod_or_admin():
         lender = session["username"]
 
     loans, error = _get_all_loans_from_db(limit=limit)
@@ -1234,6 +1429,13 @@ def get_reminders():
         item["days_until_due"] if item["days_until_due"] is not None else 9999,
         -float(item["remaining"]),
     ))
+    if session.get("role") == "mod":
+        for item in items:
+            for field in MONEY_FIELDS | PAYMENT_ROUTE_FIELDS:
+                if field in item:
+                    item[field] = None
+            item["money_redacted"] = True
+
     return _json({
         "items": items,
         "counts": counts,
@@ -1425,6 +1627,8 @@ def create_loan_manual():
     repay_date   = data.get("repay_date", "").strip()
     thread_link = data.get("thread_link", "").strip()
     payment_method = data.get("payment_method", "").strip()
+    interest_amount = data.get("interest_amount")
+    interest_rate   = data.get("interest_rate")
     if not all([lender, borrower, amount]):
         return _json({"error": "borrower and amount are required"}, 400)
     if not repay_amount:
@@ -1435,11 +1639,13 @@ def create_loan_manual():
         return _json({"error": "You cannot loan to yourself."}, 400)
     loan_id, error = create_loan(
         lender, borrower, Decimal(str(amount)), currency, thread_link or "dashboard",
-        repay_amount=Decimal(str(repay_amount)), repay_date=repay_date, payment_method=payment_method
+        repay_amount=Decimal(str(repay_amount)), repay_date=repay_date, payment_method=payment_method,
+        interest_amount=Decimal(str(interest_amount)) if interest_amount is not None else None,
+        interest_rate=Decimal(str(interest_rate)) if interest_rate is not None else None,
     )
     if error:
         return _json({"error": error}, 400)
-    return _json({"ok": True, "loan_id": loan_id})
+    return _json({"ok": True, "loan_id": loan_id, "paid_id": loan_id})
 
 
 @app.route("/api/requests", methods=["GET"])
@@ -1451,6 +1657,8 @@ def list_requests():
     requests, error = get_open_requests(limit=200)
     if error:
         return _json({"error": error}, 500)
+    if session.get("role") == "mod":
+        requests = [_redact_request_money(item) for item in requests]
     return _json(requests)
 
 
@@ -1480,6 +1688,8 @@ def get_request(request_id):
     if not dup_error:
         req["duplicate_open_request_count"] = len(duplicates)
         req["duplicate_open_request_ids"] = [item["request_id"] for item in duplicates]
+    if session.get("role") == "mod":
+        req = _redact_request_money(req)
     return _json(req)
 
 
@@ -1495,7 +1705,7 @@ def note_request(request_id):
     req, error = get_loan_request(request_id)
     if error:
         return _json({"error": error}, 404)
-    if session.get("role") not in ("lender", "mod"):
+    if session.get("role") not in ("lender", "mod", "admin"):
         return _json({"error": "Only lenders or mods can note requests."}, 403)
 
     conn = _get_db()
@@ -1544,14 +1754,14 @@ def fund_request(request_id):
     loan_id, error = fund_loan_request(request_id, lender, float(repay_amount), repay_date)
     if error:
         return _json({"error": error}, 400)
-    return _json({"ok": True, "loan_id": loan_id, "request_id": request_id})
+    return _json({"ok": True, "loan_id": loan_id, "paid_id": loan_id, "request_id": request_id})
 
 
 @app.route("/api/requests/<request_id>/cancel", methods=["POST"])
 @require_auth
 def cancel_request(request_id):
     from services import cancel_loan_request
-    if session.get("role") not in ("lender", "mod"):
+    if session.get("role") not in ("lender", "mod", "admin"):
         return _json({"error": "Only lenders or mods can cancel a looked-up request."}, 403)
     data = request.get_json() or {}
     note = (data.get("note") or "").strip()

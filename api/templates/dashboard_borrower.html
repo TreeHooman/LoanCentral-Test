@@ -24,9 +24,6 @@
     </div>
   </section>
 
-  <aside class="callout">
-    <strong>Reminder:</strong> LoanCentral records agreements made on Reddit. Pay lenders directly using the method you agreed to; LoanCentral never touches funds.
-  </aside>
 </div>
 
 <div class="callout" id="schemaWarning" style="display:none;margin-bottom:16px;border-color:rgba(243,156,18,0.35);background:rgba(243,156,18,0.08)">
@@ -42,7 +39,7 @@
 </div>
 
 <div class="callout health-callout" style="margin-bottom:18px">
-  <strong>Health score:</strong> based on your recorded repayment history and unpaid loans inside LoanCentral only. It is not a credit score and does not predict whether a lender should fund you.
+  <strong>Health score:</strong> based only on recorded repayment outcomes and currently late loans inside LoanCentral. It is not a credit score.
 </div>
 
 <div class="section-header" style="margin-top:8px">
@@ -62,13 +59,14 @@
         <th><button class="sort-head" onclick="setOwingSort('remaining')">Still Owe</button></th>
         <th><button class="sort-head" onclick="setOwingSort('status')">Status</button></th>
         <th><button class="sort-head" onclick="setOwingSort('repay_date')">Due</button></th>
+        <th><button class="sort-head" onclick="setOwingSort('interest_amount')">Interest $</button></th>
         <th>Payment</th>
         <th>Acknowledged</th>
         <th><button class="sort-head" onclick="setOwingSort('days_funded')">Days Funded</button></th>
         <th>Thread</th>
       </tr>
     </thead>
-    <tbody id="owingBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <tbody id="owingBody"><tr><td colspan="13" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -93,12 +91,34 @@
       <th><button class="sort-head" onclick="setHistorySort('amount_repaid')">Repaid</button></th>
       <th><button class="sort-head" onclick="setHistorySort('status')">Status</button></th>
       <th><button class="sort-head" onclick="setHistorySort('date_created')">Date</button></th>
+      <th>Interest $</th>
+      <th>Rate %</th>
       <th>Payment</th>
       <th>Ack</th>
       <th>Thread</th>
     </tr></thead>
-    <tbody id="historyBody"><tr><td colspan="10" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <tbody id="historyBody"><tr><td colspan="12" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
+</div>
+<div class="modal-overlay" id="reportPaymentModal">
+  <div class="modal">
+    <h3>Report a Payment</h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">This notifies the lender you've sent a payment. The lender confirms the final record — this is your self-report only.</p>
+    <div class="modal-error" id="reportPaymentError"></div>
+    <input type="hidden" id="rpLoanId" />
+    <label>Loan ID</label>
+    <input type="text" id="rpLoanIdDisplay" readonly style="opacity:.6" />
+    <label>Amount Sent</label>
+    <input type="number" id="rpAmount" step="0.01" min="0.01" placeholder="e.g. 50.00" />
+    <label>Currency</label>
+    <input type="text" id="rpCurrency" maxlength="3" style="text-transform:uppercase" value="USD" />
+    <label>Note <span style="color:var(--muted);font-weight:400;font-size:11px">optional</span></label>
+    <textarea id="rpNote" rows="2" placeholder="e.g. Sent via PayPal on June 8"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('reportPaymentModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitReportPayment()">Submit Report</button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -127,6 +147,7 @@
   const ME = '{{ username }}';
   let historyStatus = '';
   let borrowerLoans = [];
+  let borrowerProfile = null;
   let owingSortKey = 'repay_date';
   let owingSortDir = 'asc';
   let historySortKey = 'date_created';
@@ -149,6 +170,7 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
     try {
       await Promise.all([loadProfile(), loadLoans()]);
+      renderStats();
       renderOwing();
       renderHistory();
     } finally {
@@ -158,25 +180,36 @@
 
   async function loadProfile() {
     try {
-      const p = await apiFetch(`/api/users/${ME}`);
-      const score = calcHealth(p);
-      document.getElementById('s-borrowed').textContent = '$' + fmt(p.amount_borrowed);
-      document.getElementById('s-repaid').textContent = '$' + fmt(p.amount_repaid);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(p.active_amount || 0);
-      document.getElementById('s-unpaid').textContent = p.unpaid_loans;
-      document.getElementById('s-health').textContent = score + '/100';
-      document.getElementById('s-health').className = 'stat-value ' + healthColor(score);
-      document.getElementById('s-health-label').textContent = healthLabel(score);
-      document.getElementById('m-balance').textContent = '$' + fmt(p.active_amount || 0);
-      document.getElementById('m-repaid').textContent = '$' + fmt(p.amount_repaid);
-      document.getElementById('m-standing').textContent = healthLabel(score);
-      document.getElementById('m-standing').className = 'mini-value ' + healthColor(score);
+      borrowerProfile = await apiFetch(`/api/users/${ME}`);
     } catch(e) { console.error(e); }
   }
 
   async function loadLoans() {
     borrowerLoans = await apiFetch(`/api/loans?borrower=${ME}&limit=200`);
     document.getElementById('schemaWarning').style.display = borrowerLoans.some(loan => loan.schema_outdated) ? 'block' : 'none';
+  }
+
+  function renderStats() {
+    const p = borrowerProfile || {};
+    const score = calcHealth(borrowerLoans);
+    const totalInterest = borrowerLoans
+      .filter(l => l.interest_amount != null)
+      .reduce((sum, l) => sum + parseFloat(l.interest_amount || 0), 0);
+    document.getElementById('s-borrowed').textContent = '$' + fmt(p.amount_borrowed);
+    document.getElementById('s-repaid').textContent = '$' + fmt(p.amount_repaid);
+    const outstandingEl = document.getElementById('s-outstanding');
+    outstandingEl.textContent = '$' + fmt(p.active_amount || 0);
+    if (totalInterest > 0) {
+      outstandingEl.title = `Includes $${fmt(totalInterest)} in agreed interest across active loans`;
+    }
+    document.getElementById('s-unpaid').textContent = p.unpaid_loans || 0;
+    document.getElementById('s-health').textContent = score === null ? 'N/A' : score + '/100';
+    document.getElementById('s-health').className = 'stat-value ' + healthColor(score);
+    document.getElementById('s-health-label').textContent = healthLabel(score);
+    document.getElementById('m-balance').textContent = '$' + fmt(p.active_amount || 0);
+    document.getElementById('m-repaid').textContent = '$' + fmt(p.amount_repaid);
+    document.getElementById('m-standing').textContent = healthLabel(score);
+    document.getElementById('m-standing').className = 'mini-value ' + healthColor(score);
   }
 
   function renderOwing() {
@@ -186,7 +219,7 @@
       .sort((a, b) => compareLoans(a, b, owingSortKey, owingSortDir));
     const tbody = document.getElementById('owingBody');
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><h3>All clear</h3><p>You have no outstanding loans recorded here.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13"><div class="empty-state"><h3>All clear</h3><p>You have no outstanding loans recorded here.</p></div></td></tr>`;
       return;
     }
     tbody.innerHTML = rows.map(loan => {
@@ -210,8 +243,9 @@
         <td data-label="Still Owe" style="font-weight:700;color:var(--orange)">${fmt(owe)} ${escapeHtml(loan.currency)}</td>
         <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
         <td data-label="Due" class="date-cell">${dueLabel(loan.repay_date) || fmtDate(loan.date_created)}</td>
+        <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Payment">${escapeHtml(loan.payment_method || 'Not recorded')}</td>
-        <td data-label="Acknowledged">${ackHtml}</td>
+        <td data-label="Acknowledged">${ackHtml}<br><button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h);margin-top:6px" onclick="openReportPayment('${escapeHtml(id)}','${escapeHtml(loan.currency)}')">Report Payment</button></td>
         <td data-label="Days Funded" class="date-cell">${daysSince(loan.date_created)}</td>
         <td data-label="Thread">${thread}</td>
       </tr>`;
@@ -240,6 +274,8 @@
         <td data-label="Repaid">${fmt(loan.amount_repaid || 0)}</td>
         <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
         <td data-label="Date" class="date-cell">${fmtDate(loan.date_created)}</td>
+        <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td data-label="Rate %">${loan.interest_rate != null ? escapeHtml(String(loan.interest_rate)) + '%' : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Payment">${escapeHtml(loan.payment_method || 'Not recorded')}</td>
         <td data-label="Ack">${loan.borrower_acknowledged_at ? fmtDate(loan.borrower_acknowledged_at) : 'Not yet'}</td>
         <td data-label="Thread">${thread}</td>
@@ -263,6 +299,33 @@
     } catch(e) {
       toast(e.message, 'error');
     }
+  }
+
+  function openReportPayment(loanId, currency) {
+    document.getElementById('rpLoanId').value = loanId;
+    document.getElementById('rpLoanIdDisplay').value = loanId;
+    document.getElementById('rpAmount').value = '';
+    document.getElementById('rpCurrency').value = currency || 'USD';
+    document.getElementById('rpNote').value = '';
+    document.getElementById('reportPaymentError').style.display = 'none';
+    document.getElementById('reportPaymentModal').classList.add('open');
+  }
+
+  async function submitReportPayment() {
+    const loanId = document.getElementById('rpLoanId').value;
+    const amount = parseFloat(document.getElementById('rpAmount').value);
+    const currency = document.getElementById('rpCurrency').value.trim().toUpperCase();
+    const note = document.getElementById('rpNote').value.trim();
+    const errEl = document.getElementById('reportPaymentError');
+    if (!amount || amount <= 0) { errEl.textContent = 'Amount is required.'; errEl.style.display = 'block'; return; }
+    try {
+      await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/report-payment`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, currency, note })
+      });
+      closeModal('reportPaymentModal');
+      toast('Payment reported. The lender will confirm the record.', 'success');
+    } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
   }
 
   function setOwingSort(key) {
@@ -298,7 +361,8 @@
       status: String(loan.status || ''),
       repay_date: loan.repay_date ? parseLocalDate(loan.repay_date).getTime() : 9999999999999,
       days_funded: daysSince(loan.date_created),
-      date_created: loan.date_created ? new Date(loan.date_created).getTime() : 0
+      date_created: loan.date_created ? new Date(loan.date_created).getTime() : 0,
+      interest_amount: parseFloat(loan.interest_amount || 0)
     };
     return values[key] ?? '';
   }
@@ -319,19 +383,30 @@
     return due < today;
   }
 
-  function calcHealth(p) {
-    const total = p.loans_as_borrower || 0;
-    if (!total) return 100;
-    const unpaid = p.unpaid_loans || 0;
-    const paid = total - unpaid;
-    const loanRatio = paid / total;
-    const borrowed = parseFloat(p.amount_borrowed || 0);
-    const repaid = parseFloat(p.amount_repaid || 0);
-    const payRatio = borrowed > 0 ? Math.min(repaid / borrowed, 1) : 1;
-    return Math.round((loanRatio * 0.7 + payRatio * 0.3) * 100);
+  function daysUntil(dateValue) {
+    if (!dateValue) return 0;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = parseLocalDate(dateValue); due.setHours(0,0,0,0);
+    return Math.ceil((due - today) / 86400000);
+  }
+
+  function calcHealth(loans) {
+    if (!loans.length) return null;
+    let score = 100;
+    loans.forEach(loan => {
+      const status = String(loan.status || '').toLowerCase();
+      if (status === 'unpaid') score -= 38;
+      if (status === 'disputed') score -= 12;
+      if (isOverdue(loan)) {
+        const daysLate = Math.abs(daysUntil(loan.repay_date));
+        score -= Math.min(28, 10 + daysLate * 2);
+      }
+    });
+    return Math.max(0, Math.min(100, Math.round(score)));
   }
 
   function healthColor(s) {
+    if (s === null) return 'c-muted';
     if (s >= 90) return 'c-green';
     if (s >= 70) return 'c-accent';
     if (s >= 50) return 'c-yellow';
@@ -340,6 +415,7 @@
   }
 
   function healthLabel(s) {
+    if (s === null) return 'No history yet';
     if (s >= 90) return 'Excellent';
     if (s >= 70) return 'Good';
     if (s >= 50) return 'Fair';

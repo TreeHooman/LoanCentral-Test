@@ -26,6 +26,10 @@ def get_db_connection():
         return get_sqlite_connection()
 
     try:
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if database_url:
+            return psycopg2.connect(database_url, sslmode="require")
+
         # Determine SSL mode based on host
         host = os.getenv("DB_HOST", "localhost")
         ssl_mode = "require" if "render.com" in host or "amazonaws.com" in host or "heroku.com" in host else "prefer"
@@ -38,10 +42,12 @@ def get_db_connection():
             password=os.getenv("DB_PASSWORD"),
             sslmode=ssl_mode
         )
-    except Exception:
+    except Exception as e:
+        logger.error(f"PostgreSQL connection failed: {e}", exc_info=True)
+        print(f"[DB ERROR] PostgreSQL connection failed: {e}")
+        print(f"[DB ERROR] host={os.getenv('DB_HOST')} port={os.getenv('DB_PORT')} db={os.getenv('DB_NAME')} user={os.getenv('DB_USER')}")
         if os.getenv("LOANCENTRAL_ENV", "prod") != "prod":
-            logger.warning("PostgreSQL unavailable in dev; using local SQLite database.")
+            print("[DB FALLBACK] Falling back to local SQLite database.")
             from local_db import get_sqlite_connection
             return get_sqlite_connection()
-        logger.error("Database connection failed", exc_info=True)
         return None

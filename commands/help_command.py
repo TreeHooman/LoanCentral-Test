@@ -27,19 +27,25 @@ $loan [amount] [currency] u/[borrower]
 ```
 *Requires Verified Lender flair. Loan is recorded immediately.*
 
+**Fund a REQ code**
+```
+$fund REQ-0001 [repay_amount] [currency] [YYYY-MM-DD]
+```
+*Creates the live loan and returns a Paid ID for Reddit repayment commands.*
+
 **Record a repayment received**
 ```
-$paid_with_id [loan_id] [amount] [currency]
+$paid_with_id [paid_id] [amount] [currency]
 ```
 
 **Mark a loan as unpaid**
 ```
-$unpaid [loan_id]
+$unpaid [paid_id]
 ```
 
 **Cancel / refund a loan**
 ```
-$refunded [loan_id]
+$refunded [paid_id]
 ```
 
 ---
@@ -48,7 +54,7 @@ $refunded [loan_id]
 
 **Dispute a loan** (flags for mod review)
 ```
-$dispute [loan_id]
+$dispute [paid_id]
 ```
 
 ---

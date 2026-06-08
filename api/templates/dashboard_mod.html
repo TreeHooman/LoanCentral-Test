@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Mod Dashboard — LoanCentral{% endblock %}
+{% block title %}{{ view_label|default('Mod Dashboard') }} - LoanCentral{% endblock %}
 
 {% block content %}
 <!-- Stats -->
@@ -8,8 +8,10 @@
   <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
   <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
+  {% if can_view_money %}
   <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
   <div class="stat-card"><div class="stat-label">Recovered</div><div class="stat-value c-green" id="s-trepaid">—</div></div>
+  {% endif %}
 </div>
 
 <!-- Loans tab -->
@@ -33,8 +35,8 @@
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Repaid</th><th>Remaining</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-      <tbody id="loansBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Repaid</th><th>Remaining</th><th>Interest $</th><th>Rate %</th>{% endif %}<th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody id="loansBody"><tr><td colspan="{% if can_view_money %}11{% else %}4{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -48,7 +50,7 @@
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">All open REQ posts the bot has seen. Lenders fund these from their dashboard.</p>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Request ID</th><th>Borrower</th><th>Asking</th><th>Repay</th><th>Repay Date</th><th>Payment</th><th>Posted</th><th>Thread</th></tr></thead>
+      <thead><tr><th>Request ID</th><th>Borrower</th>{% if can_view_money %}<th>Asking</th><th>Repay</th>{% endif %}<th>Repay Date</th>{% if can_view_money %}<th>Payment</th>{% endif %}<th>Posted</th><th>Thread</th></tr></thead>
       <tbody id="requestsBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
@@ -63,7 +65,7 @@
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">These loans have been flagged unpaid by a lender. Review each case — if confirmed ghosted or scammed, issue the ban.</p>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Flagged Date</th><th>Thread</th><th>Action</th></tr></thead>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th>{% endif %}<th>Flagged Date</th><th>Thread</th><th>Action</th></tr></thead>
       <tbody id="unpaidBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
   </div>
@@ -81,6 +83,7 @@
       <option value="borrower">Borrower</option>
       <option value="lender">Lender</option>
       <option value="mod">Mod</option>
+      {% if can_view_money %}<option value="admin">Admin</option>{% endif %}
     </select>
     <button class="btn-primary" onclick="assignRole()">Assign Role</button>
     <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">↻ Refresh</button>
@@ -117,7 +120,7 @@
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Read-only queue for overdue, due-today, due-soon, and missing due-date loans. This does not call Reddit.</p>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Level</th><th>Loan</th><th>Lender</th><th>Borrower</th><th>Remaining</th><th>Due</th><th>Thread</th></tr></thead>
+      <thead><tr><th>Level</th><th>Loan</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Remaining</th>{% endif %}<th>Due</th><th>Thread</th></tr></thead>
       <tbody id="remindersBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
@@ -156,6 +159,7 @@
 
 {% block scripts %}
 <script>
+  const CAN_VIEW_MONEY = {{ 'true' if can_view_money else 'false' }};
   let currentStatus = '';
   let searchTimer = null;
   let activityTimer = null;
@@ -188,9 +192,11 @@
       document.getElementById('s-active').textContent  = s.active_loans + s.partial_loans;
       document.getElementById('s-unpaid').textContent  = s.unpaid_loans;
       document.getElementById('s-repaid').textContent  = s.repaid_loans;
-      document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
-      document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
-      document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      if (CAN_VIEW_MONEY) {
+        document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
+        document.getElementById('s-trepaid').textContent = '$' + fmt(s.total_repaid);
+        document.getElementById('s-outstanding').textContent = '$' + fmt(s.outstanding) + ' outstanding';
+      }
     } catch(e) { console.error(e); }
   }
 
@@ -204,9 +210,11 @@
     try {
       const loans = await apiFetch(url);
       const tbody = document.getElementById('loansBody');
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : '<tr><td colspan="9" class="table-placeholder">No loans found.</td></tr>';
+      const cols = CAN_VIEW_MONEY ? 11 : 4;
+      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : `<tr><td colspan="${cols}" class="table-placeholder">No loans found.</td></tr>`;
     } catch(e) {
-      document.getElementById('loansBody').innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      const cols = CAN_VIEW_MONEY ? 11 : 4;
+      document.getElementById('loansBody').innerHTML = `<tr><td colspan="${cols}" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
 
@@ -226,9 +234,11 @@
       <td data-label="Loan ID"><span class="loan-id">${escapeHtml(id)}</span></td>
       <td data-label="Lender">${redditUser(loan.lender)}</td>
       <td data-label="Borrower">${redditUser(loan.borrower)}</td>
-      <td data-label="Amount"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
+      ${CAN_VIEW_MONEY ? `<td data-label="Amount"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
       <td data-label="Repaid">${fmt(repaid)}</td>
       <td data-label="Remaining" class="${remaining > 0 ? 'c-remaining' : ''}">${fmt(remaining)}</td>
+      <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td data-label="Rate %">${loan.interest_rate != null ? escapeHtml(String(loan.interest_rate)) + '%' : '<span style="color:var(--muted)">—</span>'}</td>` : ''}
       <td data-label="Status"><span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span></td>
       <td data-label="Date" class="date-cell">${fmtDate(loan.date_created)}<br>${dueLabel(loan.repay_date) || ''}<br>${thread}</td>
       <td data-label="Actions"><div class="actions">
@@ -333,7 +343,7 @@
           <td data-label="Loan"><span class="loan-id">${escapeHtml(item.loan_id)}</span></td>
           <td data-label="Lender">${redditUser(item.lender)}</td>
           <td data-label="Borrower">${redditUser(item.borrower)}</td>
-          <td data-label="Remaining" class="c-remaining">${fmt(item.remaining)} ${escapeHtml(item.currency)}</td>
+          ${CAN_VIEW_MONEY ? `<td data-label="Remaining" class="c-remaining">${fmt(item.remaining)} ${escapeHtml(item.currency)}</td>` : ''}
           <td data-label="Due">${dueLabel(item.repay_date) || 'Missing due date'}</td>
           <td data-label="Thread">${thread}</td>
         </tr>`;
@@ -449,10 +459,10 @@
         return `<tr>
           <td><span class="loan-id">${r.request_id}</span></td>
           <td class="username">u/${r.borrower}</td>
-          <td><span class="amount">$${parseFloat(r.amount).toFixed(2)} ${r.currency}</span></td>
-          <td>${repayAmt}</td>
+          ${CAN_VIEW_MONEY ? `<td><span class="amount">${parseFloat(r.amount).toFixed(2)} ${r.currency}</span></td>` + `
+          <td>${repayAmt}</td>` : ''}
           <td class="date-cell">${repayDate}</td>
-          <td style="color:var(--muted)">${r.payment_method || '—'}</td>
+          ${CAN_VIEW_MONEY ? `<td style="color:var(--muted)">${r.payment_method || '-'}</td>` : ''}
           <td class="date-cell">${posted}</td>
           <td>${thread}</td>
         </tr>`;
@@ -479,7 +489,7 @@
           <td><span class="loan-id">${id}</span></td>
           <td class="username">u/${loan.lender}</td>
           <td class="username">u/${loan.borrower}</td>
-          <td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>
+          ${CAN_VIEW_MONEY ? `<td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>` : ''}
           <td class="date-cell">${fmtDate(loan.last_updated || loan.date_created)}</td>
           <td>${thread}</td>
           <td><div class="actions">
@@ -583,8 +593,8 @@
 
   function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
 
-  function roleBg(r) { return { mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
-  function roleColor(r) { return { mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
+  function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
+  function roleColor(r) { return { admin: 'var(--red)', mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
   Object.assign(window, {
     addModUtilityButtons,
@@ -608,3 +618,6 @@
   });
 </script>
 {% endblock %}
+
+
+

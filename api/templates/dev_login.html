@@ -120,7 +120,15 @@
     <div class="quick-grid">
       <button type="submit" name="username" value="testlender" formnovalidate>testlender<span>Lender dashboard with active, repaid, and unpaid loans</span></button>
       <button type="submit" name="username" value="remote_weather186" formnovalidate>remote_weather186<span>Borrower dashboard with outstanding loan history</span></button>
+      <button type="submit" name="username" value="testadmin" formnovalidate>testadmin<span>Owner/admin view with financial totals</span></button>
       <button type="submit" name="username" value="testmod" formnovalidate>testmod<span>Moderator access for later testing</span></button>
+    </div>
+  </form>
+  <form method="POST">
+    <input type="hidden" name="username" value="logistix1" />
+    <input type="hidden" name="force_role" value="lender" />
+    <div class="quick-grid" style="margin-top:0">
+      <button type="submit">logistix1<span>Real lender — 20+ loans across r/LoanCentral (force role: lender)</span></button>
     </div>
   </form>
   <a class="back" href="/login">Back to login</a>

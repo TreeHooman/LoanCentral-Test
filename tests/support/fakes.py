@@ -193,7 +193,8 @@ class FakeDb:
         return sorted(matches, key=lambda loan: loan["id"], reverse=True)[0]
 
     def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status,
-                    repay_amount=None, repay_date=None, payment_method=None):
+                    repay_amount=None, repay_date=None, payment_method=None,
+                    interest_amount=None, interest_rate=None):
         db_id = self.next_id
         self.next_id += 1
         self.loans.append(
@@ -214,6 +215,8 @@ class FakeDb:
                 "borrower_acknowledged_at": None,
                 "borrower_acknowledged_note": None,
                 "notes": None,
+                "interest_amount": interest_amount,
+                "interest_rate": interest_rate,
             }
         )
         return db_id
@@ -515,6 +518,8 @@ class FakeCursor:
                     loan.get("payment_method"),
                     loan.get("borrower_acknowledged_at"),
                     loan.get("borrower_acknowledged_note"),
+                    loan.get("interest_amount"),
+                    loan.get("interest_rate"),
                 )
                 for loan in matches
             ]
@@ -546,6 +551,8 @@ class FakeCursor:
                     loan.get("payment_method"),
                     loan.get("borrower_acknowledged_at"),
                     loan.get("borrower_acknowledged_note"),
+                    loan.get("interest_amount"),
+                    loan.get("interest_rate"),
                 )
                 for loan in matches
             ]
@@ -626,6 +633,8 @@ def loan_record(
         "borrower_acknowledged_at": None,
         "borrower_acknowledged_note": None,
         "notes": None,
+        "interest_amount": None,
+        "interest_rate": None,
     }
 
 

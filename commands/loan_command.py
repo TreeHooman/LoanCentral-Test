@@ -9,6 +9,26 @@ logger = logging.getLogger("LoanCentral")
 COMMAND_TRIGGER = "$loan"
 
 
+def _parse_repay_amount(text):
+    """
+    Try to extract an agreed repay amount from the post title/body.
+    Looks for patterns like: repay 130, pay back 130, return 130, to repay 130.
+    Returns Decimal or None. Never shown on Reddit — stored in DB only.
+    """
+    patterns = [
+        r'(?:repay(?:ment)?|pay\s*back|pay\s*back|return|to\s+repay|payback)\s+\$?(\d+(?:\.\d+)?)',
+        r'\$?(\d+(?:\.\d+)?)\s+(?:repay|payback|pay\s*back)',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            try:
+                return Decimal(m.group(1))
+            except Exception:
+                pass
+    return None
+
+
 def process_loan_command(comment):
     """
     $loan [amount] [currency] u/[borrower]
@@ -61,7 +81,10 @@ def process_loan_command(comment):
     update_last_login(borrower)
 
     thread_url = f"https://www.reddit.com{comment.submission.permalink}"
-    db_id, error = create_loan(lender, borrower, amount, currency, thread_url)
+    post_text = f"{comment.submission.title} {comment.body}"
+    repay_amount = _parse_repay_amount(post_text)
+    db_id, error = create_loan(lender, borrower, amount, currency, thread_url,
+                               repay_amount=repay_amount)
 
     if error:
         comment.reply(with_dashboard_link(f"Error: {error}"))
@@ -69,11 +92,11 @@ def process_loan_command(comment):
 
     comment.reply(with_dashboard_link(
         f"Loan recorded!\n\n"
-        f"|Loan ID|Lender|Borrower|Amount|Currency|\n"
+        f"|Paid ID|Lender|Borrower|Amount|Currency|\n"
         f"|:--:|:--:|:--:|:--:|:--:|\n"
         f"|**{db_id}**|u/{lender}|u/{borrower}|{amount:.2f}|{currency}|\n\n"
         f"u/{borrower} — you have received **{amount:.2f} {currency}** from u/{lender}. "
-        f"Use loan ID `{db_id}` for all future references to this loan.\n\n"
+        f"Use Paid ID `{db_id}` for all future references to this loan.\n\n"
         f"**Lender commands:**\n"
         f"- Record repayment: `$paid_with_id {db_id} [amount] {currency}`\n"
         f"- Mark unpaid: `$unpaid {db_id}`\n"
