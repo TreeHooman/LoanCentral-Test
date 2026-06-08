@@ -65,6 +65,8 @@
 
     /* TOOLBAR */
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tabs-wrap { position: relative; flex: 1; overflow: hidden; }
+    .tabs-wrap::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 40px; background: linear-gradient(to right, transparent, var(--bg)); pointer-events: none; }
     .tabs { display: flex; gap: 4px; }
     .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; white-space: nowrap; }
     .tab:hover { border-color: var(--accent); color: var(--text); }
@@ -287,7 +289,11 @@
     <input type="hidden" id="payLoanId" />
     <label>Loan ID</label><input type="text" id="payLoanIdDisplay" readonly style="opacity:.6" />
     <label>Lender Username</label><input type="text" id="payLender" placeholder="lender username" />
-    <label>Amount Paid</label><input type="number" id="payAmount" placeholder="e.g. 50.00" step="0.01" min="0.01" />
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <label style="margin:0">Amount Paid</label>
+      <button id="payFillFull" onclick="fillFullRemaining()" style="display:none;background:none;border:none;color:var(--accent-h);font-size:12px;cursor:pointer;padding:0">Fill remaining</button>
+    </div>
+    <input type="number" id="payAmount" placeholder="e.g. 50.00" step="0.01" min="0.01" />
     <label>Currency</label><input type="text" id="payCurrency" placeholder="USD" maxlength="3" style="text-transform:uppercase" />
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('payModal')">Cancel</button>
@@ -375,15 +381,23 @@
   });
 
   // ---- Modal helpers ----
-  function openPayModal(loanId, lender, currency) {
+  let _payRemaining = 0;
+  function openPayModal(loanId, lender, currency, remaining) {
     document.getElementById('payLoanId').value = loanId;
     document.getElementById('payLoanIdDisplay').value = loanId;
     document.getElementById('payLender').value = lender;
     document.getElementById('payCurrency').value = currency || 'USD';
     document.getElementById('payAmount').value = '';
     document.getElementById('payError').style.display = 'none';
+    _payRemaining = parseFloat(remaining) || 0;
+    const fillBtn = document.getElementById('payFillFull');
+    if (fillBtn) { fillBtn.style.display = _payRemaining > 0 ? 'inline' : 'none'; fillBtn.textContent = `Fill ${_payRemaining.toFixed(2)}`; }
     document.getElementById('payModal').classList.add('open');
     setTimeout(() => document.getElementById('payAmount').focus(), 100);
+  }
+  function fillFullRemaining() {
+    document.getElementById('payAmount').value = _payRemaining.toFixed(2);
+    document.getElementById('payAmount').focus();
   }
   function openUnpaidModal(loanId, lender) {
     document.getElementById('unpaidLoanId').value = loanId;
@@ -588,7 +602,7 @@
       <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
       <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
       <td><div class="actions">
-        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}')">Paid</button>` : ''}
+        ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${loan.lender}','${loan.currency}',${remaining})">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${loan.lender}')">Unpaid</button>` : ''}
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${loan.lender}')">Refund</button>` : ''}
         ${isDisputed && isMod ? `<button class="btn-action btn-resolve-unpaid" onclick="openResolveModal('${id}','${loan.lender}','${loan.borrower}')">Resolve</button>` : ''}

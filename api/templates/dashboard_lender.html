@@ -39,7 +39,7 @@
 
 <!-- Loans -->
 <div class="toolbar">
-  <div class="tabs" id="statusTabs">
+  <div class="tabs-wrap"><div class="tabs" id="statusTabs">
     <button class="tab active" data-status="">All</button>
     <button class="tab" data-status="confirmed">Active</button>
     <button class="tab" data-status="partially_repaid">Partial</button>
@@ -47,7 +47,7 @@
     <button class="tab" data-status="repaid">Repaid</button>
     <button class="tab" data-status="refunded">Refunded</button>
     <button class="tab" data-status="disputed">Disputed</button>
-  </div>
+  </div></div>
   <div class="search-wrap">
     <input type="text" id="searchInput" placeholder="Filter by borrower..." oninput="onSearch()" />
     <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
@@ -206,7 +206,7 @@
         <td><span class="badge badge-${loan.status}">${statusLabel(loan.status)}</span></td>
         <td class="date-cell">${fmtDate(loan.date_created)} ${thread}</td>
         <td><div class="actions">
-          ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}')">Paid</button>` : ''}
+          ${canPay    ? `<button class="btn-action btn-paid"   onclick="openPayModal('${id}','${ME}','${loan.currency}',${remaining})">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
           ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
           ${isDisputed ? `<span style="font-size:11px;color:var(--orange)">Pending review</span>` : ''}
