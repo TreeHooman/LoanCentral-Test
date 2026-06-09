@@ -1012,6 +1012,18 @@ def get_user_profile(username: str):
 
         active = cur.fetchone()
 
+        # Fetch verified_lender status from user_roles (done before early-return
+        # so users who exist in user_roles but not in users still get VL data).
+        try:
+            cur.execute(
+                """SELECT verified_lender, reddit_username,
+                          verified_lender_at, verified_lender_by
+                   FROM user_roles WHERE lower(username)=lower(%s)""",
+                (username,))
+            role_row = cur.fetchone()
+        except Exception:
+            role_row = None
+
         if not row:
             return {
                 "username": username,
@@ -1024,18 +1036,11 @@ def get_user_profile(username: str):
                 "unpaid_amount": Decimal("0"),
                 "active_loans": 0,
                 "active_amount": Decimal("0"),
+                "verified_lender": bool(role_row[0]) if role_row else False,
+                "reddit_username": role_row[1] if role_row else None,
+                "verified_lender_at": role_row[2].isoformat() if role_row and role_row[2] else None,
+                "verified_lender_by": role_row[3] if role_row else None,
             }, None
-
-        # Also fetch verified_lender status from user_roles
-        try:
-            cur.execute(
-                """SELECT verified_lender, reddit_username,
-                          verified_lender_at, verified_lender_by
-                   FROM user_roles WHERE lower(username)=lower(%s)""",
-                (username,))
-            role_row = cur.fetchone()
-        except Exception:
-            role_row = None
 
         return {
             "username": username,
