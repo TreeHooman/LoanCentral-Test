@@ -1,5 +1,5 @@
 # LoanCentral Security Audit
-Generated: 2026-06-09
+Generated: 2026-06-09 (updated Sprint 2)
 
 ## Summary
 
@@ -7,7 +7,8 @@ Generated: 2026-06-09
 |----------|-------|
 | Protected routes | 49 |
 | Public / auth routes (intentionally open) | 14 |
-| Recommendations | 4 |
+| Sprint 2 fixes applied | 3 |
+| Remaining recommendations | 2 |
 
 ---
 
@@ -51,46 +52,48 @@ All routes below have at least one access-control decorator applied.
 | `/api/admin/search` | GET | `require_mod_api` |
 | `/dashboard/admin/search` | GET | `role_required("mod","admin")` |
 
-### Lender or higher (`@role_required("lender","mod","admin")`)
-| Route | Method | Decorator |
-|-------|--------|-----------|
-| `/dashboard/lender` | GET | `role_required("lender","mod","admin")` |
+### Verified Lender or higher (`@verified_lender_required`)
+| Route | Method | Decorator | Notes |
+|-------|--------|-----------|-------|
+| `/dashboard/lender` | GET | `verified_lender_required` | **Updated Sprint 2** — was `role_required("lender","mod","admin")`; now DB-verified |
 
 ### Any authenticated user (`@require_auth` / `@login_required`)
-| Route | Method | Decorator |
-|-------|--------|-----------|
-| `/api/loans` | GET | `require_auth` |
-| `/api/loans/export.csv` | GET | `require_auth` |
-| `/api/loans/<loan_id>` | GET | `require_auth` |
-| `/api/loans/<loan_id>/terms` | PUT | `require_auth` |
-| `/api/loans/bulk-paid` | POST | `require_auth` |
-| `/api/loans/<loan_id>/unpaid` | POST | `require_auth` |
-| `/api/loans/<loan_id>/refunded` | POST | `require_auth` |
-| `/api/loans/<loan_id>/dispute` | POST | `require_auth` |
-| `/api/loans/<loan_id>/acknowledge` | POST | `require_auth` |
-| `/api/loans/<loan_id>/report-payment` | POST | `require_auth` |
-| `/api/loans/<loan_id>/paid` | POST | `require_auth` |
-| `/api/loans/<loan_id>/attachments` | GET/POST | `require_auth` |
-| `/api/loans/<loan_id>/attachments/<id>/download` | GET | `require_auth` |
-| `/api/loans/create` | POST | `require_auth` |
-| `/api/requests` | GET | `require_auth` |
-| `/api/requests/<request_id>` | GET | `require_auth` |
-| `/api/requests/<request_id>/note` | POST | `require_auth` |
-| `/api/requests/<request_id>/fund` | POST | `require_auth` |
-| `/api/requests/<request_id>/cancel` | POST | `require_auth` |
-| `/api/stats` | GET | `require_auth` |
-| `/api/stats/lender/<lender>` | GET | `require_auth` |
-| `/api/reminders` | GET | `require_auth` |
-| `/api/loans/<loan_id>/notes` | POST | `require_auth` |
-| `/api/loans/<loan_id>/events` | GET | `require_auth` |
-| `/api/users/<username>` | GET | `require_auth` |
-| `/api/users/me` | GET | `login_required` |
-| `/api/session` | GET | `login_required` |
-| `/api/notifications` | GET | `login_required` |
-| `/api/notifications/read` | POST | `login_required` |
-| `/api/verification/apply` | POST | `require_auth` |
-| `/dashboard/borrower` | GET | `login_required` |
-| `/dashboard/users/<username>` | GET | `login_required` |
+Write actions on this tier that are lender-owned include inline **fresh DB verification checks** (`_is_lender_verified_fresh`).
+
+| Route | Method | Decorator | Fresh lender check |
+|-------|--------|-----------|-------------------|
+| `/api/loans` | GET | `require_auth` | — |
+| `/api/loans/export.csv` | GET | `require_auth` | — |
+| `/api/loans/<loan_id>` | GET | `require_auth` | — |
+| `/api/loans/<loan_id>/terms` | PUT | `require_auth` | — (lender ownership enforced) |
+| `/api/loans/bulk-paid` | POST | `require_auth` | ✅ `_is_lender_verified_fresh` |
+| `/api/loans/<loan_id>/unpaid` | POST | `require_auth` | ✅ `_is_lender_verified_fresh` |
+| `/api/loans/<loan_id>/refunded` | POST | `require_auth` | ✅ `_is_lender_verified_fresh` **Fixed Sprint 2** |
+| `/api/loans/<loan_id>/dispute` | POST | `require_auth` | — (borrower action) |
+| `/api/loans/<loan_id>/acknowledge` | POST | `require_auth` | — (borrower action) |
+| `/api/loans/<loan_id>/report-payment` | POST | `require_auth` | — (borrower action) |
+| `/api/loans/<loan_id>/paid` | POST | `require_auth` | ✅ `_is_lender_verified_fresh` |
+| `/api/loans/<loan_id>/attachments` | GET/POST | `require_auth` | — |
+| `/api/loans/<loan_id>/attachments/<id>/download` | GET | `require_auth` | — |
+| `/api/loans/create` | POST | `require_auth` | ✅ `_is_lender_verified_fresh` **Fixed Sprint 2** |
+| `/api/requests` | GET | `require_auth` | — |
+| `/api/requests/<request_id>` | GET | `require_auth` | — |
+| `/api/requests/<request_id>/note` | POST | `require_auth` | — (role check inline) |
+| `/api/requests/<request_id>/fund` | POST | `require_auth` | — |
+| `/api/requests/<request_id>/cancel` | POST | `require_auth` | — (role check inline) |
+| `/api/stats` | GET | `require_auth` | — |
+| `/api/stats/lender/<lender>` | GET | `require_auth` | — |
+| `/api/reminders` | GET | `require_auth` | — |
+| `/api/loans/<loan_id>/notes` | POST | `require_auth` | — |
+| `/api/loans/<loan_id>/events` | GET | `require_auth` | — |
+| `/api/users/<username>` | GET | `require_auth` | — |
+| `/api/users/me` | GET | `login_required` | — |
+| `/api/session` | GET | `login_required` | — |
+| `/api/notifications` | GET | `login_required` | — |
+| `/api/notifications/read` | POST | `login_required` | — |
+| `/api/verification/apply` | POST | `require_auth` | — |
+| `/dashboard/borrower` | GET | `login_required` | — |
+| `/dashboard/users/<username>` | GET | `login_required` | — |
 
 ---
 
@@ -118,12 +121,18 @@ These routes are intentionally unauthenticated — they form the login flow or p
 
 ---
 
-## Recommendations
+## Sprint 2 Fixes Applied
+
+| Fix | Route | Detail |
+|-----|-------|--------|
+| Dashboard decorator upgraded | `/dashboard/lender` | Changed from `role_required("lender","mod","admin")` → `verified_lender_required` (DB check + perm_version staleness) |
+| Fresh check added | `/api/loans/<loan_id>/refunded` | Lender role now blocked if verification was revoked since last session |
+| Fresh check added | `/api/loans/create` | Dashboard manual loan creation now requires fresh DB check, same as bot |
+
+---
+
+## Remaining Recommendations
 
 1. **`/auth/dev-login` and `/auth/dev-login-as/`** — Confirm `IS_DEV` evaluates to `False` in production. Currently gated by `LOANCENTRAL_ENV != "prod"`. Before going live, verify the env var is set correctly on the server.
 
 2. **`@require_auth` vs `@login_required`** — `require_auth` accepts both session AND `X-API-Key` header. Routes that should be session-only (e.g. `/api/users/me`, `/api/session`) correctly use `@login_required`. Review any new routes to pick the right one.
-
-3. **`/api/loans/<loan_id>/unpaid` and `/refunded`** — Currently `@require_auth` with an internal lender-ownership check. These are write operations; consider upgrading to `@verified_lender_required` once lender verification is rolled out.
-
-4. **New decorators available** — `@verified_lender_required`, `@mod_required`, `@admin_required` are now wired in. Apply `@verified_lender_required` to lender analytics routes when verification is enforced.

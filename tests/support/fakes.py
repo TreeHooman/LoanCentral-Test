@@ -113,10 +113,17 @@ class FakeRedditor:
 
 
 class FakeDb:
-    def __init__(self, loans=None, users=None):
+    def __init__(self, loans=None, users=None, verified_lenders=None):
         self.loans = deepcopy(loans or [])
         self.users = deepcopy(users or {})
         self.next_id = max([loan["id"] for loan in self.loans], default=0) + 1
+        # Set of usernames that are verified lenders in the fake DB.
+        # Defaults to {"lender"} so existing tests that don't pass flair
+        # still behave as before (lender is verified by default).
+        if verified_lenders is None:
+            self.verified_lenders = {"lender"}
+        else:
+            self.verified_lenders = set(verified_lenders)
 
     def connection(self):
         return FakeConnection(self)
@@ -586,6 +593,17 @@ class FakeCursor:
                     loan["status"] = "disputed"
                     break
             self.last_result = None
+            return
+
+        # get_verified_lender_status — SELECT verified_lender ... FROM user_roles
+        if "select verified_lender" in normalized and "from user_roles" in normalized:
+            username = (params[0] or "").lower()
+            is_verified = username in {u.lower() for u in self.fake_db.verified_lenders}
+            if is_verified:
+                from datetime import datetime
+                self.last_result = (True, datetime(2026, 1, 1), "mod", "Fake verified", "lender")
+            else:
+                self.last_result = (False, None, None, None, "lender")
             return
 
         raise AssertionError(f"FakeCursor does not support query: {query}")

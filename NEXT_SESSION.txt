@@ -1,21 +1,159 @@
-STATUS: Dashboard fully built, test data seeded, server runs via run_dev.py
-LAST THING DONE: Dashboard route/API smoke checks passed for testmod, testlender, and testborrower; bot replies now include dashboard links.
+================================================================================
+LOANCENTRAL — SESSION HANDOFF
+Sprint 2: Enforcement, Timeline UI & Audit Wiring
+Date: 2026-06-09
+================================================================================
 
-NEXT STEPS (in order):
-1. Visual-test all 3 dashboards in a real browser - open /auth/dev-login and try each username:
-   - testmod -> mod dashboard (all loans, role management)
-   - testlender -> lender dashboard (their loans, stats, action buttons)
-   - testborrower -> borrower dashboard (what they owe, health score)
-2. Fix anything that looks broken or ugly in the UI.
-3. Wire up real Reddit OAuth credentials from the test app.
+## SPRINT 2 — COMPLETED ✅
 
-TO RUN THE SERVER:
-1. Open pgAdmin (keep it open)
-2. Open PowerShell in C:\LB drive
-3. Run: python run_dev.py
-4. Go to: http://127.0.0.1:5000
+All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
 
-GITHUB: https://github.com/TreeHooman/LoanCentral-Test
-BRANCH: upgrade/tested-bot-core
-TESTS: 48/48 passing (run: python -m unittest discover -s tests -q)
-NOTE: In-app browser automation was blocked by Windows sandbox setup; HTTP route/API smoke checks passed instead.
+---
+
+## WHAT WAS DONE THIS SPRINT
+
+### T1 — Verified Lender Enforcement
+- `verified_lender_required` decorator applied to /dashboard/lender
+- Fresh DB check (`_is_lender_verified_fresh`) added to all lender write endpoints:
+  - /api/loans/bulk-paid (POST)
+  - /api/loans/<id>/unpaid (POST)
+  - /api/loans/<id>/paid (POST)
+  - /api/loans/<id>/refunded (POST)  <- fixed T9
+  - /api/loans/create (POST)         <- fixed T9
+- Bot (loan_command.py) now checks get_verified_lender_status() — database is
+  source of truth, not Reddit flair.
+
+### T2 — Session Staleness Protection
+- perm_version column on user_roles; incremented on every permission change
+- verified_lender_required reads DB perm_version on each request, refreshes
+  session cache when it has changed — staleness bounded to one request
+
+### T3 — Audit Log Wiring
+- log_audit() called after: create_loan, mark_repaid, mark_unpaid,
+  mark_refunded_by_id, dispute_loan, set_user_role, set_verified_lender
+
+### T4 — Loan Event Timeline Wiring
+- add_loan_event() called after the same service functions listed in T3
+
+### T5 — Loan Timeline UI
+- "Loan Timeline" section added inside loanDetailModal in base.html
+- loadLoanTimeline(loanId) async function; called in parallel with loadAttachments
+- Fetches /api/loans/<id>/events and renders event rows with timestamps
+
+### T6 — Audit Log Viewer (was already complete)
+- audit_log.html + /dashboard/admin/audit-log route already existed
+
+### T7 — Notification Center UI (was already complete)
+- Notification bell, panel, and JS already in base.html
+
+### T8 — Global Search UI (was already complete)
+- global_search.html + /dashboard/admin/search route already existed
+
+### T9 — Audit Reports Review
+- security_audit.md updated: reflects verified_lender_required on /dashboard/lender,
+  fresh checks on /refunded and /create, removed stale recommendations
+- language_audit.md: no issues found (3 flagged phrases all safe disclaimer/denial)
+- Two actual permission gaps found and fixed:
+  - /api/loans/<id>/refunded missing fresh lender check -> fixed
+  - /api/loans/create missing fresh lender check -> fixed
+
+### T10 — Full Test Pass
+- 85 tests collected, 85 passing (0 failed, 0 errors)
+- New test file: tests/test_enforcement.py (14 new tests)
+  - VerifiedLenderEnforcementTests (7)
+  - SessionStalenessTests (4)
+  - AuditWiringTests (3)
+- FakeCursor in tests/support/fakes.py updated to handle get_verified_lender_status query
+- FakeDb updated with verified_lenders kwarg (defaults to {"lender"})
+- test_loan_command.py updated: non-verified test now uses DB-based approach
+
+---
+
+## FILES CHANGED THIS SPRINT
+
+| File | Change |
+|------|--------|
+| api/app.py | verified_lender_required decorator; _get_perm_version; _is_lender_verified_fresh; fresh checks on /paid, /unpaid, /bulk-paid, /refunded, /create; audit log + event routes |
+| services.py | log_audit + add_loan_event wired into create_loan, mark_repaid, mark_unpaid, mark_refunded_by_id, dispute_loan, set_user_role, set_verified_lender; perm_version bump; global_search date_created fix |
+| commands/loan_command.py | Replaced flair check with get_verified_lender_status() DB check |
+| api/templates/base.html | Loan Timeline section in loanDetailModal; loadLoanTimeline JS |
+| tests/test_enforcement.py | NEW — 14 tests for T1/T2/T3/T4 |
+| tests/support/fakes.py | FakeDb.verified_lenders; FakeCursor handles verified_lender query |
+| tests/test_loan_command.py | non_verified test uses DB approach |
+| security_audit.md | Updated with Sprint 2 changes |
+| language_audit.md | No changes needed (report confirms all safe) |
+| schema.sql | verified_lender fields + perm_version on user_roles; audit_logs, loan_events, notifications tables |
+| local_db.py | _schema_applied set; _ensure_column migrations for new fields |
+
+---
+
+## TEST SUMMARY
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| test_audit_log.py | 19 | All pass |
+| test_enforcement.py | 14 | All pass (new) |
+| test_dispute_command.py | 5 | All pass |
+| test_fund_command.py | 4 | All pass |
+| test_help_command.py | 2 | All pass |
+| test_integrity.py | 3 | All pass |
+| test_loan_command.py | 9 | All pass |
+| test_paid_command.py | 10 | All pass |
+| test_refund_command.py | 5 | All pass |
+| test_services_loan_history.py | 9 | All pass |
+| test_unpaid_command.py | 5 | All pass |
+| TOTAL | 85 | 85/85 PASSING |
+
+---
+
+## SECURITY CONSTRAINTS (MAINTAINED)
+
+- "Do not trust Reddit flair for permissions. Database remains source of truth." MAINTAINED
+- "No production credentials touched." MAINTAINED
+- "No Reddit API changes made." MAINTAINED
+
+---
+
+## NEXT SPRINT RECOMMENDATIONS
+
+### Sprint 3: Lender UX & Borrower Portal Polish
+
+High priority:
+1. Lender verification application flow — borrower/lender submits a request from their
+   dashboard (currently /api/verification/apply exists but there's no UI button for it).
+   Wire up a "Request Lender Verification" button on the borrower/lender dashboards.
+
+2. Verified lender badge — show a "Verified Lender" badge on user profiles and
+   in the loan table for verified lenders. Use neutral language per language audit
+   ("Verified Lender (completed LoanCentral process)").
+
+3. Notification delivery for key events — currently notifications are created on
+   verification changes. Extend to: new loan confirmed, payment received,
+   loan marked unpaid, dispute opened.
+
+4. Reminders module — wire the existing /api/reminders endpoint to a dashboard widget
+   showing overdue/due-soon loans for the logged-in lender.
+
+Medium priority:
+5. Audit log viewer filtering — the /dashboard/admin/audit-log page has a table but
+   needs filter controls (by username, action type, date range). API already supports it.
+
+6. Global search result links — clicking a result in /dashboard/admin/search should
+   open the loan detail modal or user profile.
+
+7. Mobile dashboard improvements — test the lender/mod dashboards on mobile.
+
+Low priority / housekeeping:
+8. Re-run language audit before launch.
+9. Confirm IS_DEV=False in production environment before first deploy.
+10. Add borrower acknowledgment flow UI (the endpoint exists, no UI button yet).
+
+---
+
+## KNOWN ISSUES / DEFERRED
+
+- Reddit OAuth for production login still deferred (see memory/project_auth_future.md)
+- Lender API key login exists but no UI to manage keys from the lender's own dashboard
+- Interest fields are stored but not displayed prominently in the UI
+- Attachment upload has no size cap enforcement on the server (only file-type check)
+================================================================================

@@ -850,6 +850,11 @@
     </div>
     <div id="ldUploadStatus" style="font-size:12px;color:var(--muted);margin-top:6px;display:none"></div>
 
+    <div style="margin-top:18px">
+      <label style="font-size:13px;font-weight:600;color:var(--text)">Loan Timeline</label>
+      <div id="ldTimeline" style="margin-top:8px;max-height:220px;overflow-y:auto"></div>
+    </div>
+
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn-cancel" onclick="closeModal('loanDetailModal')">Close</button>
     </div>
@@ -1087,7 +1092,31 @@
     document.getElementById('ldNote').value          = note || '';
     document.getElementById('ldUploadStatus').style.display = 'none';
     document.getElementById('loanDetailModal').classList.add('open');
-    await loadAttachments(loanId);
+    await Promise.all([loadAttachments(loanId), loadLoanTimeline(loanId)]);
+  }
+
+  async function loadLoanTimeline(loanId) {
+    const el = document.getElementById('ldTimeline');
+    if (!el) return;
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px 0">Loading…</div>';
+    try {
+      const events = await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/events`);
+      if (!events.length) {
+        el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px 0">No timeline events recorded yet.</div>';
+        return;
+      }
+      el.innerHTML = events.map(ev => `
+        <div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="color:var(--muted);font-size:11px;padding-top:2px">${ev.created_at ? ev.created_at.split('T')[0] : '—'}</div>
+          <div>
+            <span style="font-size:12px;font-weight:700;color:var(--text)">${escapeHtml(ev.event_type.replace(/_/g,' '))}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">u/${escapeHtml(ev.actor_username||'system')}</span>
+            ${ev.details ? `<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4">${escapeHtml(ev.details)}</div>` : ''}
+          </div>
+        </div>`).join('');
+    } catch(e) {
+      el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:6px 0">Timeline unavailable.</div>`;
+    }
   }
 
   async function loadAttachments(loanId) {

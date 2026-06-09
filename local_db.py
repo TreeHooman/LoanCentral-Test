@@ -132,6 +132,7 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "verification_note", "TEXT")
     _ensure_column(conn, "user_roles", "contact_email", "TEXT")
     _ensure_column(conn, "user_roles", "contact_phone", "TEXT")
+    _ensure_column(conn, "user_roles", "perm_version", "INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 

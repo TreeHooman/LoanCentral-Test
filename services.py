@@ -418,15 +418,14 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         conn.commit()
         logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
-        log_event(
-            "loan_created",
-            actor=lender,
-            actor_role="lender",
-            target_user=borrower,
-            loan_id=loan_id,
-            source="service",
-            details={"amount": str(amount), "currency": currency, "thread_url": thread_url},
-        )
+        log_event("loan_created", actor=lender, actor_role="lender", target_user=borrower,
+                  loan_id=loan_id, source="service",
+                  details={"amount": str(amount), "currency": currency, "thread_url": thread_url})
+        log_audit(lender, "lender", "loan_created", "loan", loan_id,
+                  new_value={"lender": lender, "borrower": borrower,
+                             "amount": str(amount), "currency": currency})
+        add_loan_event(loan_id, "loan_created", lender,
+                       f"Loan of {amount} {currency} confirmed for u/{borrower}")
         return loan_id, None
 
     except Exception as e:
@@ -543,20 +542,17 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
 
         conn.commit()
         logger.info(f"Repayment recorded: {borrower} paid {amount_paid} {currency} to {lender} (loan {db_id})")
-        log_event(
-            "payment_recorded",
-            actor=actor,
-            actor_role=actor_role,
-            target_user=borrower,
-            loan_id=public_id or db_id,
-            source="service",
-            details={
-                "amount_paid": str(amount_paid),
-                "currency": currency,
-                "new_status": new_status,
-                "remaining": str(max(loan_amount - new_repaid, Decimal("0.00"))),
-            },
-        )
+        _lid = public_id or str(db_id)
+        log_event("payment_recorded", actor=actor, actor_role=actor_role, target_user=borrower,
+                  loan_id=_lid, source="service",
+                  details={"amount_paid": str(amount_paid), "currency": currency,
+                           "new_status": new_status,
+                           "remaining": str(max(loan_amount - new_repaid, Decimal("0.00")))})
+        log_audit(actor, actor_role, "loan_repaid" if new_status == "repaid" else "payment_recorded",
+                  "loan", _lid, new_value={"amount_paid": str(amount_paid),
+                                           "new_status": new_status, "currency": currency})
+        add_loan_event(_lid, "loan_repaid" if new_status == "repaid" else "payment_partial",
+                       actor, f"{amount_paid} {currency} received — status: {new_status}")
 
         return {
             "db_id": db_id,
@@ -646,15 +642,14 @@ def mark_unpaid(loan_id: str, lender: str):
 
         conn.commit()
         logger.info(f"Loan {db_id} marked unpaid by {lender}")
-        log_event(
-            "loan_marked_unpaid",
-            actor=lender,
-            actor_role="lender",
-            target_user=borrower,
-            loan_id=loan_id,
-            source="service",
-            details={"remaining_unpaid": str(remaining_unpaid), "currency": loan_currency},
-        )
+        log_event("loan_marked_unpaid", actor=lender, actor_role="lender", target_user=borrower,
+                  loan_id=loan_id, source="service",
+                  details={"remaining_unpaid": str(remaining_unpaid), "currency": loan_currency})
+        log_audit(lender, "lender", "loan_unpaid", "loan", loan_id,
+                  new_value={"borrower": borrower, "remaining_unpaid": str(remaining_unpaid),
+                             "currency": loan_currency})
+        add_loan_event(loan_id, "loan_unpaid", lender,
+                       f"Marked unpaid — {remaining_unpaid} {loan_currency} outstanding")
 
         return {
             "db_id": db_id,
@@ -813,15 +808,13 @@ def mark_refunded_by_id(loan_id: str, lender: str):
 
         conn.commit()
         logger.info(f"Loan {db_id} refunded by ID: {lender} -> {borrower} {amount} {currency}")
-        log_event(
-            "loan_refunded",
-            actor=lender,
-            actor_role="lender",
-            target_user=borrower,
-            loan_id=loan_id,
-            source="service",
-            details={"amount": str(amount), "currency": currency},
-        )
+        log_event("loan_refunded", actor=lender, actor_role="lender", target_user=borrower,
+                  loan_id=loan_id, source="service",
+                  details={"amount": str(amount), "currency": currency})
+        log_audit(lender, "lender", "loan_refunded", "loan", loan_id,
+                  new_value={"borrower": borrower, "amount": str(amount), "currency": currency})
+        add_loan_event(loan_id, "loan_refunded", lender,
+                       f"Loan refunded — {amount} {currency}")
 
         return {"db_id": db_id, "lender": lender, "borrower": borrower, "amount": amount, "currency": currency}, None
 
@@ -1647,7 +1640,7 @@ def get_user_role(username: str):
         conn.close()
 
 
-def set_user_role(username: str, role: str):
+def set_user_role(username: str, role: str, actor: str = None, actor_role: str = None):
     """
     Set or update a user's dashboard role.
     role must be 'admin', 'mod', 'lender', or 'borrower'.
@@ -1660,21 +1653,23 @@ def set_user_role(username: str, role: str):
         return None, "Database connection failed."
     try:
         cur = conn.cursor()
+        # Fetch old role for audit
+        cur.execute("SELECT role FROM user_roles WHERE lower(username)=lower(%s)", (username,))
+        old_row = cur.fetchone()
+        old_role = old_row[0] if old_row else None
         cur.execute("""
-            INSERT INTO user_roles (username, role)
-            VALUES (%s, %s)
-            ON CONFLICT (username) DO UPDATE SET role = %s
+            INSERT INTO user_roles (username, role, perm_version)
+            VALUES (%s, %s, 1)
+            ON CONFLICT (username) DO UPDATE
+              SET role = %s,
+                  perm_version = COALESCE(user_roles.perm_version, 0) + 1
         """, (username.lower(), role, role))
         conn.commit()
         logger.info(f"Role set: {username} -> {role}")
-        log_event(
-            "role_changed",
-            actor=None,
-            actor_role=None,
-            target_user=username,
-            source="service",
-            details={"role": role},
-        )
+        log_event("role_changed", actor=actor, actor_role=actor_role, target_user=username,
+                  source="service", details={"role": role})
+        log_audit(actor or "system", actor_role or "system", "role_granted", "user", username,
+                  old_value={"role": old_role}, new_value={"role": role})
         return True, None
     except Exception as e:
         conn.rollback()
@@ -1913,15 +1908,13 @@ def dispute_loan(loan_id: str, borrower: str):
         ''', (datetime.now(), db_id))
         conn.commit()
         logger.info(f"Loan {db_id} disputed by {borrower}")
-        log_event(
-            "loan_disputed",
-            actor=borrower,
-            actor_role="borrower",
-            target_user=lender,
-            loan_id=loan_id,
-            source="service",
-            details={"amount": str(amount), "currency": currency},
-        )
+        log_event("loan_disputed", actor=borrower, actor_role="borrower", target_user=lender,
+                  loan_id=loan_id, source="service",
+                  details={"amount": str(amount), "currency": currency})
+        log_audit(borrower, "borrower", "dispute_opened", "loan", loan_id,
+                  new_value={"lender": lender, "amount": str(amount), "currency": currency})
+        add_loan_event(loan_id, "dispute_opened", borrower,
+                       f"Borrower opened dispute — {amount} {currency}")
         return {"db_id": db_id, "lender": lender, "borrower": borrower,
                 "amount": Decimal(amount), "currency": currency}, None
     except Exception as e:
@@ -2557,13 +2550,15 @@ def set_verified_lender(username: str, verified: bool, granted_by: str,
             cur.execute("""
                 UPDATE user_roles
                 SET verified_lender=TRUE, verified_lender_at=NOW(),
-                    verified_lender_by=%s, verification_note=%s
+                    verified_lender_by=%s, verification_note=%s,
+                    perm_version = COALESCE(perm_version, 0) + 1
                 WHERE lower(username)=lower(%s)
             """, (granted_by, note, username))
         else:
             cur.execute("""
                 UPDATE user_roles
-                SET verified_lender=FALSE, verified_lender_by=%s, verification_note=%s
+                SET verified_lender=FALSE, verified_lender_by=%s, verification_note=%s,
+                    perm_version = COALESCE(perm_version, 0) + 1
                 WHERE lower(username)=lower(%s)
             """, (granted_by, note, username))
         conn.commit()

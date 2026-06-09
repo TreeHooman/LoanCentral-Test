@@ -51,11 +51,12 @@ class LoanCommandTests(unittest.TestCase):
         self.assertIn("$refunded", comment.replies[0])
 
     def test_non_verified_lender_is_rejected(self):
-        fake_db = FakeDb()
-        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower", flair_text="Regular User")
+        # verified_lenders=[] means "lender" has no DB verification — bot must reject.
+        fake_db = FakeDb(verified_lenders=[])
+        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower")
 
         self.assertEqual(len(fake_db.loans), 0)
-        self.assertIn("Verified Lender", comment.replies[0])
+        self.assertIn("lender verification process", comment.replies[0])
 
     def test_lender_cannot_loan_to_themselves(self):
         fake_db = FakeDb()

@@ -57,23 +57,21 @@ def process_loan_command(comment):
         comment.reply(with_dashboard_link("Error: Loan amount must be greater than zero."))
         return
 
-    # Verify lender flair
+    # Verify lender status — database is source of truth, not Reddit flair.
     try:
-        subreddit = comment.subreddit
-        user_flair = None
-        for flair in subreddit.flair(redditor=comment.author):
-            user_flair = flair["flair_text"]
-            break
-        if not user_flair or "verified lender" not in user_flair.lower():
-            message = with_dashboard_link(
-                f"Error: Only users with 'Verified Lender' flair can issue loans "
-                f"in r/{subreddit.display_name}."
-            )
-            comment.reply(message)
+        from services import get_verified_lender_status
+        is_verified, _, _err = get_verified_lender_status(lender)
+        if not is_verified:
+            comment.reply(with_dashboard_link(
+                "Error: Your account has not completed the LoanCentral lender verification process. "
+                "Contact a moderator to begin the process."
+            ))
             return
     except Exception as e:
-        logger.error(f"Error checking flair for {lender}: {e}")
-        comment.reply(with_dashboard_link("Error: Unable to verify your flair status. Please contact the moderators."))
+        logger.error(f"Error checking verified lender status for {lender}: {e}")
+        comment.reply(with_dashboard_link(
+            "Error: Unable to verify your lender status. Please contact the moderators."
+        ))
         return
 
     from services import update_last_login

@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
     verified_lender_by TEXT,
     verification_note TEXT,
     contact_email TEXT,
-    contact_phone TEXT
+    contact_phone TEXT,
+    perm_version INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);

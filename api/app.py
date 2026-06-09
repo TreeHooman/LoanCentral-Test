@@ -361,8 +361,40 @@ def require_admin_api(f):
 # Named permission decorators (Task 2)
 # ---------------------------------------------------------------------------
 
+def _get_perm_version(username: str) -> int:
+    """Return the current perm_version for a user from the DB. Returns 0 on any error."""
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return 0
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT perm_version FROM user_roles WHERE lower(username)=lower(%s)", (username,))
+        row = cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    except Exception:
+        return 0
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def _is_lender_verified_fresh(username: str) -> bool:
+    """Always queries the DB — used on sensitive POST actions to bypass session cache."""
+    from services import get_verified_lender_status
+    verified, _, _ = get_verified_lender_status(username)
+    return verified
+
+
 def verified_lender_required(f):
-    """Requires verified lender (cached in session), mod, or admin."""
+    """
+    Requires verified lender, mod, or admin.
+    Caches verification in session but re-checks DB when perm_version changes
+    (e.g. after revocation) so staleness is bounded to one request.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("username"):
@@ -371,10 +403,17 @@ def verified_lender_required(f):
         if role in ("mod", "admin"):
             return f(*args, **kwargs)
         if role == "lender":
-            # Cache verification status in session to avoid a DB hit on every request.
-            if session.get("verified_lender") is None:
+            username = session["username"]
+            db_ver = _get_perm_version(username)
+            if session.get("perm_version") != db_ver:
+                # Permission record changed — re-check from DB and refresh cache.
                 from services import get_verified_lender_status
-                session["verified_lender"] = get_verified_lender_status(session["username"])[0]
+                session["verified_lender"] = get_verified_lender_status(username)[0]
+                session["perm_version"] = db_ver
+            elif session.get("verified_lender") is None:
+                from services import get_verified_lender_status
+                session["verified_lender"] = get_verified_lender_status(username)[0]
+                session["perm_version"] = db_ver
             if session.get("verified_lender"):
                 return f(*args, **kwargs)
         flash("Verified lender access required.", "error")
@@ -889,7 +928,7 @@ def dashboard_admin():
 
 
 @app.route("/dashboard/lender")
-@role_required("lender", "mod", "admin")
+@verified_lender_required
 def dashboard_lender():
     return render_template("dashboard_lender.html",
                            username=session["username"],
@@ -938,7 +977,9 @@ def set_role(username):
     role = data.get("role", "").strip().lower()
     if role == "admin" and not _is_admin():
         return _json({"error": "Only an admin can assign admin access."}, 403)
-    result, err = set_user_role(username, role)
+    result, err = set_user_role(username, role,
+                                actor=session.get("username"),
+                                actor_role=session.get("role"))
     if err:
         return _json({"error": err}, 400)
     return _json({"username": username, "role": role, "ok": True})
@@ -1261,6 +1302,9 @@ def bulk_mark_paid():
         return _json({"error": "lender is required"}, 400)
     if not isinstance(loan_ids, list) or not loan_ids:
         return _json({"error": "loan_ids must be a non-empty list"}, 400)
+    # Fresh DB check — bypass session cache on this write action.
+    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
     if session.get("username") and not _is_mod_or_admin() and lender != session["username"]:
         return _json({"error": "You can only mark your own loans paid."}, 403)
 
@@ -1322,6 +1366,8 @@ def set_loan_unpaid(loan_id):
     lender = data.get("lender", session.get("username", "")).strip().lower()
     if not lender:
         return _json({"error": "lender is required"}, 400)
+    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
     result, error = mark_unpaid(loan_id, lender)
     if error:
         return _json({"error": error}, 400)
@@ -1336,6 +1382,8 @@ def set_loan_refunded(loan_id):
     lender = data.get("lender", session.get("username", "")).strip().lower()
     if not lender:
         return _json({"error": "lender is required"}, 400)
+    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
     result, error = mark_refunded_by_id(loan_id, lender)
     if error:
         return _json({"error": error}, 400)
@@ -1492,6 +1540,8 @@ def set_loan_paid(loan_id):
     currency = data.get("currency", "").upper()
     if not all([lender, amount, currency]):
         return _json({"error": "lender, amount, and currency are required"}, 400)
+    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
     result, error = mark_repaid(loan_id, Decimal(str(amount)), currency, lender, actor_role="lender")
     if error:
         return _json({"error": error}, 400)
@@ -1991,6 +2041,9 @@ def create_loan_manual():
     data        = request.get_json() or {}
     lender      = session.get("username", "").strip().lower()
     borrower    = data.get("borrower", "").strip().lower()
+    # Dashboard loan creation requires verified lender (same rule as bot).
+    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
     amount      = data.get("amount")
     currency    = data.get("currency", "USD").strip().upper()
     repay_amount = data.get("repay_amount")
