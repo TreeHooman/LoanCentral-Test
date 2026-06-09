@@ -86,7 +86,7 @@ function renderResults(data, q) {
     </tr></thead><tbody>`;
     for (const l of loans) {
       html += `<tr>
-        <td><a href="/api/loans/${l.loan_id}" style="color:var(--accent-h);font-family:monospace">${l.loan_id}</a></td>
+        <td><a href="/dashboard/users/${encodeURIComponent(l.lender)}" style="color:var(--accent-h);font-family:monospace">${l.loan_id}</a></td>
         <td><a href="/dashboard/users/${l.lender}" style="color:var(--accent-h)">u/${l.lender}</a></td>
         <td><a href="/dashboard/users/${l.borrower}" style="color:var(--accent-h)">u/${l.borrower}</a></td>
         <td>${l.amount.toFixed(2)} ${l.currency || ''}</td>

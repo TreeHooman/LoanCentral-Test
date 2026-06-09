@@ -856,6 +856,7 @@
     </div>
 
     <div class="modal-actions" style="margin-top:16px">
+      <a id="ldCalendarBtn" href="#" style="display:none;margin-right:auto" class="btn-secondary">📅 Add to Calendar</a>
       <button class="btn-cancel" onclick="closeModal('loanDetailModal')">Close</button>
     </div>
   </div>
@@ -898,6 +899,11 @@
   }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
   document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
 
   async function apiFetch(path, options = {}) {
     const res = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
@@ -1023,6 +1029,7 @@
   }
 
   async function submitNewLoan() {
+    let result;
     const errEl       = document.getElementById('newLoanError');
     const reqId       = document.getElementById('nlReqId').value.trim().toUpperCase() || null;
     const borrower    = document.getElementById('nlBorrower').value.trim().toLowerCase();
@@ -1043,7 +1050,7 @@
       if (reqId) {
         result = await apiFetch(`/api/requests/${reqId}/fund`, {
           method: 'POST',
-          body: JSON.stringify({ lender: ME || session_user, repay_amount: repayAmount, repay_date: repayDate })
+          body: JSON.stringify({ lender: ME, repay_amount: repayAmount, repay_date: repayDate })
         });
       } else {
         const body = {
@@ -1091,6 +1098,12 @@
     document.getElementById('ldMeta').innerHTML      = metaHtml || '';
     document.getElementById('ldNote').value          = note || '';
     document.getElementById('ldUploadStatus').style.display = 'none';
+    // Wire up the "Add to Calendar" button for this specific loan
+    const calBtn = document.getElementById('ldCalendarBtn');
+    if (calBtn) {
+      calBtn.href = `/api/loans/${encodeURIComponent(loanId)}/calendar.ics`;
+      calBtn.style.display = 'inline-block';
+    }
     document.getElementById('loanDetailModal').classList.add('open');
     await Promise.all([loadAttachments(loanId), loadLoanTimeline(loanId)]);
   }

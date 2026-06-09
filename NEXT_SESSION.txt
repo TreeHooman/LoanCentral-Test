@@ -1,71 +1,69 @@
 ================================================================================
 LOANCENTRAL — SESSION HANDOFF
-Sprint 2: Enforcement, Timeline UI & Audit Wiring
+Sprint 3: Dashboard UI, Reddit Username Linking, Calendar ICS
 Date: 2026-06-09
 ================================================================================
 
-## SPRINT 2 — COMPLETED ✅
+## SPRINT 3 — COMPLETED ✅
 
-All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
+All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
 
 ---
 
 ## WHAT WAS DONE THIS SPRINT
 
-### T1 — Verified Lender Enforcement
-- `verified_lender_required` decorator applied to /dashboard/lender
-- Fresh DB check (`_is_lender_verified_fresh`) added to all lender write endpoints:
-  - /api/loans/bulk-paid (POST)
-  - /api/loans/<id>/unpaid (POST)
-  - /api/loans/<id>/paid (POST)
-  - /api/loans/<id>/refunded (POST)  <- fixed T9
-  - /api/loans/create (POST)         <- fixed T9
-- Bot (loan_command.py) now checks get_verified_lender_status() — database is
-  source of truth, not Reddit flair.
+### T1 — Visual Dashboard QA
+- All 5 templates reviewed. Four bugs found and fixed in base.html and global_search.html.
+- VISUAL_QA_REPORT.md created.
+- Fixes:
+  1. `escapeHtml()` not defined in base.html → added to main <script> block (XSS risk on timeline)
+  2. `result` undeclared in `submitNewLoan()` → added `let result;`
+  3. `session_user` undefined → removed, `ME` is sufficient
+  4. Global search loan links went to JSON API endpoint → now link to lender user profile
 
-### T2 — Session Staleness Protection
-- perm_version column on user_roles; incremented on every permission change
-- verified_lender_required reads DB perm_version on each request, refreshes
-  session cache when it has changed — staleness bounded to one request
+### T2 — Audit Log Viewer UI
+- Already complete from prior sprint. Tests added in test_sprint3.py.
+- Service: get_audit_log with username filter verified parameterised.
 
-### T3 — Audit Log Wiring
-- log_audit() called after: create_loan, mark_repaid, mark_unpaid,
-  mark_refunded_by_id, dispute_loan, set_user_role, set_verified_lender
+### T3 — Notification Center UI
+- Already complete from prior sprint. Tests added in test_sprint3.py.
+- get_notifications: verified returns (list, unread_count, error)
+- mark_notifications_read: verified scoped to owner username in WHERE clause (IDOR prevention)
 
-### T4 — Loan Event Timeline Wiring
-- add_loan_event() called after the same service functions listed in T3
+### T4 — Global Search UI
+- Already complete from prior sprint. Tests added in test_sprint3.py.
+- global_search: verified no SQL injection via parameterised queries.
+- global_search.html: loan result links fixed (T1 bug 4).
 
-### T5 — Loan Timeline UI
-- "Loan Timeline" section added inside loanDetailModal in base.html
-- loadLoanTimeline(loanId) async function; called in parallel with loadAttachments
-- Fetches /api/loans/<id>/events and renders event rows with timestamps
+### T5 — Manual Reddit Username Linking
+- New feature: mods/admins can link a dashboard username to a Reddit username.
+- Schema: reddit_username, reddit_username_linked_at, reddit_username_linked_by added to user_roles.
+- local_db.py: _ensure_column migrations for the three new columns.
+- services.py: link_reddit_username(), unlink_reddit_username(), get_reddit_username()
+  - Normalises u/ prefix automatically
+  - Blocks duplicate links (one reddit_username per account)
+  - Audit logged via log_audit() (from route layer)
+- app.py: GET/POST/DELETE /api/admin/users/<username>/reddit-link (require_mod_api)
+- app.py: GET /api/admin/roles now returns reddit_username in response
+- dashboard_mod.html: "Reddit" column in roles table, "🔗 Reddit" button per row
+- dashboard_mod.html: redditLinkModal — link/unlink with Remove Link button
+- No Reddit OAuth, no flair changes, no production credentials touched.
 
-### T6 — Audit Log Viewer (was already complete)
-- audit_log.html + /dashboard/admin/audit-log route already existed
+### T6 — Per-Loan ICS Calendar
+- New feature: any lender or borrower can download a .ics for a specific loan.
+- app.py: GET /api/loans/<loan_id>/calendar.ics (require_auth)
+  - Scope check: only lender, borrower, or mod/admin can access
+  - Returns 400 if no repay_date set
+  - Includes 7-day and 1-day VALARM reminders
+- base.html: "📅 Add to Calendar" button in loanDetailModal, wired to ICS endpoint
 
-### T7 — Notification Center UI (was already complete)
-- Notification bell, panel, and JS already in base.html
+### T7 — Private Beta Readiness Checklist
+- PRIVATE_BETA_CHECKLIST.md created. 8 sections covering security, database,
+  Reddit bot, dashboard access, features, language, ops, and deferred items.
 
-### T8 — Global Search UI (was already complete)
-- global_search.html + /dashboard/admin/search route already existed
-
-### T9 — Audit Reports Review
-- security_audit.md updated: reflects verified_lender_required on /dashboard/lender,
-  fresh checks on /refunded and /create, removed stale recommendations
-- language_audit.md: no issues found (3 flagged phrases all safe disclaimer/denial)
-- Two actual permission gaps found and fixed:
-  - /api/loans/<id>/refunded missing fresh lender check -> fixed
-  - /api/loans/create missing fresh lender check -> fixed
-
-### T10 — Full Test Pass
-- 85 tests collected, 85 passing (0 failed, 0 errors)
-- New test file: tests/test_enforcement.py (14 new tests)
-  - VerifiedLenderEnforcementTests (7)
-  - SessionStalenessTests (4)
-  - AuditWiringTests (3)
-- FakeCursor in tests/support/fakes.py updated to handle get_verified_lender_status query
-- FakeDb updated with verified_lenders kwarg (defaults to {"lender"})
-- test_loan_command.py updated: non-verified test now uses DB-based approach
+### T8 — Final Test Pass
+- 109/109 tests passing (24 new tests in test_sprint3.py)
+- 0 failures, 1 deprecation warning (utcnow() in ICS helper — cosmetic, not a bug)
 
 ---
 
@@ -73,17 +71,16 @@ All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
 
 | File | Change |
 |------|--------|
-| api/app.py | verified_lender_required decorator; _get_perm_version; _is_lender_verified_fresh; fresh checks on /paid, /unpaid, /bulk-paid, /refunded, /create; audit log + event routes |
-| services.py | log_audit + add_loan_event wired into create_loan, mark_repaid, mark_unpaid, mark_refunded_by_id, dispute_loan, set_user_role, set_verified_lender; perm_version bump; global_search date_created fix |
-| commands/loan_command.py | Replaced flair check with get_verified_lender_status() DB check |
-| api/templates/base.html | Loan Timeline section in loanDetailModal; loadLoanTimeline JS |
-| tests/test_enforcement.py | NEW — 14 tests for T1/T2/T3/T4 |
-| tests/support/fakes.py | FakeDb.verified_lenders; FakeCursor handles verified_lender query |
-| tests/test_loan_command.py | non_verified test uses DB approach |
-| security_audit.md | Updated with Sprint 2 changes |
-| language_audit.md | No changes needed (report confirms all safe) |
-| schema.sql | verified_lender fields + perm_version on user_roles; audit_logs, loan_events, notifications tables |
-| local_db.py | _schema_applied set; _ensure_column migrations for new fields |
+| schema.sql | reddit_username, reddit_username_linked_at, reddit_username_linked_by on user_roles |
+| local_db.py | _ensure_column for 3 new reddit_username columns |
+| services.py | link_reddit_username, unlink_reddit_username, get_reddit_username functions |
+| api/app.py | GET/POST/DELETE /api/admin/users/<username>/reddit-link; GET /api/loans/<id>/calendar.ics; roles API now returns reddit_username |
+| api/templates/base.html | escapeHtml() definition; let result; in submitNewLoan; removed session_user; 📅 Add to Calendar button in loanDetailModal |
+| api/templates/dashboard_mod.html | Reddit column in roles table; redditLinkModal; JS openRedditLinkModal/saveRedditLink/unlinkReddit |
+| api/templates/global_search.html | Loan links now go to lender profile, not JSON API endpoint |
+| tests/test_sprint3.py | NEW — 24 tests covering T2/T3/T4/T5/T6 |
+| VISUAL_QA_REPORT.md | NEW — QA findings and fix log |
+| PRIVATE_BETA_CHECKLIST.md | NEW — 8-section pre-launch checklist |
 
 ---
 
@@ -92,7 +89,8 @@ All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
 | Suite | Tests | Status |
 |-------|-------|--------|
 | test_audit_log.py | 19 | All pass |
-| test_enforcement.py | 14 | All pass (new) |
+| test_enforcement.py | 14 | All pass |
+| test_sprint3.py | 24 | All pass (new) |
 | test_dispute_command.py | 5 | All pass |
 | test_fund_command.py | 4 | All pass |
 | test_help_command.py | 2 | All pass |
@@ -102,7 +100,7 @@ All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
 | test_refund_command.py | 5 | All pass |
 | test_services_loan_history.py | 9 | All pass |
 | test_unpaid_command.py | 5 | All pass |
-| TOTAL | 85 | 85/85 PASSING |
+| TOTAL | 109 | 109/109 PASSING |
 
 ---
 
@@ -111,49 +109,53 @@ All 10 tasks complete. 85 tests passing (up from 71 in Sprint 1).
 - "Do not trust Reddit flair for permissions. Database remains source of truth." MAINTAINED
 - "No production credentials touched." MAINTAINED
 - "No Reddit API changes made." MAINTAINED
-
----
-
-## NEXT SPRINT RECOMMENDATIONS
-
-### Sprint 3: Lender UX & Borrower Portal Polish
-
-High priority:
-1. Lender verification application flow — borrower/lender submits a request from their
-   dashboard (currently /api/verification/apply exists but there's no UI button for it).
-   Wire up a "Request Lender Verification" button on the borrower/lender dashboards.
-
-2. Verified lender badge — show a "Verified Lender" badge on user profiles and
-   in the loan table for verified lenders. Use neutral language per language audit
-   ("Verified Lender (completed LoanCentral process)").
-
-3. Notification delivery for key events — currently notifications are created on
-   verification changes. Extend to: new loan confirmed, payment received,
-   loan marked unpaid, dispute opened.
-
-4. Reminders module — wire the existing /api/reminders endpoint to a dashboard widget
-   showing overdue/due-soon loans for the logged-in lender.
-
-Medium priority:
-5. Audit log viewer filtering — the /dashboard/admin/audit-log page has a table but
-   needs filter controls (by username, action type, date range). API already supports it.
-
-6. Global search result links — clicking a result in /dashboard/admin/search should
-   open the loan detail modal or user profile.
-
-7. Mobile dashboard improvements — test the lender/mod dashboards on mobile.
-
-Low priority / housekeeping:
-8. Re-run language audit before launch.
-9. Confirm IS_DEV=False in production environment before first deploy.
-10. Add borrower acknowledgment flow UI (the endpoint exists, no UI button yet).
+- "Do not implement Reddit OAuth yet." MAINTAINED
 
 ---
 
 ## KNOWN ISSUES / DEFERRED
 
 - Reddit OAuth for production login still deferred (see memory/project_auth_future.md)
-- Lender API key login exists but no UI to manage keys from the lender's own dashboard
-- Interest fields are stored but not displayed prominently in the UI
-- Attachment upload has no size cap enforcement on the server (only file-type check)
+- Lender API key management UI still missing (endpoint exists; no self-service UI)
+- Attachment upload has no server-side size cap enforcement
+- `datetime.utcnow()` deprecation warning in ICS route — cosmetic, safe to ignore until Python 3.13+
+- Interest fields stored but not prominently displayed in dashboards
+- `escapeHtml` still defined locally in dashboard_lender.html (line 731) — now redundant but harmless
+
+---
+
+## NEXT SPRINT RECOMMENDATIONS
+
+### Sprint 4: Borrower UX & Launch Hardening
+
+High priority:
+1. Lender verification application flow UI — "Request Verification" button on borrower/lender
+   dashboards that calls /api/verification/apply. Currently no UI entry point.
+
+2. Verified Lender badge — show badge on user profiles and in the loan table.
+   Language: "Verified Lender (completed LoanCentral process)" per language_audit.md.
+
+3. Notification delivery for key events — extend beyond verification changes to:
+   - New loan confirmed
+   - Payment received / marked paid
+   - Loan marked unpaid
+   - Dispute opened
+
+4. Rate limiting on OTP endpoints — /api/auth/borrower/claim and /api/auth/borrower/verify
+   should be protected against brute force before launch.
+
+Medium priority:
+5. Lender API key self-service UI — let lenders view/revoke their own API keys
+   from /dashboard/lender.
+
+6. Server-side attachment upload size cap — add MAX_CONTENT_LENGTH or per-file
+   check to the upload endpoint.
+
+7. Reminders dashboard widget — wire /api/reminders to a widget on the lender
+   dashboard showing overdue/due-soon loans.
+
+Low priority / housekeeping:
+8. Remove redundant escapeHtml from dashboard_lender.html (line 731) — now covered by base.
+9. Re-run language audit before launch.
+10. Confirm IS_DEV=False in production before first deploy (see PRIVATE_BETA_CHECKLIST.md).
 ================================================================================

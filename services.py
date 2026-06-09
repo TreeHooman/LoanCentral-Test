@@ -2602,6 +2602,105 @@ def get_verified_lender_status(username: str):
 
 
 # =============================================================================
+# REDDIT USERNAME LINKING
+# =============================================================================
+
+def link_reddit_username(target_username: str, reddit_username: str, linked_by: str):
+    """Link or update a Reddit username for a dashboard user. Prevents duplicate active links."""
+    db = _get_db()
+    if not db:
+        return False, "Database connection failed"
+    try:
+        cur = db.cursor()
+        # Normalise
+        reddit_username = (reddit_username or "").strip().lower().lstrip("u/")
+        if not reddit_username:
+            return False, "reddit_username is required"
+        # Check for duplicate — another user already has this reddit_username
+        cur.execute(
+            "SELECT username FROM user_roles WHERE lower(reddit_username)=lower(%s) AND lower(username)!=lower(%s)",
+            (reddit_username, target_username)
+        )
+        conflict = cur.fetchone()
+        if conflict:
+            return False, f"Reddit username u/{reddit_username} is already linked to u/{conflict[0]}"
+        cur.execute("""
+            UPDATE user_roles
+            SET reddit_username = %s,
+                reddit_username_linked_at = NOW(),
+                reddit_username_linked_by = %s
+            WHERE lower(username) = lower(%s)
+        """, (reddit_username, linked_by, target_username))
+        if cur.rowcount == 0:
+            # User doesn't exist in user_roles yet — insert a minimal row
+            cur.execute("""
+                INSERT INTO user_roles (username, role, reddit_username, reddit_username_linked_at, reddit_username_linked_by)
+                VALUES (%s, 'borrower', %s, NOW(), %s)
+                ON CONFLICT (username) DO UPDATE SET
+                    reddit_username = EXCLUDED.reddit_username,
+                    reddit_username_linked_at = EXCLUDED.reddit_username_linked_at,
+                    reddit_username_linked_by = EXCLUDED.reddit_username_linked_by
+            """, (target_username.lower(), reddit_username, linked_by))
+        db.commit()
+        return True, None
+    except Exception as e:
+        db.rollback()
+        return False, str(e)
+    finally:
+        try: cur.close()
+        except: pass
+        db.close()
+
+
+def unlink_reddit_username(target_username: str, linked_by: str):
+    """Remove the Reddit username link for a dashboard user."""
+    db = _get_db()
+    if not db:
+        return False, "Database connection failed"
+    try:
+        cur = db.cursor()
+        cur.execute("""
+            UPDATE user_roles
+            SET reddit_username = NULL,
+                reddit_username_linked_at = NULL,
+                reddit_username_linked_by = NULL
+            WHERE lower(username) = lower(%s)
+        """, (target_username,))
+        db.commit()
+        return True, None
+    except Exception as e:
+        db.rollback()
+        return False, str(e)
+    finally:
+        try: cur.close()
+        except: pass
+        db.close()
+
+
+def get_reddit_username(target_username: str):
+    """Return (reddit_username, linked_at, linked_by) or (None, None, None)."""
+    db = _get_db()
+    if not db:
+        return None, None, None
+    try:
+        cur = db.cursor()
+        cur.execute("""
+            SELECT reddit_username, reddit_username_linked_at, reddit_username_linked_by
+            FROM user_roles WHERE lower(username) = lower(%s)
+        """, (target_username,))
+        row = cur.fetchone()
+        if not row:
+            return None, None, None
+        return row[0], row[1], row[2]
+    except Exception:
+        return None, None, None
+    finally:
+        try: cur.close()
+        except: pass
+        db.close()
+
+
+# =============================================================================
 # GLOBAL SEARCH
 # =============================================================================
 

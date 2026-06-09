@@ -133,6 +133,9 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "contact_email", "TEXT")
     _ensure_column(conn, "user_roles", "contact_phone", "TEXT")
     _ensure_column(conn, "user_roles", "perm_version", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "user_roles", "reddit_username", "TEXT")
+    _ensure_column(conn, "user_roles", "reddit_username_linked_at", "TIMESTAMP")
+    _ensure_column(conn, "user_roles", "reddit_username_linked_by", "TEXT")
     conn.commit()
 
 

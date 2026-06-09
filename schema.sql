@@ -48,7 +48,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
     verification_note TEXT,
     contact_email TEXT,
     contact_phone TEXT,
-    perm_version INTEGER NOT NULL DEFAULT 0
+    perm_version INTEGER NOT NULL DEFAULT 0,
+    reddit_username TEXT,
+    reddit_username_linked_at TIMESTAMP,
+    reddit_username_linked_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);

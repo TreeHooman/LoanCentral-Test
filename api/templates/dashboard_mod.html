@@ -123,7 +123,7 @@
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>Username</th><th>Role</th><th>Email</th><th>Phone</th><th>Last Login</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Username</th><th>Role</th><th>Reddit</th><th>Email</th><th>Phone</th><th>Last Login</th><th>Actions</th></tr></thead>
       <tbody id="rolesBody"><tr><td colspan="6" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
@@ -187,6 +187,22 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('contactModal')">Cancel</button>
       <button class="btn-confirm" id="contactSaveBtn" onclick="saveContact()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reddit username link modal -->
+<div class="modal-overlay" id="redditLinkModal">
+  <div class="modal">
+    <h3>Link Reddit Username — <span id="redditLinkUser" style="color:var(--accent-h)"></span></h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Manually associate a Reddit username with this dashboard account. Do not enter the <code>u/</code> prefix.</p>
+    <div class="modal-error" id="redditLinkErr"></div>
+    <label>Reddit Username</label>
+    <input type="text" id="redditLinkInput" placeholder="reddit_username" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn-cancel" id="redditUnlinkBtn" style="background:rgba(231,76,60,0.12);color:var(--red);margin-right:auto" onclick="unlinkReddit()">Remove Link</button>
+      <button class="btn-cancel" onclick="closeModal('redditLinkModal')">Cancel</button>
+      <button class="btn-confirm" onclick="saveRedditLink()">Save</button>
     </div>
   </div>
 </div>
@@ -692,6 +708,7 @@
           <td data-label="Username" class="username">u/${escapeHtml(r.username)}</td>
           <td data-label="Role"><span class="badge" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${escapeHtml(r.role)}</span></td>
           <td data-label="Email" style="color:var(--muted);font-size:12px">${r.contact_email ? escapeHtml(r.contact_email) : '<span style="color:var(--border)">—</span>'}</td>
+          <td data-label="Reddit" style="font-size:12px">${r.reddit_username ? `<span style="color:var(--accent-h)">u/${escapeHtml(r.reddit_username)}</span>` : '<span style="color:var(--border)">—</span>'}</td>
           <td data-label="Phone" style="color:var(--muted);font-size:12px">${r.contact_phone ? escapeHtml(r.contact_phone) : '<span style="color:var(--border)">—</span>'}</td>
           <td data-label="Last Login" class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
           <td data-label="Actions"><div class="actions">
@@ -700,8 +717,9 @@
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
             <button class="btn-action" style="background:rgba(46,204,113,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
             ${r.contact_email ? `<button class="btn-action" style="background:rgba(91,110,245,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
+            <button class="btn-action" style="background:rgba(255,69,0,0.1);color:#ff6b35" onclick="openRedditLinkModal('${escapeHtml(r.username)}','${escapeHtml(r.reddit_username||'')}')">🔗 Reddit</button>
           </div></td>
-        </tr>`).join('') : '<tr><td colspan="6" class="table-placeholder">No roles configured.</td></tr>';
+        </tr>`).join('') : '<tr><td colspan="7" class="table-placeholder">No roles configured.</td></tr>';
     } catch(e) { toast(e.message, 'error'); }
   }
 
@@ -823,6 +841,48 @@
       errEl.style.display = 'block';
     } finally {
       btn.disabled = false; btn.textContent = 'Save';
+    }
+  }
+
+  let _redditLinkUsername = '';
+  function openRedditLinkModal(username, currentReddit) {
+    _redditLinkUsername = username;
+    document.getElementById('redditLinkUser').textContent = 'u/' + username;
+    document.getElementById('redditLinkInput').value = currentReddit || '';
+    document.getElementById('redditLinkErr').style.display = 'none';
+    document.getElementById('redditUnlinkBtn').style.display = currentReddit ? 'inline-block' : 'none';
+    document.getElementById('redditLinkModal').classList.add('open');
+  }
+
+  async function saveRedditLink() {
+    const errEl = document.getElementById('redditLinkErr');
+    const val = document.getElementById('redditLinkInput').value.trim().replace(/^u\//i, '');
+    errEl.style.display = 'none';
+    try {
+      await apiFetch(`/api/admin/users/${encodeURIComponent(_redditLinkUsername)}/reddit-link`, {
+        method: 'POST', body: JSON.stringify({ reddit_username: val })
+      });
+      closeModal('redditLinkModal');
+      toast(`Reddit link saved for u/${_redditLinkUsername}.`, 'success');
+      loadRoles();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
+  }
+
+  async function unlinkReddit() {
+    if (!confirm(`Remove Reddit username link for u/${_redditLinkUsername}?`)) return;
+    const errEl = document.getElementById('redditLinkErr');
+    errEl.style.display = 'none';
+    try {
+      await apiFetch(`/api/admin/users/${encodeURIComponent(_redditLinkUsername)}/reddit-link`, { method: 'DELETE' });
+      closeModal('redditLinkModal');
+      toast(`Reddit link removed for u/${_redditLinkUsername}.`, 'success');
+      loadRoles();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
     }
   }
 

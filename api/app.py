@@ -743,6 +743,83 @@ def borrower_calendar(token):
                     headers={"Content-Disposition": f'attachment; filename="loancentral-{username}.ics"'})
 
 
+@app.route("/api/loans/<loan_id>/calendar.ics")
+@require_auth
+def loan_calendar_ics(loan_id):
+    """Per-loan ICS download — accessible to the loan's lender or borrower."""
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, lender, borrower, amount, currency,
+                   status, repay_date, repay_amount, original_thread
+            FROM loans WHERE id::text = %s OR loan_id = %s
+            ORDER BY id DESC LIMIT 1
+        """, (loan_id, loan_id))
+        row = cur.fetchone()
+        if not row:
+            return _json({"error": "Loan not found"}, 404)
+        db_id, pub_id, lender, borrower, amount, currency, status, repay_date, repay_amount, thread = row
+        pub_id = pub_id or str(db_id)
+        # Scope check — only lender, borrower, or mod/admin
+        if session.get("username") and not _is_mod_or_admin():
+            me = session["username"]
+            if lender != me and borrower != me:
+                return _json({"error": "You can only export your own loans."}, 403)
+        if not repay_date:
+            return _json({"error": "This loan has no due date set."}, 400)
+        due_str = str(repay_date)[:10].replace("-", "")
+        due_amt = repay_amount or amount or 0
+        import uuid as _uuid
+        from datetime import datetime as _dt
+        now_str = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        uid = str(_uuid.uuid4())
+        summary = f"LoanCentral reminder: Loan {pub_id} due"
+        desc = (f"LoanCentral loan {pub_id}\\n"
+                f"Lender: u/{lender}\\n"
+                f"Borrower: u/{borrower}\\n"
+                f"Amount due: {due_amt} {currency}\\n"
+                f"Status: {status}"
+                + (f"\\nThread: {thread}" if thread and thread != "dashboard" else ""))
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//LoanCentral//Loan Due Dates//EN",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+            "BEGIN:VEVENT",
+            f"UID:{uid}",
+            f"DTSTAMP:{now_str}",
+            f"DTSTART;VALUE=DATE:{due_str}",
+            f"DTEND;VALUE=DATE:{due_str}",
+            f"SUMMARY:{summary}",
+            f"DESCRIPTION:{desc}",
+            "BEGIN:VALARM",
+            "TRIGGER:-P7D",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:7-day reminder: {summary}",
+            "END:VALARM",
+            "BEGIN:VALARM",
+            "TRIGGER:-P1D",
+            "ACTION:DISPLAY",
+            f"DESCRIPTION:1-day reminder: {summary}",
+            "END:VALARM",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+        ics = "\r\n".join(lines) + "\r\n"
+        from flask import Response as _Response
+        return _Response(ics, mimetype="text/calendar",
+                         headers={"Content-Disposition": f'attachment; filename="loancentral-{pub_id}.ics"'})
+    finally:
+        try: cur.close()
+        except: pass
+        conn.close()
+
+
 def _build_ics(username: str, loans: list) -> str:
     lines = [
         "BEGIN:VCALENDAR",
@@ -995,13 +1072,15 @@ def list_roles():
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT username, role, subscription_status, last_login, contact_email, contact_phone
+            SELECT username, role, subscription_status, last_login, contact_email, contact_phone,
+                   reddit_username
             FROM user_roles ORDER BY role, username
         """)
         rows = cur.fetchall()
         return _json([
             {"username": r[0], "role": r[1], "subscription_status": r[2],
-             "last_login": r[3], "contact_email": r[4], "contact_phone": r[5]}
+             "last_login": r[3], "contact_email": r[4], "contact_phone": r[5],
+             "reddit_username": r[6]}
             for r in rows
         ])
     finally:
@@ -2364,6 +2443,47 @@ def global_search_page():
     return render_template("global_search.html",
                            username=session.get("username"),
                            role=session.get("role"))
+
+
+# ---------------------------------------------------------------------------
+# Reddit username linking
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/users/<username>/reddit-link", methods=["GET"])
+@require_mod_api
+def api_get_reddit_link(username):
+    from services import get_reddit_username
+    rname, linked_at, linked_by = get_reddit_username(username)
+    return _json({"username": username, "reddit_username": rname,
+                  "linked_at": linked_at, "linked_by": linked_by})
+
+
+@app.route("/api/admin/users/<username>/reddit-link", methods=["POST"])
+@require_mod_api
+def api_set_reddit_link(username):
+    from services import link_reddit_username, log_audit
+    data = request.get_json() or {}
+    reddit_username = (data.get("reddit_username") or "").strip()
+    actor = session.get("username", "api-key")
+    ok, err = link_reddit_username(username, reddit_username, actor)
+    if not ok:
+        return _json({"error": err}, 400)
+    log_audit(actor, session.get("role", "mod"), "reddit_username_linked",
+              "user", username, new_value={"reddit_username": reddit_username})
+    return _json({"ok": True, "username": username, "reddit_username": reddit_username})
+
+
+@app.route("/api/admin/users/<username>/reddit-link", methods=["DELETE"])
+@require_mod_api
+def api_delete_reddit_link(username):
+    from services import unlink_reddit_username, log_audit
+    actor = session.get("username", "api-key")
+    ok, err = unlink_reddit_username(username, actor)
+    if not ok:
+        return _json({"error": err}, 400)
+    log_audit(actor, session.get("role", "mod"), "reddit_username_unlinked",
+              "user", username)
+    return _json({"ok": True})
 
 
 # ---------------------------------------------------------------------------
