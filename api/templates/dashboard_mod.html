@@ -55,13 +55,19 @@
       .mod-loans-table td[data-label="Borrower"],
       .mod-loans-table td[data-label="Loan ID"],
       .mod-loans-table td[data-label="Status"],
-      .mod-loans-table td[data-label="Date"] {
+      .mod-loans-table td[data-label="Date"],
+      .mod-loans-table td[data-label="Amount"],
+      .mod-loans-table td[data-label="Repaid"],
+      .mod-loans-table td[data-label="Remaining"],
+      .mod-loans-table td[data-label="Interest $"],
+      .mod-loans-table td[data-label="Rate %"],
+      .mod-loans-table td[data-label="Actions"] {
         display: none;
       }
     }
   </style>
   <div class="table-wrap">
-    <table class="mobile-cards mod-loans-table">
+    <table class="mobile-cards mod-loans-table compact-command-table">
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Repaid</th><th>Remaining</th><th>Interest $</th><th>Rate %</th>{% endif %}<th>Status</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="{% if can_view_money %}11{% else %}4{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
@@ -329,7 +335,7 @@
     const canRefund = !['repaid','refunded'].includes(loan.status);
     const due = dueLabel(loan.repay_date);
     return `<tr>
-      <td class="mobile-card-head">
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCardKey(event,this)" role="button" tabindex="0">
         <div class="mobile-card-main">
           <div>
             <div class="mobile-card-title">${redditUser(loan.borrower)}</div>
@@ -340,7 +346,28 @@
         <div class="mobile-card-meta">
           <span class="mobile-chip">${fmtDate(loan.date_created)}</span>
           ${due ? `<span class="mobile-chip">${due}</span>` : ''}
-          ${thread !== '-' ? `<span class="mobile-chip">${thread}</span>` : ''}
+        </div>
+        <div class="mobile-card-actions">
+          ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>` : '<span></span>'}
+          ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : '<span></span>'}
+          <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+        </div>
+        <div class="mobile-card-details">
+          <div class="mobile-card-detail-grid">
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Lender</div><div class="mobile-card-detail-value">u/${escapeHtml(loan.lender)}</div></div>
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Borrower</div><div class="mobile-card-detail-value">u/${escapeHtml(loan.borrower)}</div></div>
+            ${CAN_VIEW_MONEY ? `
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Amount</div><div class="mobile-card-detail-value">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</div></div>
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Repaid</div><div class="mobile-card-detail-value">${fmt(repaid)}</div></div>
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Remaining</div><div class="mobile-card-detail-value">${fmt(remaining)}</div></div>
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Interest</div><div class="mobile-card-detail-value">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '—'}</div></div>` : ''}
+            <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Loan</div><div class="mobile-card-detail-value">${escapeHtml(id)}</div></div>
+          </div>
+          <div class="mobile-card-extra-actions">
+            ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : '<span></span>'}
+            ${thread !== '-' ? thread : '<span></span>'}
+            <span></span>
+          </div>
         </div>
       </td>
       <td data-label="Loan ID"><span class="loan-id">${escapeHtml(id)}</span></td>
@@ -356,6 +383,7 @@
       <td data-label="Actions"><div class="actions">
         ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : ''}
+        <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : ''}
       </div></td>
     </tr>`;

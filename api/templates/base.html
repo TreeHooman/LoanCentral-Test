@@ -118,6 +118,7 @@
     .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
     .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
     .btn-paid    { background: rgba(46,204,113,0.2); color: var(--green); }
+    .btn-extension { background: rgba(91,110,245,0.18); color: var(--accent-h); }
 
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
@@ -468,6 +469,94 @@
         font-size: 11px;
         font-weight: 700;
       }
+      .mobile-card-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 9px;
+      }
+      .mobile-card-actions .btn-action {
+        min-height: 34px;
+        padding: 7px 6px;
+        font-size: 11px;
+      }
+      table.compact-command-table td.mobile-card-head {
+        padding: 8px 9px;
+      }
+      table.compact-command-table .mobile-card-main {
+        align-items: center;
+      }
+      table.compact-command-table .mobile-card-title {
+        line-height: 1.15;
+      }
+      table.compact-command-table .mobile-card-sub {
+        margin-top: 1px;
+      }
+      table.compact-command-table .mobile-card-meta {
+        margin-top: 6px;
+      }
+      table.compact-command-table .mobile-chip {
+        min-height: 26px;
+        padding: 2px 6px;
+      }
+      table.compact-command-table .mobile-card-actions {
+        margin-top: 7px;
+      }
+      table.compact-command-table .mobile-card-actions .btn-action {
+        min-height: 32px;
+      }
+      table.compact-command-table td.mobile-card-head {
+        cursor: pointer;
+      }
+      .mobile-card-details {
+        display: none;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(46,50,72,0.72);
+      }
+      tr.mobile-expanded .mobile-card-details {
+        display: block;
+      }
+      .mobile-card-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .mobile-card-detail-item {
+        min-height: 42px;
+        padding: 6px 7px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.025);
+      }
+      .mobile-card-detail-label {
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .35px;
+        text-transform: uppercase;
+        margin-bottom: 3px;
+      }
+      .mobile-card-detail-value {
+        color: var(--text2);
+        font-size: 12px;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+      .mobile-card-extra-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .mobile-card-extra-actions .btn-action,
+      .mobile-card-extra-actions .thread-link {
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
       .loan-id { font-size: 12px; }
       .notes-preview { max-width: 100%; white-space: normal; }
       .badge { width: fit-content; }
@@ -609,6 +698,26 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('refundModal')">Cancel</button>
       <button class="btn-confirm" style="background:var(--muted);color:var(--bg)" onclick="submitRefund()">Mark Refunded</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="extensionModal">
+  <div class="modal">
+    <h3>Edit Repayment Date</h3>
+    <p style="color:var(--muted);font-size:12px;line-height:1.45;margin-bottom:12px">
+      Use this for agreed extensions. It updates the recorded due date and keeps the current repay amount.
+    </p>
+    <div class="modal-error" id="extensionError"></div>
+    <input type="hidden" id="extensionLoanId" />
+    <input type="hidden" id="extensionRepayAmount" />
+    <label>Loan ID</label>
+    <input type="text" id="extensionLoanIdDisplay" readonly style="opacity:.6" />
+    <label>New Repayment Date</label>
+    <input type="date" id="extensionRepayDate" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('extensionModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitExtensionEdit()">Save Extension</button>
     </div>
   </div>
 </div>
@@ -774,6 +883,14 @@
     document.getElementById('refundError').style.display = 'none';
     document.getElementById('refundModal').classList.add('open');
   }
+  function openExtensionModal(loanId, repayAmount, repayDate) {
+    document.getElementById('extensionLoanId').value = loanId;
+    document.getElementById('extensionLoanIdDisplay').value = loanId;
+    document.getElementById('extensionRepayAmount').value = repayAmount;
+    document.getElementById('extensionRepayDate').value = repayDate || '';
+    document.getElementById('extensionError').style.display = 'none';
+    document.getElementById('extensionModal').classList.add('open');
+  }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
   document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
 
@@ -821,6 +938,31 @@
       closeModal('refundModal'); toast('Loan marked refunded.', 'success');
       if (typeof loadData === 'function') loadData();
     } catch(e) { errEl.textContent = e.message; errEl.style.display='block'; }
+  }
+
+  async function submitExtensionEdit() {
+    const loanId = document.getElementById('extensionLoanId').value;
+    const repayAmount = document.getElementById('extensionRepayAmount').value;
+    const repayDate = document.getElementById('extensionRepayDate').value;
+    const errEl = document.getElementById('extensionError');
+    if (!repayDate) {
+      errEl.textContent = 'Choose the new repayment date.';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      await apiFetch(`/api/loans/${encodeURIComponent(loanId)}/terms`, {
+        method: 'PUT',
+        body: JSON.stringify({ repay_amount: repayAmount, repay_date: repayDate, notes: '' })
+      });
+      closeModal('extensionModal');
+      toast('Repayment date updated.', 'success');
+      if (typeof loadData === 'function') loadData();
+      else if (typeof loadLoans === 'function') loadLoans();
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
   }
 
   function openNewLoanModal() {
@@ -1069,7 +1211,19 @@
     const next = Math.min(30, total - shown);
     return `<tr class="mobile-more-row"><td class="no-label" colspan="${colspan}"><button class="btn-secondary table-show-more" onclick="${onClick}()">Show ${next} more ${label} (${shown}/${total})</button></td></tr>`;
   }
+  function toggleMobileCard(event, el) {
+    if (!isMobileDashboard()) return;
+    if (event?.target?.closest?.('button,a,input,label,select,textarea')) return;
+    el.closest('tr')?.classList.toggle('mobile-expanded');
+  }
+  function toggleMobileCardKey(event, el) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleMobileCard(event, el);
+  }
   function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtRaw(value) { return Number(value || 0).toFixed(2); }
+  function dateInput(value) { return value ? String(value).split('T')[0] : ''; }
   function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
   function toast(msg, type='') {
     const el = document.getElementById('toast');

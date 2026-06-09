@@ -74,7 +74,7 @@
     </div>
   </div>
   <button class="btn-secondary" id="refreshBtn" onclick="loadLoans()">Refresh</button>
-  <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Selected Paid</button>
+  <button class="btn-secondary bulk-paid-btn" onclick="bulkMarkPaid()">Mark Selected Paid</button>
   <style>
     .more-item { display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;border-radius:6px; }
     .more-item:hover { background:var(--surface2);color:var(--text); }
@@ -82,7 +82,7 @@
 </div>
 
 <div class="table-wrap">
-  <table class="mobile-cards lender-loans-table">
+  <table class="mobile-cards lender-loans-table compact-command-table">
     <thead>
       <tr>
         <th><input type="checkbox" id="selectAllLoans" onchange="toggleAllLoans(this.checked)" /></th>
@@ -189,22 +189,22 @@
     .due-alert-item:nth-child(n+3) { display:none; }
     .due-alert-meta { margin-top:6px; }
     .panel-grid { display:none; }
+    .bulk-paid-btn { display: none; }
     .lender-loans-table td[data-label="Borrower"],
     .lender-loans-table td[data-label="Loan"],
     .lender-loans-table td[data-label="Remaining"],
     .lender-loans-table td[data-label="Status"],
-    .lender-loans-table td[data-label="Due"] {
+    .lender-loans-table td[data-label="Due"],
+    .lender-loans-table td[data-label="Lent"],
+    .lender-loans-table td[data-label="Due Back"],
+    .lender-loans-table td[data-label="Repaid"],
+    .lender-loans-table td[data-label="Interest $"],
+    .lender-loans-table td[data-label="Rate %"],
+    .lender-loans-table td[data-label="Notes"],
+    .lender-loans-table td[data-label="Actions"] {
       display: none;
     }
     .lender-loans-table td[data-label="Select"] { display: none; }
-    .lender-loans-table td[data-label="Actions"] {
-      display: block;
-      padding-top: 12px;
-    }
-    .lender-loans-table td[data-label="Actions"]::before {
-      display: block;
-      margin-bottom: 8px;
-    }
     .lender-loans-table td[data-label="Loan"] {
       display: none;
     }
@@ -215,7 +215,7 @@
       gap: 3px;
     }
     .mobile-select {
-      display: grid;
+      display: none;
       place-items: center;
       width: 34px;
       height: 34px;
@@ -342,7 +342,7 @@
         : `<button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
       return `<tr class="${overdue ? 'row-overdue' : dueSoon ? 'row-due-soon' : ''}">
         <td data-label="Select"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></td>
-        <td class="mobile-card-head">
+        <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCardKey(event,this)" role="button" tabindex="0">
           <div class="mobile-card-main">
             <div>
               <div class="mobile-card-title">u/${escapeHtml(loan.borrower)}</div>
@@ -356,7 +356,27 @@
           <div class="mobile-card-meta">
             <span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span>
             <span class="mobile-chip">${dueText}</span>
-            ${thread ? `<span class="mobile-chip">${thread}</span>` : ''}
+          </div>
+          <div class="mobile-card-actions">
+            ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : '<span></span>'}
+            ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : '<span></span>'}
+            <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+          </div>
+          <div class="mobile-card-details">
+            <div class="mobile-card-detail-grid">
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Lent</div><div class="mobile-card-detail-value">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Due Back</div><div class="mobile-card-detail-value">${fmt(repayAmount)} ${escapeHtml(loan.currency)}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Repaid</div><div class="mobile-card-detail-value">${fmt(repaid)}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Interest</div><div class="mobile-card-detail-value">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '—'}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Funded</div><div class="mobile-card-detail-value">${fmtDate(loan.date_created)}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Notes</div><div class="mobile-card-detail-value">${loan.notes ? escapeHtml(loan.notes) : '—'}</div></div>
+              <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Thread</div><div class="mobile-card-detail-value">${thread || '—'}</div></div>
+            </div>
+            <div class="mobile-card-extra-actions">
+              <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
+              <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
+              ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : '<span></span>'}
+            </div>
           </div>
         </td>
         <td data-label="Loan">
@@ -375,7 +395,7 @@
         <td data-label="Notes">${noteHtml}</td>
         <td data-label="Actions"><div class="actions">
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
-          <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openTermsModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Terms</button>
+          <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
           ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
