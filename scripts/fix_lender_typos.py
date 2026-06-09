@@ -54,10 +54,10 @@ def apply_corrections(dry_run=True):
         cur.execute("SELECT COUNT(*) FROM loans WHERE lower(lender) = lower(%s)", (typo,))
         count = cur.fetchone()[0]
         if count == 0:
-            print(f"  SKIP  {typo!r} → {correct!r}  (0 rows)")
+            print(f"  SKIP  {typo!r} -> {correct!r}  (0 rows)")
             continue
 
-        print(f"  {'WOULD FIX' if dry_run else 'FIXING'}  {typo!r} → {correct!r}  ({count} loan{'s' if count != 1 else ''})")
+        print(f"  {'WOULD FIX' if dry_run else 'FIXING'}  {typo!r} -> {correct!r}  ({count} loan{'s' if count != 1 else ''})")
 
         if not dry_run:
             # Rename lender column
