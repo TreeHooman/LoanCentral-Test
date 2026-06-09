@@ -123,6 +123,8 @@ def _ensure_schema(conn):
     _ensure_column(conn, "loans", "borrower_acknowledged_at", "TIMESTAMP")
     _ensure_column(conn, "loans", "borrower_acknowledged_note", "TEXT")
     _ensure_column(conn, "loans", "notes", "TEXT")
+    _ensure_column(conn, "loans", "interest_amount", "NUMERIC")
+    _ensure_column(conn, "loans", "interest_rate", "NUMERIC")
     _ensure_column(conn, "loan_requests", "lender_note", "TEXT")
     _ensure_column(conn, "loan_requests", "expires_at", "TIMESTAMP")
     # Verified lender columns on user_roles
