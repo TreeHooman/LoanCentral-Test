@@ -43,6 +43,23 @@ logging.basicConfig(
 logger = logging.getLogger("LoanCentral.api")
 API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
 _api_rate_hits = {}
+
+# OTP brute-force protection — 5 attempts per IP per 15 minutes
+OTP_RATE_WINDOW = 15 * 60   # seconds
+OTP_RATE_MAX    = 5
+_otp_attempts: dict = {}    # {ip: [timestamp, ...]}
+
+def _otp_check_rate(ip: str) -> bool:
+    """Return True if the IP is allowed, False if rate-limited. Cleans stale entries."""
+    now = time.time()
+    window_start = now - OTP_RATE_WINDOW
+    hits = [t for t in _otp_attempts.get(ip, []) if t > window_start]
+    if len(hits) >= OTP_RATE_MAX:
+        _otp_attempts[ip] = hits
+        return False
+    hits.append(now)
+    _otp_attempts[ip] = hits
+    return True
 MONEY_FIELDS = {"amount", "amount_repaid", "repay_amount", "remaining"}
 PAYMENT_ROUTE_FIELDS = {"payment_method"}
 MONEY_DETAIL_KEYS = {
@@ -612,6 +629,8 @@ def borrower_login_page():
 @app.route("/api/auth/borrower/claim", methods=["POST"])
 def api_borrower_claim():
     """Step 1: verify username+loan_id, send OTP to chosen contact."""
+    if not _otp_check_rate(request.remote_addr):
+        return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
     from services import (verify_borrower_loan_claim, get_borrower_contact,
                           create_borrower_otp, set_borrower_contact)
     data = request.get_json(silent=True) or {}
@@ -665,6 +684,8 @@ def api_borrower_claim():
 @app.route("/api/auth/borrower/verify", methods=["POST"])
 def api_borrower_verify():
     """Step 2: verify OTP, set session."""
+    if not _otp_check_rate(request.remote_addr):
+        return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
     from services import verify_borrower_otp, get_user_role, update_last_login
     data     = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip().lower()
@@ -1009,7 +1030,8 @@ def dashboard_admin():
 def dashboard_lender():
     return render_template("dashboard_lender.html",
                            username=session["username"],
-                           role=session["role"])
+                           role=session["role"],
+                           verified_lender=session.get("verified_lender", False))
 
 
 @app.route("/dashboard/borrower")

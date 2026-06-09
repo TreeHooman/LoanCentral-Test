@@ -4,7 +4,7 @@
 {% block content %}
 <div class="section-header" style="margin-bottom:20px">
   <div>
-    <div class="section-title" style="font-size:20px">u/{{ profile_username }}</div>
+    <div class="section-title" style="font-size:20px" id="p-profile-title">u/{{ profile_username }}</div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">LoanCentral record profile</div>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -89,6 +89,19 @@
       document.getElementById('p-loans-lender').textContent = p.loans_as_lender || 0;
       document.getElementById('p-unpaid').textContent = p.unpaid_loans || 0;
       document.getElementById('p-unpaid-amount').textContent = '$' + fmt(p.unpaid_amount || 0);
+
+      // Verified Lender badge + Reddit username
+      const titleEl = document.getElementById('p-profile-title');
+      if (titleEl) {
+        let extra = '';
+        if (p.verified_lender) {
+          extra += ' <span style="display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(46,204,113,0.15);color:var(--green);vertical-align:middle">✓ Verified Lender</span>';
+        }
+        if (p.reddit_username) {
+          extra += ` <a href="https://www.reddit.com/user/${encodeURIComponent(p.reddit_username)}" target="_blank" style="font-size:12px;color:var(--accent-h);vertical-align:middle;margin-left:4px">r/u/${escapeHtml(p.reddit_username)}</a>`;
+        }
+        titleEl.innerHTML = `u/{{ profile_username }}${extra}`;
+      }
 
       const standing = (p.unpaid_loans || 0) > 0 ? 'Unpaid' : 'Clear';
       const standingEl = document.getElementById('p-standing');

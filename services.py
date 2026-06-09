@@ -426,6 +426,16 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                              "amount": str(amount), "currency": currency})
         add_loan_event(loan_id, "loan_created", lender,
                        f"Loan of {amount} {currency} confirmed for u/{borrower}")
+        # Notify both parties
+        create_notification(
+            borrower, "loan_confirmed",
+            "New loan confirmed",
+            f"u/{lender} has recorded a loan of {amount} {currency} for you (ID: {loan_id}). "
+            "Log in to view the details.")
+        create_notification(
+            lender, "loan_confirmed",
+            "Loan recorded",
+            f"Loan {loan_id} for u/{borrower} ({amount} {currency}) has been recorded.")
         return loan_id, None
 
     except Exception as e:
@@ -553,6 +563,14 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
                                            "new_status": new_status, "currency": currency})
         add_loan_event(_lid, "loan_repaid" if new_status == "repaid" else "payment_partial",
                        actor, f"{amount_paid} {currency} received — status: {new_status}")
+        # Notify lender of payment
+        payment_msg = (
+            f"u/{borrower} has fully repaid loan {_lid} ({amount_paid} {loan_currency})."
+            if new_status == "repaid" else
+            f"u/{borrower} recorded a payment of {amount_paid} {loan_currency} on loan {_lid}. "
+            f"Status: {new_status}."
+        )
+        create_notification(lender, "payment_received", "Payment received", payment_msg)
 
         return {
             "db_id": db_id,
@@ -650,6 +668,12 @@ def mark_unpaid(loan_id: str, lender: str):
                              "currency": loan_currency})
         add_loan_event(loan_id, "loan_unpaid", lender,
                        f"Marked unpaid — {remaining_unpaid} {loan_currency} outstanding")
+        # Notify borrower
+        create_notification(
+            borrower, "loan_unpaid",
+            "Loan marked unpaid",
+            f"u/{lender} has marked loan {loan_id} ({loan_amount} {loan_currency}) as unpaid. "
+            "Contact your lender or a moderator if this is incorrect.")
 
         return {
             "db_id": db_id,
@@ -1002,6 +1026,15 @@ def get_user_profile(username: str):
                 "active_amount": Decimal("0"),
             }, None
 
+        # Also fetch verified_lender status and reddit_username from user_roles
+        try:
+            cur.execute(
+                "SELECT verified_lender, reddit_username FROM user_roles WHERE lower(username)=lower(%s)",
+                (username,))
+            role_row = cur.fetchone()
+        except Exception:
+            role_row = None
+
         return {
             "username": username,
             "loans_as_borrower": row[0],
@@ -1013,6 +1046,8 @@ def get_user_profile(username: str):
             "unpaid_amount": Decimal(row[6]),
             "active_loans": active[0] if active else 0,
             "active_amount": Decimal(active[1]) if active else Decimal("0"),
+            "verified_lender": bool(role_row[0]) if role_row else False,
+            "reddit_username": role_row[1] if role_row else None,
         }, None
 
     except Exception as e:
@@ -1915,6 +1950,12 @@ def dispute_loan(loan_id: str, borrower: str):
                   new_value={"lender": lender, "amount": str(amount), "currency": currency})
         add_loan_event(loan_id, "dispute_opened", borrower,
                        f"Borrower opened dispute — {amount} {currency}")
+        # Notify lender of dispute
+        create_notification(
+            lender, "dispute_opened",
+            "Dispute opened on your loan",
+            f"u/{borrower} has opened a dispute on loan {loan_id} ({amount} {currency}). "
+            "A moderator will review this. Check your dashboard for details.")
         return {"db_id": db_id, "lender": lender, "borrower": borrower,
                 "amount": Decimal(amount), "currency": currency}, None
     except Exception as e:

@@ -1,69 +1,58 @@
 ================================================================================
 LOANCENTRAL — SESSION HANDOFF
-Sprint 3: Dashboard UI, Reddit Username Linking, Calendar ICS
+Sprint 4: Notification Delivery, OTP Rate Limiting, Verified Lender Badge
 Date: 2026-06-09
 ================================================================================
 
-## SPRINT 3 — COMPLETED ✅
+## SPRINT 4 — COMPLETED ✅
 
-All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
+All tasks complete. 123 tests passing (up from 109 in Sprint 3).
 
 ---
 
 ## WHAT WAS DONE THIS SPRINT
 
-### T1 — Visual Dashboard QA
-- All 5 templates reviewed. Four bugs found and fixed in base.html and global_search.html.
-- VISUAL_QA_REPORT.md created.
-- Fixes:
-  1. `escapeHtml()` not defined in base.html → added to main <script> block (XSS risk on timeline)
-  2. `result` undeclared in `submitNewLoan()` → added `let result;`
-  3. `session_user` undefined → removed, `ME` is sufficient
-  4. Global search loan links went to JSON API endpoint → now link to lender user profile
+### T1 — Verified Lender Badge
+- dashboard_lender.html: badge "✓ Verified Lender" shown in header when
+  session.verified_lender is True. "Apply for Verification" button hidden
+  when already verified (no point applying again).
+- app.py: /dashboard/lender now passes verified_lender=session.get("verified_lender")
+  to the template.
+- services.py: get_user_profile() now also queries user_roles to include
+  verified_lender (bool) and reddit_username in the returned dict.
+- profile.html: loadProfile() injects verified lender badge and linked
+  reddit username into the profile title when p.verified_lender is true.
+  Profile title element given id="p-profile-title" for targeting.
 
-### T2 — Audit Log Viewer UI
-- Already complete from prior sprint. Tests added in test_sprint3.py.
-- Service: get_audit_log with username filter verified parameterised.
+### T2 — Notification Delivery for Key Events
+Previously only verification grant/revoke fired notifications.
+Now four additional events trigger create_notification() in services.py:
+- create_loan    → lender: "Loan recorded", borrower: "New loan confirmed"
+                   type: loan_confirmed (both)
+- mark_repaid    → lender: "Payment received"
+                   type: payment_received
+- mark_unpaid    → borrower: "Loan marked unpaid"
+                   type: loan_unpaid
+- dispute_loan   → lender: "Dispute opened on your loan"
+                   type: dispute_opened
 
-### T3 — Notification Center UI
-- Already complete from prior sprint. Tests added in test_sprint3.py.
-- get_notifications: verified returns (list, unread_count, error)
-- mark_notifications_read: verified scoped to owner username in WHERE clause (IDOR prevention)
+### T3 — OTP Rate Limiting
+- app.py: _otp_check_rate(ip) helper — in-memory per-IP counter,
+  5 attempts per 15-minute window, stale entries cleaned on each check.
+  Constants: OTP_RATE_MAX=5, OTP_RATE_WINDOW=900 (15 min).
+- /api/auth/borrower/claim and /api/auth/borrower/verify both return 429
+  with "Too many attempts. Please wait 15 minutes and try again." when
+  the IP is over the limit.
 
-### T4 — Global Search UI
-- Already complete from prior sprint. Tests added in test_sprint3.py.
-- global_search: verified no SQL injection via parameterised queries.
-- global_search.html: loan result links fixed (T1 bug 4).
+### T4 — Borrower Verification Application UI
+- dashboard_borrower.html: "Apply for Lender Verification" button added
+  to header. Opens borrowerVerificationModal with public + private note
+  fields. Calls /api/verification/apply (same endpoint lender dashboard uses).
 
-### T5 — Manual Reddit Username Linking
-- New feature: mods/admins can link a dashboard username to a Reddit username.
-- Schema: reddit_username, reddit_username_linked_at, reddit_username_linked_by added to user_roles.
-- local_db.py: _ensure_column migrations for the three new columns.
-- services.py: link_reddit_username(), unlink_reddit_username(), get_reddit_username()
-  - Normalises u/ prefix automatically
-  - Blocks duplicate links (one reddit_username per account)
-  - Audit logged via log_audit() (from route layer)
-- app.py: GET/POST/DELETE /api/admin/users/<username>/reddit-link (require_mod_api)
-- app.py: GET /api/admin/roles now returns reddit_username in response
-- dashboard_mod.html: "Reddit" column in roles table, "🔗 Reddit" button per row
-- dashboard_mod.html: redditLinkModal — link/unlink with Remove Link button
-- No Reddit OAuth, no flair changes, no production credentials touched.
-
-### T6 — Per-Loan ICS Calendar
-- New feature: any lender or borrower can download a .ics for a specific loan.
-- app.py: GET /api/loans/<loan_id>/calendar.ics (require_auth)
-  - Scope check: only lender, borrower, or mod/admin can access
-  - Returns 400 if no repay_date set
-  - Includes 7-day and 1-day VALARM reminders
-- base.html: "📅 Add to Calendar" button in loanDetailModal, wired to ICS endpoint
-
-### T7 — Private Beta Readiness Checklist
-- PRIVATE_BETA_CHECKLIST.md created. 8 sections covering security, database,
-  Reddit bot, dashboard access, features, language, ops, and deferred items.
-
-### T8 — Final Test Pass
-- 109/109 tests passing (24 new tests in test_sprint3.py)
-- 0 failures, 1 deprecation warning (utcnow() in ICS helper — cosmetic, not a bug)
+### Reminders Widget
+- Already fully wired (no changes needed). loadReminders() in lender
+  dashboard calls /api/reminders, renderDueAlerts() shows overdue/due-soon
+  loans at top of dashboard.
 
 ---
 
@@ -71,16 +60,12 @@ All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
 
 | File | Change |
 |------|--------|
-| schema.sql | reddit_username, reddit_username_linked_at, reddit_username_linked_by on user_roles |
-| local_db.py | _ensure_column for 3 new reddit_username columns |
-| services.py | link_reddit_username, unlink_reddit_username, get_reddit_username functions |
-| api/app.py | GET/POST/DELETE /api/admin/users/<username>/reddit-link; GET /api/loans/<id>/calendar.ics; roles API now returns reddit_username |
-| api/templates/base.html | escapeHtml() definition; let result; in submitNewLoan; removed session_user; 📅 Add to Calendar button in loanDetailModal |
-| api/templates/dashboard_mod.html | Reddit column in roles table; redditLinkModal; JS openRedditLinkModal/saveRedditLink/unlinkReddit |
-| api/templates/global_search.html | Loan links now go to lender profile, not JSON API endpoint |
-| tests/test_sprint3.py | NEW — 24 tests covering T2/T3/T4/T5/T6 |
-| VISUAL_QA_REPORT.md | NEW — QA findings and fix log |
-| PRIVATE_BETA_CHECKLIST.md | NEW — 8-section pre-launch checklist |
+| services.py | create_notification calls in create_loan, mark_repaid, mark_unpaid, dispute_loan; get_user_profile now returns verified_lender + reddit_username |
+| api/app.py | OTP_RATE_MAX/OTP_RATE_WINDOW constants; _otp_check_rate() helper; rate check on /api/auth/borrower/claim and /verify; verified_lender passed to dashboard_lender template |
+| api/templates/dashboard_lender.html | Verified Lender badge in header; "Apply for Verification" button hidden when already verified |
+| api/templates/dashboard_borrower.html | "Apply for Lender Verification" button + borrowerVerificationModal + JS |
+| api/templates/profile.html | p-profile-title id added; loadProfile injects badge + reddit link |
+| tests/test_sprint4.py | NEW — 14 tests covering T1/T2/T3 |
 
 ---
 
@@ -90,7 +75,8 @@ All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
 |-------|-------|--------|
 | test_audit_log.py | 19 | All pass |
 | test_enforcement.py | 14 | All pass |
-| test_sprint3.py | 24 | All pass (new) |
+| test_sprint3.py | 24 | All pass |
+| test_sprint4.py | 14 | All pass (new) |
 | test_dispute_command.py | 5 | All pass |
 | test_fund_command.py | 4 | All pass |
 | test_help_command.py | 2 | All pass |
@@ -100,7 +86,7 @@ All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
 | test_refund_command.py | 5 | All pass |
 | test_services_loan_history.py | 9 | All pass |
 | test_unpaid_command.py | 5 | All pass |
-| TOTAL | 109 | 109/109 PASSING |
+| TOTAL | 123 | 123/123 PASSING |
 
 ---
 
@@ -115,47 +101,50 @@ All 8 tasks complete. 109 tests passing (up from 85 in Sprint 2).
 
 ## KNOWN ISSUES / DEFERRED
 
-- Reddit OAuth for production login still deferred (see memory/project_auth_future.md)
-- Lender API key management UI still missing (endpoint exists; no self-service UI)
+- OTP rate limiter is in-memory — resets on server restart. A production-grade
+  solution would use Redis or a DB table. Fine for private beta.
+- Lender API key self-service UI still missing (endpoint exists; no self-service UI)
 - Attachment upload has no server-side size cap enforcement
-- `datetime.utcnow()` deprecation warning in ICS route — cosmetic, safe to ignore until Python 3.13+
 - Interest fields stored but not prominently displayed in dashboards
-- `escapeHtml` still defined locally in dashboard_lender.html (line 731) — now redundant but harmless
+- dashboard_lender.html still has redundant local escapeHtml (harmless)
+- `datetime.utcnow()` deprecation warning in ICS route — cosmetic
 
 ---
 
 ## NEXT SPRINT RECOMMENDATIONS
 
-### Sprint 4: Borrower UX & Launch Hardening
+### Sprint 5: Polish + Launch Hardening
 
 High priority:
-1. Lender verification application flow UI — "Request Verification" button on borrower/lender
-   dashboards that calls /api/verification/apply. Currently no UI entry point.
+1. Lender API key self-service UI — let lenders view/revoke their own API keys.
+   Endpoint: GET/DELETE /api/admin/keys (admin) — needs a lender-scoped version
+   or a personal key management route.
 
-2. Verified Lender badge — show badge on user profiles and in the loan table.
-   Language: "Verified Lender (completed LoanCentral process)" per language_audit.md.
+2. Server-side attachment size cap — add MAX_CONTENT_LENGTH or per-file cap
+   to the upload endpoint (currently only type-checked, not size-checked).
 
-3. Notification delivery for key events — extend beyond verification changes to:
-   - New loan confirmed
-   - Payment received / marked paid
-   - Loan marked unpaid
-   - Dispute opened
+3. Move OTP rate limiter to DB or Redis — in-memory resets on restart.
+   For private beta with low traffic, current approach is acceptable.
 
-4. Rate limiting on OTP endpoints — /api/auth/borrower/claim and /api/auth/borrower/verify
-   should be protected against brute force before launch.
+4. Borrower acknowledgment flow UI — the endpoint exists (/api/loans/<id>/acknowledge),
+   but there is no UI button for borrowers to confirm receipt of a loan.
 
 Medium priority:
-5. Lender API key self-service UI — let lenders view/revoke their own API keys
-   from /dashboard/lender.
+5. Notification bell unread count real-time update — currently the count
+   only refreshes on page load. Could poll /api/notifications every 60s.
 
-6. Server-side attachment upload size cap — add MAX_CONTENT_LENGTH or per-file
-   check to the upload endpoint.
+6. Admin dashboard link to individual loan audit history — from a loan row,
+   click "History" to see all audit_logs entries for that loan_id.
 
-7. Reminders dashboard widget — wire /api/reminders to a widget on the lender
-   dashboard showing overdue/due-soon loans.
+7. Test coverage for mark_repaid notification (currently verified by source
+   inspection only — the mock is complex to set up due to Decimal/type guards).
 
 Low priority / housekeeping:
-8. Remove redundant escapeHtml from dashboard_lender.html (line 731) — now covered by base.
-9. Re-run language audit before launch.
-10. Confirm IS_DEV=False in production before first deploy (see PRIVATE_BETA_CHECKLIST.md).
+8. Remove redundant local escapeHtml from dashboard_lender.html line 731.
+9. Remove redundant local escapeHtml from dashboard_borrower.html line 490.
+10. Update PRIVATE_BETA_CHECKLIST.md to reflect Sprint 4 completions:
+    - Rate limiting on OTP: ✅ (T3)
+    - Notification delivery: ✅ (T2)
+    - Verified lender badge: ✅ (T1)
+    - Borrower verification apply UI: ✅ (T4)
 ================================================================================

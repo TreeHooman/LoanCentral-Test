@@ -9,7 +9,28 @@
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn-secondary" onclick="exportCsv()">Export CSV</button>
+    <button class="btn-secondary" onclick="openBorrowerVerificationModal()">Apply for Lender Verification</button>
     <button class="btn-secondary" id="refreshBtn" onclick="loadAll()">Refresh</button>
+  </div>
+</div>
+
+<!-- Borrower → Lender verification application modal -->
+<div class="modal-overlay" id="borrowerVerificationModal">
+  <div class="modal">
+    <h3>Apply for Lender Verification</h3>
+    <div class="modal-error" id="borrowerVerificationError"></div>
+    <p style="color:var(--muted);font-size:12px;line-height:1.45;margin-bottom:12px">
+      Applying creates a private review item for the mod team. Your account role will not change
+      until a mod manually approves it. This does not affect Reddit flair.
+    </p>
+    <label>Public Summary <span style="color:var(--muted);font-size:11px">(optional — mods can reference this)</span></label>
+    <textarea id="bvPublicNote" rows="3" placeholder="e.g. I have been lending for 6 months with 100% repayment rate"></textarea>
+    <label>Private Note <span style="color:var(--muted);font-size:11px">(optional — only visible to mods)</span></label>
+    <textarea id="bvPrivateNote" rows="3" placeholder="Anything the mod team should see privately"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('borrowerVerificationModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitBorrowerVerification()">Submit Application</button>
+    </div>
   </div>
 </div>
 
@@ -494,6 +515,33 @@
   function redditUser(username) {
     const raw = String(username || '');
     return `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(raw)}">u/${escapeHtml(raw)}</a>`;
+  }
+
+  function openBorrowerVerificationModal() {
+    document.getElementById('bvPublicNote').value = '';
+    document.getElementById('bvPrivateNote').value = '';
+    document.getElementById('borrowerVerificationError').style.display = 'none';
+    document.getElementById('borrowerVerificationModal').classList.add('open');
+  }
+
+  async function submitBorrowerVerification() {
+    const errEl = document.getElementById('borrowerVerificationError');
+    errEl.style.display = 'none';
+    try {
+      await apiFetch('/api/verification/apply', {
+        method: 'POST',
+        body: JSON.stringify({
+          requested_role: 'lender',
+          public_note: document.getElementById('bvPublicNote').value.trim(),
+          private_note: document.getElementById('bvPrivateNote').value.trim()
+        })
+      });
+      closeModal('borrowerVerificationModal');
+      toast('Verification application submitted. The mod team will review it.', 'success');
+    } catch(e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    }
   }
 </script>
 {% endblock %}
