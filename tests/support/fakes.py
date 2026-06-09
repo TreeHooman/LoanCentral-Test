@@ -641,8 +641,14 @@ def loan_record(
 FakeDB = FakeDb  # alias for newer tests
 
 
+class _NoOpLimiter:
+    def wait(self):
+        pass
+
+
 def fake_utils_module(fake_db, reddit=None):
     return SimpleNamespace(
         reddit=reddit or FakeReddit(),
         get_db_connection=lambda: fake_db.connection(),
+        reddit_limiter=_NoOpLimiter(),
     )

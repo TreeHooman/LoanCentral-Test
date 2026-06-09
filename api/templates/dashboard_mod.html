@@ -320,11 +320,6 @@
     const menu = document.getElementById('moreMenu');
     menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
   }
-  const _origShowTab = showTab;
-  function showTab(name) {
-    document.getElementById('moreMenu').style.display = 'none';
-    _origShowTab(name);
-  }
   document.addEventListener('click', e => {
     if (!e.target.closest('.dropdown-wrap')) {
       const m = document.getElementById('moreMenu');
@@ -333,6 +328,8 @@
   });
 
   function showTab(name) {
+    const m = document.getElementById('moreMenu');
+    if (m) m.style.display = 'none';
     ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity'].forEach(t =>
       document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
     );

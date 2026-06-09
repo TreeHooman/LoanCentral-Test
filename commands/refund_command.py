@@ -35,8 +35,9 @@ def process_refund_command(comment):
 
     # Notify moderators
     try:
-        from utils import reddit
+        from utils import reddit, reddit_limiter
         post_subreddit = comment.submission.subreddit.display_name
+        reddit_limiter.wait()
         reddit.subreddit(post_subreddit).message(
             subject=f"Loan Refunded - {lender} to {borrower}",
             message=(

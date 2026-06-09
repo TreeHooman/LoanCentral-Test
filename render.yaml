@@ -38,6 +38,22 @@ services:
         sync: false
       - key: REDDIT_USER_AGENT
         value: LoanCentralBot/1.0
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
       - key: REMINDER_REDDIT_ENABLED
         value: "false"
       - key: AUTO_BAN_REDDIT_ENABLED

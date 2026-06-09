@@ -2259,7 +2259,7 @@ def create_magic_link(username: str, days: int = 7):
         """, (username,))
         cur.execute("""
             INSERT INTO borrower_magic_links (username, token_hash, expires_at)
-            VALUES (lower(%s), %s, NOW() + INTERVAL '%s days')
+            VALUES (lower(%s), %s, NOW() + (%s * INTERVAL '1 day'))
         """, (username, hashed, days))
         conn.commit()
         return token, None

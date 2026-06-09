@@ -1,6 +1,6 @@
 import logging
 
-from bot_messages import with_dashboard_link
+from bot_messages import DASHBOARD_URL, with_dashboard_link
 
 logger = logging.getLogger("LoanCentral")
 
@@ -12,10 +12,10 @@ def process_help_command(comment):
     if "$help" not in comment.body.lower():
         return
 
-    help_text = """
+    help_text = f"""
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard](https://loancentral.app)** — sign in with Reddit.
+The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})** — sign in with Reddit.
 
 ---
 
@@ -59,7 +59,7 @@ $dispute [paid_id]
 
 ---
 
-**Dashboard:** https://loancentral.app — view history, health score, active loans.
+**Dashboard:** {DASHBOARD_URL} — view history, health score, active loans.
 **Need help?** Contact the moderators.
 """
 
