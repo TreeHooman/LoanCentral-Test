@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — LoanCentral{% endblock %}
+{% block content %}
+<div class="section-header">
+  <div><h2 class="section-title">Audit Log</h2></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Username</label>
+      <input id="f-username" class="search-input" placeholder="any" style="width:160px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Action</label>
+      <select id="f-action" class="search-input" style="width:180px">
+        <option value="">All actions</option>
+        <option>loan_created</option><option>loan_repaid</option>
+        <option>loan_unpaid</option><option>loan_refunded</option>
+        <option>loan_forgiven</option><option>loan_updated</option>
+        <option>dispute_opened</option><option>dispute_resolved</option>
+        <option>role_granted</option><option>role_removed</option>
+        <option>verified_lender_granted</option><option>verified_lender_revoked</option>
+        <option>ban_user</option><option>unban_user</option>
+        <option>loan_event_added</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">From</label>
+      <input id="f-from" type="date" class="search-input" style="width:140px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">To</label>
+      <input id="f-to" type="date" class="search-input" style="width:140px">
+    </div>
+    <button class="btn-primary" onclick="loadAudit(0)">Search</button>
+    <button class="btn-secondary" onclick="clearFilters()">Clear</button>
+  </div>
+</div>
+
+<div id="audit-table-wrap">
+  <div class="table-placeholder"><div class="spinner"></div></div>
+</div>
+<div id="audit-pagination" style="display:flex;gap:8px;margin-top:12px;align-items:center"></div>
+
+<script>
+let _auditOffset = 0;
+const PAGE = 50;
+
+function clearFilters() {
+  document.getElementById('f-username').value = '';
+  document.getElementById('f-action').value   = '';
+  document.getElementById('f-from').value     = '';
+  document.getElementById('f-to').value       = '';
+  loadAudit(0);
+}
+
+async function loadAudit(offset) {
+  _auditOffset = offset;
+  const params = new URLSearchParams({limit: PAGE, offset});
+  const u = document.getElementById('f-username').value.trim();
+  const a = document.getElementById('f-action').value;
+  const from = document.getElementById('f-from').value;
+  const to   = document.getElementById('f-to').value;
+  if (u) params.set('username', u);
+  if (a) params.set('action_type', a);
+  if (from) params.set('date_from', from);
+  if (to)   params.set('date_to', to + 'T23:59:59');
+  const res  = await fetch('/api/admin/audit-log?' + params);
+  const data = await res.json();
+  renderAudit(data);
+}
+
+function actionBadge(action) {
+  const colors = {
+    loan_created:'var(--green)', loan_repaid:'var(--green)',
+    loan_unpaid:'var(--red)', loan_refunded:'var(--muted)',
+    dispute_opened:'var(--orange)', dispute_resolved:'var(--green)',
+    verified_lender_granted:'var(--accent)', verified_lender_revoked:'var(--orange)',
+    ban_user:'var(--red)', role_granted:'var(--accent)',
+  };
+  const c = colors[action] || 'var(--muted)';
+  return `<span style="background:${c}22;color:${c};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${action.replace(/_/g,' ')}</span>`;
+}
+
+function renderAudit(data) {
+  const rows = data.rows || [];
+  const total = data.total || 0;
+  const wrap = document.getElementById('audit-table-wrap');
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="table-placeholder">No audit entries found.</div>';
+    document.getElementById('audit-pagination').innerHTML = '';
+    return;
+  }
+  let html = `<table class="data-table"><thead><tr>
+    <th>Time</th><th>Actor</th><th>Role</th><th>Action</th>
+    <th>Target</th><th>Details</th>
+  </tr></thead><tbody>`;
+  for (const r of rows) {
+    const ts = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+    const target = r.target_id
+      ? `<span style="color:var(--muted);font-size:12px">${r.target_type || ''} #${r.target_id}</span>`
+      : '<span style="color:var(--muted)">—</span>';
+    const newVal = r.new_value_json
+      ? `<pre style="font-size:11px;color:var(--muted);margin:0;max-width:200px;overflow:auto">${JSON.stringify(r.new_value_json,null,1)}</pre>`
+      : '';
+    html += `<tr>
+      <td style="white-space:nowrap;font-size:12px">${ts}</td>
+      <td><a href="/dashboard/users/${r.actor_username}" style="color:var(--accent-h)">u/${r.actor_username}</a></td>
+      <td><span class="badge badge-${r.actor_role}">${r.actor_role}</span></td>
+      <td>${actionBadge(r.action_type)}</td>
+      <td>${target}</td>
+      <td>${newVal}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  // Pagination
+  const pages = Math.ceil(total / PAGE);
+  const cur   = Math.floor(_auditOffset / PAGE);
+  let phtml = `<span style="color:var(--muted);font-size:13px">${total} entries</span>`;
+  if (cur > 0)
+    phtml += `<button class="btn-secondary" onclick="loadAudit(${(cur-1)*PAGE})">← Prev</button>`;
+  phtml += `<span style="font-size:13px">Page ${cur+1} / ${pages}</span>`;
+  if (cur < pages-1)
+    phtml += `<button class="btn-secondary" onclick="loadAudit(${(cur+1)*PAGE})">Next →</button>`;
+  document.getElementById('audit-pagination').innerHTML = phtml;
+}
+
+loadAudit(0);
+</script>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Search — LoanCentral{% endblock %}
+{% block content %}
+<div class="section-header">
+  <div><h2 class="section-title">Global Search</h2></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Search</label>
+      <input id="q" class="search-input" placeholder="username, loan ID, notes…" style="width:100%"
+             onkeydown="if(event.key==='Enter')runSearch()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Type</label>
+      <select id="s-type" class="search-input" style="width:120px">
+        <option value="all">All</option>
+        <option value="loans">Loans</option>
+        <option value="users">Users</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Status</label>
+      <select id="s-status" class="search-input" style="width:150px">
+        <option value="">Any status</option>
+        <option value="confirmed">Active</option>
+        <option value="partially_repaid">Partial</option>
+        <option value="repaid">Repaid</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="refunded">Refunded</option>
+        <option value="disputed">Disputed</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="runSearch()">Search</button>
+  </div>
+</div>
+
+<div id="search-results"></div>
+<div id="search-pagination" style="display:flex;gap:8px;margin-top:12px;align-items:center"></div>
+
+<script>
+let _offset = 0;
+const PAGE = 50;
+
+async function runSearch(offset) {
+  _offset = offset || 0;
+  const q      = document.getElementById('q').value.trim();
+  const type   = document.getElementById('s-type').value;
+  const status = document.getElementById('s-status').value;
+  const params = new URLSearchParams({q, type, limit: PAGE, offset: _offset});
+  if (status) params.set('status', status);
+  const wrap = document.getElementById('search-results');
+  wrap.innerHTML = '<div class="table-placeholder"><div class="spinner"></div></div>';
+  const res  = await fetch('/api/admin/search?' + params);
+  const data = await res.json();
+  renderResults(data, q);
+}
+
+function statusBadge(s) {
+  const cls = {confirmed:'active',partially_repaid:'partial',repaid:'repaid',
+               unpaid:'unpaid',refunded:'refunded',disputed:'disputed'}[s] || '';
+  return `<span class="badge badge-${cls}">${s}</span>`;
+}
+
+function renderResults(data, q) {
+  const wrap    = document.getElementById('search-results');
+  const results = data.results || {};
+  const total   = data.total || 0;
+  const loans   = results.loans || [];
+  const users   = results.users || [];
+
+  if (!loans.length && !users.length) {
+    wrap.innerHTML = '<div class="table-placeholder">No results found.</div>';
+    document.getElementById('search-pagination').innerHTML = '';
+    return;
+  }
+
+  let html = '';
+
+  if (loans.length) {
+    html += `<h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">LOANS (${loans.length})</h3>
+    <table class="data-table" style="margin-bottom:20px"><thead><tr>
+      <th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th>
+      <th>Status</th><th>Due</th>
+    </tr></thead><tbody>`;
+    for (const l of loans) {
+      html += `<tr>
+        <td><a href="/api/loans/${l.loan_id}" style="color:var(--accent-h);font-family:monospace">${l.loan_id}</a></td>
+        <td><a href="/dashboard/users/${l.lender}" style="color:var(--accent-h)">u/${l.lender}</a></td>
+        <td><a href="/dashboard/users/${l.borrower}" style="color:var(--accent-h)">u/${l.borrower}</a></td>
+        <td>${l.amount.toFixed(2)} ${l.currency || ''}</td>
+        <td>${statusBadge(l.status)}</td>
+        <td style="font-size:12px;color:var(--muted)">${l.repay_date || '—'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  if (users.length) {
+    html += `<h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">USERS (${users.length})</h3>
+    <table class="data-table"><thead><tr>
+      <th>Username</th><th>Role</th><th>Verified Lender</th><th>Last Login</th>
+    </tr></thead><tbody>`;
+    for (const u of users) {
+      const vl = u.verified_lender
+        ? '<span style="color:var(--green);font-size:12px">✓ Verified</span>'
+        : '<span style="color:var(--muted);font-size:12px">—</span>';
+      const ll = u.last_login ? new Date(u.last_login).toLocaleDateString() : '—';
+      html += `<tr>
+        <td><a href="/dashboard/users/${u.username}" style="color:var(--accent-h)">u/${u.username}</a></td>
+        <td><span class="badge badge-${u.role}">${u.role}</span></td>
+        <td>${vl}</td>
+        <td style="font-size:12px;color:var(--muted)">${ll}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  wrap.innerHTML = html;
+
+  const pages = Math.ceil(total / PAGE);
+  const cur   = Math.floor(_offset / PAGE);
+  let phtml = `<span style="color:var(--muted);font-size:13px">${total} results</span>`;
+  if (cur > 0)
+    phtml += `<button class="btn-secondary" onclick="runSearch(${(cur-1)*PAGE})">← Prev</button>`;
+  if (pages > 1)
+    phtml += `<span style="font-size:13px">Page ${cur+1} / ${pages}</span>`;
+  if (cur < pages-1)
+    phtml += `<button class="btn-secondary" onclick="runSearch(${(cur+1)*PAGE})">Next →</button>`;
+  document.getElementById('search-pagination').innerHTML = phtml;
+}
+</script>
+{% endblock %}

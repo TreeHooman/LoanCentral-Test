@@ -2117,6 +2117,173 @@ def cancel_request(request_id):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Audit log routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/audit-log", methods=["GET"])
+@require_mod_api
+def api_audit_log():
+    from services import get_audit_log
+    username    = request.args.get("username")
+    action_type = request.args.get("action_type")
+    target_type = request.args.get("target_type")
+    target_id   = request.args.get("target_id")
+    date_from   = request.args.get("date_from")
+    date_to     = request.args.get("date_to")
+    limit       = min(int(request.args.get("limit", 50)), 200)
+    offset      = int(request.args.get("offset", 0))
+    rows, total, error = get_audit_log(
+        username=username, action_type=action_type,
+        target_type=target_type, target_id=target_id,
+        date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"rows": rows, "total": total, "limit": limit, "offset": offset})
+
+
+@app.route("/dashboard/admin/audit-log")
+@role_required("mod", "admin")
+def audit_log_page():
+    return render_template("audit_log.html",
+                           username=session.get("username"),
+                           role=session.get("role"))
+
+
+# ---------------------------------------------------------------------------
+# Loan event timeline routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/loans/<loan_id>/events", methods=["GET"])
+@require_auth
+def api_loan_events(loan_id):
+    from services import get_loan_events
+    events, error = get_loan_events(loan_id)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(events)
+
+
+@app.route("/api/loans/<loan_id>/events", methods=["POST"])
+@require_mod_api
+def api_add_loan_event(loan_id):
+    from services import add_loan_event, log_audit
+    data    = request.get_json() or {}
+    etype   = (data.get("event_type") or "").strip()
+    details = (data.get("details") or "").strip()
+    actor   = session.get("username", "system")
+    if not etype:
+        return _json({"error": "event_type required"}, 400)
+    add_loan_event(loan_id, etype, actor, details or None)
+    log_audit(actor, session.get("role","mod"), "loan_event_added",
+              "loan", loan_id, new_value={"event_type": etype, "details": details})
+    return _json({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Notification routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/notifications", methods=["GET"])
+@login_required
+def api_get_notifications():
+    from services import get_notifications
+    unread_only = request.args.get("unread") == "1"
+    limit = min(int(request.args.get("limit", 50)), 100)
+    notifs, unread_count, error = get_notifications(
+        session["username"], unread_only=unread_only, limit=limit)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"notifications": notifs, "unread_count": unread_count})
+
+
+@app.route("/api/notifications/read", methods=["POST"])
+@login_required
+def api_mark_notifications_read():
+    from services import mark_notifications_read
+    data = request.get_json() or {}
+    ids  = data.get("ids")  # list of ints or None = mark all
+    ok, error = mark_notifications_read(session["username"], ids)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Verified lender routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/verified-lender/<username>", methods=["GET"])
+@require_mod_api
+def api_get_verified_lender(username):
+    from services import get_verified_lender_status
+    verified, details, error = get_verified_lender_status(username)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(details or {"verified": False})
+
+
+@app.route("/api/admin/verified-lender/<username>", methods=["POST"])
+@require_mod_api
+def api_set_verified_lender(username):
+    from services import set_verified_lender, log_audit, create_notification
+    data     = request.get_json() or {}
+    verified = bool(data.get("verified", True))
+    note     = (data.get("note") or "").strip() or None
+    actor    = session.get("username", "system")
+    ok, error = set_verified_lender(username, verified, actor, note)
+    if error:
+        return _json({"error": error}, 500)
+    action = "verified_lender_granted" if verified else "verified_lender_revoked"
+    log_audit(actor, session.get("role", "mod"), action,
+              "user", username,
+              new_value={"verified": verified, "note": note})
+    if verified:
+        create_notification(
+            username, "verification_updated",
+            "Lender Verification Approved",
+            "You have completed the LoanCentral lender verification process. "
+            "You can now access lender features on the dashboard.")
+    else:
+        create_notification(
+            username, "verification_updated",
+            "Lender Verification Status Updated",
+            "Your lender verification status has been updated by a moderator. "
+            "Contact a mod if you have questions.")
+    return _json({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Global search
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/search", methods=["GET"])
+@require_mod_api
+def api_global_search():
+    from services import global_search
+    query         = request.args.get("q", "").strip()
+    search_type   = request.args.get("type", "all")
+    status_filter = request.args.get("status")
+    limit         = min(int(request.args.get("limit", 50)), 100)
+    offset        = int(request.args.get("offset", 0))
+    results, total, error = global_search(
+        query, search_type=search_type,
+        status_filter=status_filter, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"results": results, "total": total, "query": query})
+
+
+@app.route("/dashboard/admin/search")
+@role_required("mod", "admin")
+def global_search_page():
+    return render_template("global_search.html",
+                           username=session.get("username"),
+                           role=session.get("role"))
+
+
+# ---------------------------------------------------------------------------
 # Error handlers
 # ---------------------------------------------------------------------------
 

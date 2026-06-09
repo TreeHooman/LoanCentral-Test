@@ -2298,3 +2298,381 @@ def validate_magic_link(token: str):
     finally:
         cur.close()
         conn.close()
+
+# =============================================================================
+# AUDIT LOGGING
+# =============================================================================
+
+def log_audit(actor_username: str, actor_role: str, action_type: str,
+              target_type: str = None, target_id: str = None,
+              old_value: dict = None, new_value: dict = None,
+              ip_address: str = None, metadata: dict = None):
+    """Write an audit log entry. Never raises."""
+    conn = _get_db()
+    if not conn:
+        logger.warning("log_audit: no DB connection, skipping")
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO audit_logs
+                (actor_username, actor_role, action_type, target_type, target_id,
+                 old_value_json, new_value_json, ip_address, metadata_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            (actor_username or "system").lower(),
+            actor_role or "unknown",
+            action_type,
+            target_type,
+            str(target_id) if target_id is not None else None,
+            json.dumps(old_value) if old_value is not None else None,
+            json.dumps(new_value) if new_value is not None else None,
+            ip_address,
+            json.dumps(metadata) if metadata is not None else None,
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"log_audit error: {e}", exc_info=True)
+        return False
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def get_audit_log(username: str = None, action_type: str = None,
+                  target_type: str = None, target_id: str = None,
+                  date_from: str = None, date_to: str = None,
+                  limit: int = 50, offset: int = 0):
+    """Fetch audit log entries with optional filters. Returns (rows, total, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        clauses, params = [], []
+        if username:
+            clauses.append("lower(actor_username) = lower(%s)")
+            params.append(username)
+        if action_type:
+            clauses.append("action_type = %s")
+            params.append(action_type)
+        if target_type:
+            clauses.append("target_type = %s")
+            params.append(target_type)
+        if target_id:
+            clauses.append("target_id = %s")
+            params.append(str(target_id))
+        if date_from:
+            clauses.append("created_at >= %s::timestamptz")
+            params.append(date_from)
+        if date_to:
+            clauses.append("created_at <= %s::timestamptz")
+            params.append(date_to)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        cur.execute(f"SELECT COUNT(*) FROM audit_logs {where}", params)
+        total = cur.fetchone()[0]
+        cur.execute(f"""
+            SELECT id, actor_username, actor_role, action_type, target_type,
+                   target_id, old_value_json, new_value_json, ip_address,
+                   metadata_json, created_at
+            FROM audit_logs {where}
+            ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        cols = ["id", "actor_username", "actor_role", "action_type", "target_type",
+                "target_id", "old_value_json", "new_value_json", "ip_address",
+                "metadata_json", "created_at"]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
+        return rows, total, None
+    except Exception as e:
+        logger.error(f"get_audit_log error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# LOAN EVENT TIMELINE
+# =============================================================================
+
+def add_loan_event(loan_id: str, event_type: str, actor_username: str = None,
+                   details: str = None):
+    """Append an event to the loan timeline. Never raises."""
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO loan_events (loan_id, event_type, actor_username, details)
+            VALUES (%s, %s, %s, %s)
+        """, (str(loan_id), event_type,
+              (actor_username or "system").lower(), details))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"add_loan_event error: {e}", exc_info=True)
+        return False
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def get_loan_events(loan_id: str):
+    """Return timeline events for a loan, newest first. Returns (list, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, event_type, actor_username, details, created_at
+            FROM loan_events WHERE loan_id = %s ORDER BY created_at DESC
+        """, (str(loan_id),))
+        cols = ["id", "loan_id", "event_type", "actor_username", "details", "created_at"]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
+        return rows, None
+    except Exception as e:
+        logger.error(f"get_loan_events error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# NOTIFICATIONS
+# =============================================================================
+
+def create_notification(username: str, notification_type: str,
+                        title: str, message: str):
+    """Create an in-app notification for a user. Never raises."""
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notifications (username, notification_type, title, message)
+            VALUES (lower(%s), %s, %s, %s)
+        """, (username, notification_type, title, message))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"create_notification error: {e}", exc_info=True)
+        return False
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def get_notifications(username: str, unread_only: bool = False, limit: int = 50):
+    """Fetch notifications. Returns (list, unread_count, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM notifications WHERE lower(username)=lower(%s) AND read=FALSE",
+            (username,))
+        unread_count = cur.fetchone()[0]
+        extra = "AND read = FALSE" if unread_only else ""
+        cur.execute(f"""
+            SELECT id, username, notification_type, title, message, read, created_at
+            FROM notifications WHERE lower(username)=lower(%s) {extra}
+            ORDER BY created_at DESC LIMIT %s
+        """, (username, limit))
+        cols = ["id", "username", "notification_type", "title", "message", "read", "created_at"]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
+        return rows, unread_count, None
+    except Exception as e:
+        logger.error(f"get_notifications error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_notifications_read(username: str, notification_ids: list = None):
+    """Mark notifications read. Pass None to mark all. Returns (ok, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        if notification_ids:
+            cur.execute("""
+                UPDATE notifications SET read=TRUE
+                WHERE lower(username)=lower(%s) AND id=ANY(%s)
+            """, (username, notification_ids))
+        else:
+            cur.execute(
+                "UPDATE notifications SET read=TRUE WHERE lower(username)=lower(%s)",
+                (username,))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"mark_notifications_read error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# VERIFIED LENDER
+# =============================================================================
+
+def set_verified_lender(username: str, verified: bool, granted_by: str,
+                        note: str = None):
+    """Set or revoke verified lender status. Returns (ok, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_roles (username, role)
+            VALUES (lower(%s), 'lender')
+            ON CONFLICT (username) DO NOTHING
+        """, (username,))
+        if verified:
+            cur.execute("""
+                UPDATE user_roles
+                SET verified_lender=TRUE, verified_lender_at=NOW(),
+                    verified_lender_by=%s, verification_note=%s
+                WHERE lower(username)=lower(%s)
+            """, (granted_by, note, username))
+        else:
+            cur.execute("""
+                UPDATE user_roles
+                SET verified_lender=FALSE, verified_lender_by=%s, verification_note=%s
+                WHERE lower(username)=lower(%s)
+            """, (granted_by, note, username))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"set_verified_lender error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_verified_lender_status(username: str):
+    """Returns (is_verified, details_dict, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, {}, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT verified_lender, verified_lender_at, verified_lender_by,
+                   verification_note, role
+            FROM user_roles WHERE lower(username)=lower(%s)
+        """, (username,))
+        row = cur.fetchone()
+        if not row:
+            return False, {}, None
+        return bool(row[0]), {
+            "verified": bool(row[0]),
+            "verified_at": row[1].isoformat() if row[1] else None,
+            "verified_by": row[2],
+            "note": row[3],
+            "role": row[4],
+        }, None
+    except Exception as e:
+        logger.error(f"get_verified_lender_status error: {e}", exc_info=True)
+        return False, {}, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# GLOBAL SEARCH
+# =============================================================================
+
+def global_search(query: str, search_type: str = "all",
+                  status_filter: str = None, limit: int = 50, offset: int = 0):
+    """
+    Search loans and users. search_type: 'all'|'loans'|'users'
+    Returns (results_dict, total, error). results_dict keys: 'loans', 'users'
+    """
+    conn = _get_db()
+    if not conn:
+        return {}, 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        q = (query or "").strip().lower()
+        results = {"loans": [], "users": []}
+        total = 0
+
+        if search_type in ("all", "loans"):
+            clauses, params = [], []
+            if q:
+                clauses.append(
+                    "(lower(loan_id) LIKE %s OR lower(lender) LIKE %s"
+                    " OR lower(borrower) LIKE %s OR lower(COALESCE(notes,'')) LIKE %s)")
+                like = f"%{q}%"
+                params += [like, like, like, like]
+            if status_filter:
+                clauses.append("status = %s")
+                params.append(status_filter)
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            cur.execute(f"""
+                SELECT loan_id, lender, borrower, amount, currency, status,
+                       repay_date, created_at
+                FROM loans {where} ORDER BY created_at DESC LIMIT %s OFFSET %s
+            """, params + [limit, offset])
+            cols = ["loan_id", "lender", "borrower", "amount", "currency",
+                    "status", "repay_date", "created_at"]
+            loans = [dict(zip(cols, r)) for r in cur.fetchall()]
+            for r in loans:
+                r["amount"] = float(r["amount"]) if r["amount"] else 0
+                r["repay_date"] = str(r["repay_date"]) if r["repay_date"] else None
+                r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
+            results["loans"] = loans
+            total += len(loans)
+
+        if search_type in ("all", "users"):
+            clauses, params = [], []
+            if q:
+                clauses.append("lower(username) LIKE %s")
+                params.append(f"%{q}%")
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            cur.execute(f"""
+                SELECT username, role, verified_lender, last_login
+                FROM user_roles {where} ORDER BY username LIMIT %s OFFSET %s
+            """, params + [min(limit, 25), offset])
+            cols = ["username", "role", "verified_lender", "last_login"]
+            users = [dict(zip(cols, r)) for r in cur.fetchall()]
+            for r in users:
+                r["last_login"] = r["last_login"].isoformat() if r["last_login"] else None
+            results["users"] = users
+            total += len(users)
+
+        return results, total, None
+    except Exception as e:
+        logger.error(f"global_search error: {e}", exc_info=True)
+        return {}, 0, str(e)
+    finally:
+        cur.close()
+        conn.close()

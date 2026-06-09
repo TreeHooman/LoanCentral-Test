@@ -41,15 +41,27 @@
         <button class="more-item" onclick="showTab('reminders')">🔔 Reminders</button>
         <button class="more-item" onclick="showTab('reddit-actions')">Reddit Queue</button>
         <button class="more-item" onclick="showTab('integrity')" style="color:var(--red)">🔍 Integrity</button>
+        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+        <a class="more-item" href="/dashboard/admin/audit-log" style="display:block;text-decoration:none;color:var(--text2)">📜 Audit Log</a>
+        <a class="more-item" href="/dashboard/admin/search" style="display:block;text-decoration:none;color:var(--text2)">🔎 Global Search</a>
       </div>
     </div>
   </div>
   <style>
     .more-item { display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--text2); font-size:13px; cursor:pointer; border-radius:6px; }
     .more-item:hover { background:var(--surface2); color:var(--text); }
+    @media (max-width: 640px) {
+      .mod-loans-table td[data-label="Lender"],
+      .mod-loans-table td[data-label="Borrower"],
+      .mod-loans-table td[data-label="Loan ID"],
+      .mod-loans-table td[data-label="Status"],
+      .mod-loans-table td[data-label="Date"] {
+        display: none;
+      }
+    }
   </style>
   <div class="table-wrap">
-    <table class="mobile-cards">
+    <table class="mobile-cards mod-loans-table">
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Repaid</th><th>Remaining</th><th>Interest $</th><th>Rate %</th>{% endif %}<th>Status</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody id="loansBody"><tr><td colspan="{% if can_view_money %}11{% else %}4{% endif %}" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
     </table>
@@ -231,6 +243,8 @@
   let currentStatus = '';
   let searchTimer = null;
   let activityTimer = null;
+  let modLoans = [];
+  let modLoanLimit = 40;
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
@@ -239,11 +253,13 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        modLoanLimit = 40;
         loadLoans();
       });
     });
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
+      modLoanLimit = 40;
       searchTimer = setTimeout(loadLoans, 400);
     });
     const initialTab = new URLSearchParams(window.location.search).get('tab');
@@ -275,14 +291,28 @@
     if (currentStatus) url += `&status=${currentStatus}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     try {
-      const loans = await apiFetch(url);
-      const tbody = document.getElementById('loansBody');
-      const cols = CAN_VIEW_MONEY ? 11 : 4;
-      tbody.innerHTML = loans.length ? loans.map(loanRow).join('') : `<tr><td colspan="${cols}" class="table-placeholder">No loans found.</td></tr>`;
+      modLoans = await apiFetch(url);
+      renderLoans();
     } catch(e) {
       const cols = CAN_VIEW_MONEY ? 11 : 4;
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="${cols}" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
+
+  function renderLoans() {
+    const tbody = document.getElementById('loansBody');
+    const cols = CAN_VIEW_MONEY ? 11 : 4;
+    if (!modLoans.length) {
+      tbody.innerHTML = `<tr><td colspan="${cols}" class="table-placeholder">No loans found.</td></tr>`;
+      return;
+    }
+    const visible = mobileRows(modLoans, modLoanLimit);
+    tbody.innerHTML = visible.map(loanRow).join('') + mobileMoreRow(visible.length, modLoans.length, cols, 'showMoreModLoans', 'loans');
+  }
+
+  function showMoreModLoans() {
+    modLoanLimit += 30;
+    renderLoans();
   }
 
   function loadData() { loadLoans(); loadStats(); }
@@ -297,7 +327,22 @@
     const canPay = ['confirmed','partially_repaid','unpaid','disputed'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid','disputed'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
+    const due = dueLabel(loan.repay_date);
     return `<tr>
+      <td class="mobile-card-head">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">${redditUser(loan.borrower)}</div>
+            <div class="mobile-card-sub">Lender: u/${escapeHtml(loan.lender)} · ${escapeHtml(id)}</div>
+          </div>
+          <span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span>
+        </div>
+        <div class="mobile-card-meta">
+          <span class="mobile-chip">${fmtDate(loan.date_created)}</span>
+          ${due ? `<span class="mobile-chip">${due}</span>` : ''}
+          ${thread !== '-' ? `<span class="mobile-chip">${thread}</span>` : ''}
+        </div>
+      </td>
       <td data-label="Loan ID"><span class="loan-id">${escapeHtml(id)}</span></td>
       <td data-label="Lender">${redditUser(loan.lender)}</td>
       <td data-label="Borrower">${redditUser(loan.borrower)}</td>
@@ -544,14 +589,14 @@
         const repayDate = r.repay_date ? r.repay_date.split('T')[0] : '—';
         const posted = r.post_date ? fmtDate(r.post_date) : '—';
         return `<tr>
-          <td><span class="loan-id">${r.request_id}</span></td>
-          <td class="username">u/${r.borrower}</td>
-          ${CAN_VIEW_MONEY ? `<td><span class="amount">${parseFloat(r.amount).toFixed(2)} ${r.currency}</span></td>` + `
-          <td>${repayAmt}</td>` : ''}
-          <td class="date-cell">${repayDate}</td>
-          ${CAN_VIEW_MONEY ? `<td style="color:var(--muted)">${r.payment_method || '-'}</td>` : ''}
-          <td class="date-cell">${posted}</td>
-          <td>${thread}</td>
+          <td data-label="Request"><span class="loan-id">${r.request_id}</span></td>
+          <td data-label="Borrower" class="username">u/${r.borrower}</td>
+          ${CAN_VIEW_MONEY ? `<td data-label="Asking"><span class="amount">${parseFloat(r.amount).toFixed(2)} ${r.currency}</span></td>` + `
+          <td data-label="Repay">${repayAmt}</td>` : ''}
+          <td data-label="Repay Date" class="date-cell">${repayDate}</td>
+          ${CAN_VIEW_MONEY ? `<td data-label="Payment" style="color:var(--muted)">${r.payment_method || '-'}</td>` : ''}
+          <td data-label="Posted" class="date-cell">${posted}</td>
+          <td data-label="Thread">${thread}</td>
         </tr>`;
       }).join('');
     } catch(e) {
@@ -573,13 +618,13 @@
           ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">View Thread ↗</a>`
           : '—';
         return `<tr>
-          <td><span class="loan-id">${id}</span></td>
-          <td class="username">u/${loan.lender}</td>
-          <td class="username">u/${loan.borrower}</td>
-          ${CAN_VIEW_MONEY ? `<td><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>` : ''}
-          <td class="date-cell">${fmtDate(loan.last_updated || loan.date_created)}</td>
-          <td>${thread}</td>
-          <td><div class="actions">
+          <td data-label="Loan"><span class="loan-id">${id}</span></td>
+          <td data-label="Lender" class="username">u/${loan.lender}</td>
+          <td data-label="Borrower" class="username">u/${loan.borrower}</td>
+          ${CAN_VIEW_MONEY ? `<td data-label="Amount"><span class="amount">${parseFloat(loan.amount).toFixed(2)} ${loan.currency}</span></td>` : ''}
+          <td data-label="Flagged" class="date-cell">${fmtDate(loan.last_updated || loan.date_created)}</td>
+          <td data-label="Thread">${thread}</td>
+          <td data-label="Action"><div class="actions">
             <button class="btn-action" style="background:rgba(231,76,60,0.2);color:var(--red)" onclick="confirmBan('${loan.borrower}','${id}')">Confirm &amp; Ban</button>
             <button class="btn-action btn-paid" onclick="clearUnpaid('${id}','${loan.lender}')">Clear — Not Unpaid</button>
           </div></td>
@@ -616,12 +661,12 @@
       const tbody = document.getElementById('rolesBody');
       tbody.innerHTML = roles.length ? roles.map(r => `
         <tr>
-          <td class="username">u/${escapeHtml(r.username)}</td>
-          <td><span class="badge" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${escapeHtml(r.role)}</span></td>
-          <td style="color:var(--muted);font-size:12px">${r.contact_email ? escapeHtml(r.contact_email) : '<span style="color:var(--border)">—</span>'}</td>
-          <td style="color:var(--muted);font-size:12px">${r.contact_phone ? escapeHtml(r.contact_phone) : '<span style="color:var(--border)">—</span>'}</td>
-          <td class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
-          <td><div class="actions">
+          <td data-label="Username" class="username">u/${escapeHtml(r.username)}</td>
+          <td data-label="Role"><span class="badge" style="background:${roleBg(r.role)};color:${roleColor(r.role)}">${escapeHtml(r.role)}</span></td>
+          <td data-label="Email" style="color:var(--muted);font-size:12px">${r.contact_email ? escapeHtml(r.contact_email) : '<span style="color:var(--border)">—</span>'}</td>
+          <td data-label="Phone" style="color:var(--muted);font-size:12px">${r.contact_phone ? escapeHtml(r.contact_phone) : '<span style="color:var(--border)">—</span>'}</td>
+          <td data-label="Last Login" class="date-cell">${r.last_login ? r.last_login.split('T')[0] : 'Never'}</td>
+          <td data-label="Actions"><div class="actions">
             <button class="btn-action btn-paid" onclick="quickRole('${escapeHtml(r.username)}','lender')">→ Lender</button>
             <button class="btn-action btn-unpaid" onclick="quickRole('${escapeHtml(r.username)}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
@@ -702,6 +747,8 @@
     loadUnpaid,
     loadVerificationApplications,
     loadRedditActions,
+    renderLoans,
+    showMoreModLoans,
     quickRole,
     decideVerification,
     updateRedditAction,
@@ -780,6 +827,3 @@
   }
 </script>
 {% endblock %}
-
-
-

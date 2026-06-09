@@ -105,6 +105,9 @@
     .badge-refunded         { background: rgba(136,145,170,0.15); color: var(--muted); }
     .badge-disputed         { background: rgba(243,156,18,0.2);  color: var(--orange); }
     .table-placeholder { text-align: center; padding: 48px; color: var(--muted); }
+    .mobile-card-head { display: none; }
+    .mobile-more-row { display: none; }
+    .table-show-more { width: 100%; min-height: 42px; }
     .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -195,13 +198,15 @@
         padding: 10px 12px;
         align-items: flex-start;
         gap: 10px;
+        flex-wrap: wrap;
       }
-      .nav-brand { font-size: 16px; line-height: 30px; }
+      .nav-brand { font-size: 16px; line-height: 30px; flex: 0 0 auto; min-height: 34px; }
       .nav-links { order: 3; width: 100%; overflow-x: auto; padding-top: 2px; }
+      .nav-link { display: inline-flex; align-items: center; min-height: 36px; }
       .nav-right { gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
       .nav-user { max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .role-badge { padding: 3px 7px; }
-      .btn-logout { padding: 5px 9px; }
+      .btn-logout { padding: 6px 9px; min-height: 34px; display: inline-flex; align-items: center; }
       main { padding: 14px 10px 20px; }
       main > * { max-width: 100%; }
       footer { padding: 0 12px 18px; }
@@ -220,7 +225,12 @@
         min-width: 0;
       }
       .section-header .btn-secondary,
-      .section-header .btn-primary { width: 100%; justify-content: center; text-align: center; padding-left: 8px; padding-right: 8px; }
+      .section-header .btn-primary { width: 100%; min-height: 38px; justify-content: center; text-align: center; padding-left: 8px; padding-right: 8px; }
+      .section-header > div:last-child .tabs,
+      .section-header > div:last-child .search-wrap {
+        grid-column: 1 / -1;
+      }
+      .section-header .search-wrap input { min-width: 0 !important; }
       .panel-grid { gap: 10px; margin-bottom: 12px; }
       .panel { padding: 12px; }
       .panel-title { font-size: 14px; }
@@ -315,16 +325,85 @@
         margin-bottom: 8px;
         overflow: hidden;
       }
+      table.mobile-cards tr.mobile-more-row {
+        display: block;
+        background: transparent;
+        border: 0;
+        margin: 8px 0 14px;
+      }
       table.mobile-cards tr:hover td { background: transparent; }
       table.mobile-cards td {
         display: grid;
-        grid-template-columns: minmax(92px, .42fr) minmax(0, 1fr);
+        grid-template-columns: minmax(84px, .38fr) minmax(0, 1fr);
         align-items: center;
-        gap: 10px;
-        min-height: 36px;
-        padding: 8px 11px;
+        gap: 9px;
+        min-height: 34px;
+        padding: 8px 10px;
         border-bottom: 1px solid rgba(46,50,72,0.72);
         word-break: break-word;
+      }
+      table.mobile-cards tr:not(.mobile-more-row) td:first-child {
+        background: rgba(91,110,245,0.055);
+      }
+      table.mobile-cards td.mobile-card-head {
+        display: block;
+        padding: 10px 11px;
+        background: rgba(91,110,245,0.07) !important;
+      }
+      table.mobile-cards td.mobile-card-head::before {
+        display: none;
+      }
+      .mobile-card-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .mobile-card-title {
+        color: var(--text);
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .mobile-card-title .profile-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+      }
+      .mobile-card-sub {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+      }
+      .mobile-card-money {
+        color: var(--orange);
+        font-weight: 800;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .mobile-card-side {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .mobile-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .mobile-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 3px 7px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: var(--text2);
+        background: rgba(255,255,255,0.025);
+        font-size: 11px;
+        line-height: 1.2;
       }
       table.mobile-cards td:last-child { border-bottom: 0; }
       table.mobile-cards td::before {
@@ -337,6 +416,23 @@
       }
       table.mobile-cards td.no-label::before { display: none; }
       table.mobile-cards td.no-label { display: block; }
+      table.mobile-cards td:not([data-label]) {
+        display: block;
+      }
+      table.mobile-cards td:not([data-label])::before {
+        display: none;
+      }
+      table.mobile-cards tr.mobile-more-row td {
+        display: block;
+        padding: 0;
+        border: 0;
+        background: transparent;
+      }
+      table.mobile-cards tr.mobile-more-row td::before { display: none; }
+      table.mobile-cards td[data-label="Days Funded"],
+      table.mobile-cards td[data-label="Rate %"] {
+        display: none;
+      }
       table.mobile-cards .actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -346,6 +442,31 @@
         min-height: 36px;
         padding: 7px 8px;
         font-size: 11px;
+      }
+      table.mobile-cards td[data-label="Thread"] .thread-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        min-width: 72px;
+        padding: 7px 10px;
+        border: 1px solid rgba(91,110,245,0.35);
+        border-radius: 6px;
+        background: rgba(91,110,245,0.08);
+        font-size: 12px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .mobile-card-meta .thread-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font-size: 11px;
+        font-weight: 700;
       }
       .loan-id { font-size: 12px; }
       .notes-preview { max-width: 100%; white-space: normal; }
@@ -394,8 +515,8 @@
 
 <nav>
   <a class="nav-brand" href="/">LoanCentral</a>
+  {% if role in ['mod', 'admin'] %}
   <div class="nav-links">
-    {% if role in ['mod', 'admin'] %}
       {% if role == 'admin' %}
       <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Admin View</a>
       <a class="nav-link {% if request.endpoint == 'admin_keys_page' %}active{% endif %}" href="{{ url_for('admin_keys_page') }}">🔑 Keys</a>
@@ -403,11 +524,28 @@
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
-    {% endif %}
   </div>
+  {% endif %}
   <div class="nav-right">
     <span class="role-badge role-{{ role }}">{{ role }}</span>
     <span class="nav-user">u/{{ username }}</span>
+    <!-- Notification bell -->
+    <div style="position:relative;display:inline-flex;align-items:center">
+      <button id="notif-bell" onclick="toggleNotifPanel()" title="Notifications"
+        style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;padding:4px 6px;line-height:1;position:relative">
+        🔔
+        <span id="notif-badge" style="display:none;position:absolute;top:0;right:0;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:50%;width:16px;height:16px;line-height:16px;text-align:center"></span>
+      </button>
+      <div id="notif-panel" style="display:none;position:absolute;right:0;top:36px;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;z-index:200;box-shadow:0 8px 32px rgba(0,0,0,0.4);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;font-size:14px">Notifications</span>
+          <button onclick="markAllRead()" style="background:none;border:none;color:var(--accent-h);font-size:12px;cursor:pointer">Mark all read</button>
+        </div>
+        <div id="notif-list" style="max-height:320px;overflow-y:auto;padding:8px 0">
+          <div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>
+        </div>
+      </div>
+    </div>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>
 </nav>
@@ -920,6 +1058,17 @@
   function statusLabel(s) {
     return { confirmed: 'Active', partially_repaid: 'Partial', repaid: 'Repaid', unpaid: 'Unpaid', refunded: 'Refunded', disputed: 'Disputed' }[s] || s;
   }
+  function isMobileDashboard() {
+    return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+  }
+  function mobileRows(rows, limit) {
+    return isMobileDashboard() ? rows.slice(0, limit) : rows;
+  }
+  function mobileMoreRow(shown, total, colspan, onClick, label='rows') {
+    if (!isMobileDashboard() || shown >= total) return '';
+    const next = Math.min(30, total - shown);
+    return `<tr class="mobile-more-row"><td class="no-label" colspan="${colspan}"><button class="btn-secondary table-show-more" onclick="${onClick}()">Show ${next} more ${label} (${shown}/${total})</button></td></tr>`;
+  }
   function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
   function toast(msg, type='') {
@@ -952,5 +1101,64 @@
   }
 </script>
 {% block scripts %}{% endblock %}
+<script>
+// Notification bell
+let _notifOpen = false;
+async function loadNotifications() {
+  const res  = await fetch('/api/notifications?limit=20');
+  if (!res.ok) return;
+  const data = await res.json();
+  const count = data.unread_count || 0;
+  const badge = document.getElementById('notif-badge');
+  if (badge) {
+    badge.textContent = count > 9 ? '9+' : count;
+    badge.style.display = count > 0 ? 'block' : 'none';
+  }
+  const list = document.getElementById('notif-list');
+  if (!list) return;
+  const notifs = data.notifications || [];
+  if (!notifs.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications</div>';
+    return;
+  }
+  list.innerHTML = notifs.map(n => `
+    <div onclick="markRead(${n.id},this)" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;${n.read?'opacity:0.55':''}transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        ${!n.read ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:5px"></span>' : '<span style="width:7px;flex-shrink:0"></span>'}
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${n.title}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.message}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${new Date(n.created_at).toLocaleString()}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+async function markRead(id, el) {
+  await fetch('/api/notifications/read', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[id]})});
+  el.style.opacity = '0.55';
+  loadNotifications();
+}
+async function markAllRead() {
+  await fetch('/api/notifications/read', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  loadNotifications();
+}
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  _notifOpen = !_notifOpen;
+  panel.style.display = _notifOpen ? 'block' : 'none';
+  if (_notifOpen) loadNotifications();
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('notif-bell')?.contains(e.target) &&
+      !document.getElementById('notif-panel')?.contains(e.target)) {
+    const panel = document.getElementById('notif-panel');
+    if (panel) panel.style.display = 'none';
+    _notifOpen = false;
+  }
+});
+// Load unread count on page load
+setTimeout(loadNotifications, 800);
+</script>
 </body>
 </html>

@@ -62,7 +62,7 @@
     <button class="tab" data-status="refunded">Refunded</button>
   </div>
   <div class="search-wrap">
-    <input id="loanSearch" type="search" placeholder="Filter by borrower, loan ID, status, notes..." oninput="renderLoans()" />
+    <input id="loanSearch" type="search" placeholder="Filter by borrower, loan ID, status, notes..." oninput="resetLenderLimit();renderLoans()" />
   </div>
   <div class="dropdown-wrap" style="position:relative">
     <button class="btn-secondary" onclick="toggleLenderSort()" id="sortMenuBtn">Sort ▾</button>
@@ -168,7 +168,7 @@
   .sort-head:hover { color:var(--text); }
   tr.row-overdue td { background:rgba(231,76,60,0.055); }
   tr.row-due-soon td { background:rgba(243,156,18,0.055); }
-  .due-alert-panel { margin: 0 0 16px; padding: 18px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; }
+  .due-alert-panel { margin: 0 0 16px; padding: 18px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; }
   .due-alert-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
   .due-alert-sub { color:var(--muted); font-size:12px; margin-top:4px; }
   .due-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
@@ -189,6 +189,13 @@
     .due-alert-item:nth-child(n+3) { display:none; }
     .due-alert-meta { margin-top:6px; }
     .panel-grid { display:none; }
+    .lender-loans-table td[data-label="Borrower"],
+    .lender-loans-table td[data-label="Loan"],
+    .lender-loans-table td[data-label="Remaining"],
+    .lender-loans-table td[data-label="Status"],
+    .lender-loans-table td[data-label="Due"] {
+      display: none;
+    }
     .lender-loans-table td[data-label="Select"] { display: none; }
     .lender-loans-table td[data-label="Actions"] {
       display: block;
@@ -199,12 +206,7 @@
       margin-bottom: 8px;
     }
     .lender-loans-table td[data-label="Loan"] {
-      background: rgba(91,110,245,0.055);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      min-height: 46px;
+      display: none;
     }
     .lender-loans-table td[data-label="Loan"]::before { display: none; }
     .mobile-loan-head {
@@ -239,6 +241,7 @@
   let sortDir = 'asc';
   let quickFilter = '';
   let reminderQueue = null;
+  let lenderRenderLimit = 40;
   const DUE_SOON_DAYS = 3;
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -250,6 +253,7 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentStatus = tab.dataset.status;
+        resetLenderLimit();
         loadLoans();
       });
     });
@@ -316,7 +320,8 @@
       tbody.innerHTML = `<tr><td colspan="14"><div class="empty-state"><h3>No loans found</h3><p>Record a loan after terms are agreed on Reddit.</p></div></td></tr>`;
       return;
     }
-    tbody.innerHTML = rows.map(loan => {
+    const visible = mobileRows(rows, lenderRenderLimit);
+    tbody.innerHTML = visible.map(loan => {
       const repayAmount = parseFloat(loan.repay_amount || loan.amount || 0);
       const repaid = parseFloat(loan.amount_repaid || 0);
       const remaining = Math.max(repayAmount - repaid, 0);
@@ -331,14 +336,31 @@
         ? `<a class="thread-link" href="${escapeAttr(loan.original_thread)}" target="_blank">Thread</a>` : '';
       const due = ['confirmed','partially_repaid','unpaid'].includes(loan.status) ? dueLabel(loan.repay_date) : '';
       const note = escapeHtml(loan.notes || '');
+      const dueText = due || fmtDate(loan.date_created);
       const noteHtml = loan.notes
         ? `<span class="notes-preview" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')" title="${note}">${note}</span>`
         : `<button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
       return `<tr class="${overdue ? 'row-overdue' : dueSoon ? 'row-due-soon' : ''}">
         <td data-label="Select"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></td>
+        <td class="mobile-card-head">
+          <div class="mobile-card-main">
+            <div>
+              <div class="mobile-card-title">u/${escapeHtml(loan.borrower)}</div>
+              <div class="mobile-card-sub">${escapeHtml(id)}</div>
+            </div>
+            <div class="mobile-card-side">
+              <div class="mobile-card-money">${fmt(remaining)} ${escapeHtml(loan.currency)}</div>
+              <label class="mobile-select" title="Select for bulk paid"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></label>
+            </div>
+          </div>
+          <div class="mobile-card-meta">
+            <span class="badge badge-${escapeHtml(loan.status)}">${statusLabel(loan.status)}</span>
+            <span class="mobile-chip">${dueText}</span>
+            ${thread ? `<span class="mobile-chip">${thread}</span>` : ''}
+          </div>
+        </td>
         <td data-label="Loan">
           <div class="mobile-loan-head"><span class="loan-id">${escapeHtml(id)}</span><div>${thread}</div></div>
-          <label class="mobile-select" title="Select for bulk paid"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></label>
         </td>
         <td data-label="Borrower" class="username">${redditUser(loan.borrower)}</td>
         <td data-label="Lent"><span class="amount">${fmt(loan.amount)} ${escapeHtml(loan.currency)}</span></td>
@@ -360,7 +382,16 @@
           ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
         </div></td>
       </tr>`;
-    }).join('');
+    }).join('') + mobileMoreRow(visible.length, rows.length, 14, 'showMoreLenderLoans', 'loans');
+  }
+
+  function resetLenderLimit() {
+    lenderRenderLimit = 40;
+  }
+
+  function showMoreLenderLoans() {
+    lenderRenderLimit += 30;
+    renderLoans();
   }
 
   function exportCsv() {
@@ -414,11 +445,13 @@
   });
 
   function showOverdueOnly() {
+    resetLenderLimit();
     quickFilter = quickFilter === 'overdue' ? '' : 'overdue';
     renderLoans();
   }
 
   function showDueSoon() {
+    resetLenderLimit();
     quickFilter = quickFilter === 'due_soon' ? '' : 'due_soon';
     sortKey = 'relevance';
     sortDir = 'asc';
@@ -426,11 +459,13 @@
   }
 
   function showNeedsAction() {
+    resetLenderLimit();
     quickFilter = quickFilter === 'needs_action' ? '' : 'needs_action';
     renderLoans();
   }
 
   function setRelevanceSort() {
+    resetLenderLimit();
     sortKey = 'relevance';
     sortDir = 'asc';
     quickFilter = '';
@@ -438,6 +473,7 @@
   }
 
   function setSort(key) {
+    resetLenderLimit();
     if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
     else { sortKey = key; sortDir = 'asc'; }
     renderLoans();
@@ -577,12 +613,19 @@
     document.querySelector('.table-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function visibleLoanSelects(selector = '.loan-select:not(:disabled)') {
+    return [...document.querySelectorAll(selector)].filter(box => {
+      const style = getComputedStyle(box);
+      return style.visibility !== 'hidden' && box.getClientRects().length > 0;
+    });
+  }
+
   function toggleAllLoans(checked) {
-    document.querySelectorAll('.loan-select:not(:disabled)').forEach(box => box.checked = checked);
+    visibleLoanSelects().forEach(box => box.checked = checked);
   }
 
   async function bulkMarkPaid() {
-    const ids = [...new Set([...document.querySelectorAll('.loan-select:checked')].map(box => box.value))];
+    const ids = [...new Set(visibleLoanSelects('.loan-select:checked').map(box => box.value))];
     if (!ids.length) { toast('Select at least one active loan.', 'error'); return; }
     if (!confirm(`Mark ${ids.length} selected loan(s) fully paid?`)) return;
     try {
@@ -742,8 +785,10 @@
     openVerificationModal,
     refreshFilesList,
     renderLoans,
+    resetLenderLimit,
     setRelevanceSort,
     setSort,
+    showMoreLenderLoans,
     showDueSoon,
     showNeedsAction,
     showOverdueOnly,
