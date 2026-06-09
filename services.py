@@ -1026,10 +1026,12 @@ def get_user_profile(username: str):
                 "active_amount": Decimal("0"),
             }, None
 
-        # Also fetch verified_lender status and reddit_username from user_roles
+        # Also fetch verified_lender status from user_roles
         try:
             cur.execute(
-                "SELECT verified_lender, reddit_username FROM user_roles WHERE lower(username)=lower(%s)",
+                """SELECT verified_lender, reddit_username,
+                          verified_lender_at, verified_lender_by
+                   FROM user_roles WHERE lower(username)=lower(%s)""",
                 (username,))
             role_row = cur.fetchone()
         except Exception:
@@ -1048,6 +1050,8 @@ def get_user_profile(username: str):
             "active_amount": Decimal(active[1]) if active else Decimal("0"),
             "verified_lender": bool(role_row[0]) if role_row else False,
             "reddit_username": role_row[1] if role_row else None,
+            "verified_lender_at": role_row[2].isoformat() if role_row and role_row[2] else None,
+            "verified_lender_by": role_row[3] if role_row else None,
         }, None
 
     except Exception as e:
@@ -1810,13 +1814,16 @@ def list_verification_applications(status: str = None, limit: int = 100):
     try:
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT id, username, requested_role, status, public_note, private_note,
-                   reviewer, review_note, submitted_at, reviewed_at
-            FROM verification_applications
+            SELECT va.id, va.username, va.requested_role, va.status,
+                   va.public_note, va.private_note,
+                   va.reviewer, va.review_note, va.submitted_at, va.reviewed_at,
+                   ur.reddit_username, ur.verified_lender
+            FROM verification_applications va
+            LEFT JOIN user_roles ur ON lower(ur.username) = lower(va.username)
             {where}
             ORDER BY
-              CASE WHEN status = 'pending' THEN 0 WHEN status = 'approved' THEN 1 ELSE 2 END,
-              submitted_at DESC
+              CASE WHEN va.status = 'pending' THEN 0 WHEN va.status = 'approved' THEN 1 ELSE 2 END,
+              va.submitted_at DESC
             LIMIT %s
         """, tuple(params))
         rows = cur.fetchall()
@@ -1831,6 +1838,8 @@ def list_verification_applications(status: str = None, limit: int = 100):
             "review_note": r[7],
             "submitted_at": r[8].isoformat() if r[8] else None,
             "reviewed_at": r[9].isoformat() if r[9] else None,
+            "reddit_username": r[10],
+            "already_verified": bool(r[11]),
         } for r in rows], None
     except Exception as e:
         logger.error(f"list_verification_applications error: {e}", exc_info=True)
@@ -1842,11 +1851,17 @@ def list_verification_applications(status: str = None, limit: int = 100):
 
 def decide_verification_application(application_id: int, decision: str, reviewer: str,
                                     review_note: str = ""):
-    """Approve or deny a verification application. Approval grants dashboard lender role."""
+    """
+    Process a verification application decision.
+    decision: 'approved' | 'denied' | 'more_info'
+    - approved: grants lender role, marks verified_lender, queues flair sync
+    - denied: closes application, no role change
+    - more_info: re-opens to pending with mod note, notifies applicant
+    """
     decision = (decision or "").strip().lower()
     reviewer = (reviewer or "").strip().lower()
-    if decision not in ("approved", "denied"):
-        return None, "Decision must be approved or denied."
+    if decision not in ("approved", "denied", "more_info"):
+        return None, "Decision must be approved, denied, or more_info."
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
@@ -1861,20 +1876,29 @@ def decide_verification_application(application_id: int, decision: str, reviewer
         if not row:
             return None, "Verification application not found."
         app_id, username, requested_role, old_status = row
-        if old_status != "pending":
+
+        # more_info can be requested on any non-approved/denied application
+        # approved/denied can only be applied to pending or more_info status
+        if decision in ("approved", "denied") and old_status not in ("pending", "more_info"):
             return None, f"Application is already {old_status}."
+
+        # Decide what new_status to store
+        new_status = "pending" if decision == "more_info" else decision
 
         cur.execute("""
             UPDATE verification_applications
             SET status = %s, reviewer = %s, review_note = %s, reviewed_at = NOW()
             WHERE id = %s
-        """, (decision, reviewer, review_note, app_id))
+        """, (new_status, reviewer, review_note, app_id))
         conn.commit()
 
         if decision == "approved" and requested_role == "lender":
             role_ok, role_error = set_user_role(username, "lender")
             if role_error:
                 return None, role_error
+            # Also mark verified_lender on user_roles
+            set_verified_lender(username, True, reviewer,
+                                review_note or "Approved via verification application")
             enqueue_reddit_action(
                 "flair_sync",
                 target_user=username,
@@ -1884,6 +1908,17 @@ def decide_verification_application(application_id: int, decision: str, reviewer
                 created_by=reviewer,
             )
 
+        # Audit log
+        action_map = {
+            "approved": "verification_approved",
+            "denied":   "verification_denied",
+            "more_info": "verification_more_info_requested",
+        }
+        log_audit(reviewer, "mod", action_map[decision],
+                  "user", username,
+                  new_value={"decision": decision, "requested_role": requested_role,
+                             "review_note": review_note})
+
         log_event(
             "verification_decided",
             actor=reviewer,
@@ -1892,7 +1927,29 @@ def decide_verification_application(application_id: int, decision: str, reviewer
             source="dashboard",
             details={"decision": decision, "requested_role": requested_role},
         )
-        return {"ok": True, "id": app_id, "username": username, "status": decision}, None
+
+        # Notify applicant
+        if decision == "approved":
+            create_notification(
+                username, "verification_approved",
+                "Lender Verification Approved",
+                "Your lender verification application has been approved. "
+                "You now have access to lender features on the dashboard.")
+        elif decision == "denied":
+            msg = "Your lender verification application was not approved."
+            if review_note:
+                msg += f" Moderator note: {review_note}"
+            create_notification(username, "verification_denied",
+                                "Lender Verification Not Approved", msg)
+        elif decision == "more_info":
+            msg = "A moderator has reviewed your verification application and needs additional information."
+            if review_note:
+                msg += f" Note: {review_note}"
+            create_notification(username, "verification_more_info",
+                                "Verification: Additional Information Requested", msg)
+
+        return {"ok": True, "id": app_id, "username": username, "status": new_status,
+                "decision": decision}, None
     except Exception as e:
         conn.rollback()
         logger.error(f"decide_verification_application error: {e}", exc_info=True)
@@ -2793,14 +2850,21 @@ def global_search(query: str, search_type: str = "all",
                 clauses.append("lower(username) LIKE %s")
                 params.append(f"%{q}%")
             where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            # Also match on reddit_username if query provided
+            if q:
+                clauses[-1] = ("(lower(username) LIKE %s OR lower(COALESCE(reddit_username,'')) LIKE %s)")
+                params[-1] = f"%{q}%"
+                params.append(f"%{q}%")
+                where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
             cur.execute(f"""
-                SELECT username, role, verified_lender, last_login
+                SELECT username, role, verified_lender, last_login, reddit_username
                 FROM user_roles {where} ORDER BY username LIMIT %s OFFSET %s
             """, params + [min(limit, 25), offset])
-            cols = ["username", "role", "verified_lender", "last_login"]
+            cols = ["username", "role", "verified_lender", "last_login", "reddit_username"]
             users = [dict(zip(cols, r)) for r in cur.fetchall()]
             for r in users:
                 r["last_login"] = r["last_login"].isoformat() if r["last_login"] else None
+                r["verified_lender"] = bool(r.get("verified_lender"))
             results["users"] = users
             total += len(users)
 

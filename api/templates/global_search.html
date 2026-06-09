@@ -100,15 +100,19 @@ function renderResults(data, q) {
   if (users.length) {
     html += `<h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">USERS (${users.length})</h3>
     <table class="data-table"><thead><tr>
-      <th>Username</th><th>Role</th><th>Verified Lender</th><th>Last Login</th>
+      <th>Username</th><th>Reddit</th><th>Role</th><th>Verified Lender</th><th>Last Login</th>
     </tr></thead><tbody>`;
     for (const u of users) {
       const vl = u.verified_lender
-        ? '<span style="color:var(--green);font-size:12px">✓ Verified</span>'
+        ? '<span style="color:var(--green);font-size:12px;font-weight:700">✓ Verified Lender</span>'
         : '<span style="color:var(--muted);font-size:12px">—</span>';
       const ll = u.last_login ? new Date(u.last_login).toLocaleDateString() : '—';
+      const rn = u.reddit_username
+        ? `<a href="https://www.reddit.com/user/${encodeURIComponent(u.reddit_username)}" target="_blank" style="color:var(--accent-h);font-size:12px">u/${u.reddit_username}</a>`
+        : '<span style="color:var(--muted);font-size:12px">—</span>';
       html += `<tr>
-        <td><a href="/dashboard/users/${u.username}" style="color:var(--accent-h)">u/${u.username}</a></td>
+        <td><a href="/dashboard/users/${encodeURIComponent(u.username)}" style="color:var(--accent-h)">u/${u.username}</a></td>
+        <td>${rn}</td>
         <td><span class="badge badge-${u.role}">${u.role}</span></td>
         <td>${vl}</td>
         <td style="font-size:12px;color:var(--muted)">${ll}</td>

@@ -35,7 +35,8 @@ class UserProfileBadgeTests(unittest.TestCase):
         from decimal import Decimal
         users_row = (3, 5, "200.00", "500.00", "180.00", 0, "0.00")
         active_row = (2, "150.00")
-        roles_row = (True, "lender_reddit_name")
+        from datetime import datetime
+        roles_row = (True, "lender_reddit_name", datetime(2026, 1, 1), "mod1")
         cur.fetchone.side_effect = [users_row, active_row, roles_row]
         cur.fetchall.return_value = []
         with patch("services._get_db", return_value=conn):
@@ -44,13 +45,14 @@ class UserProfileBadgeTests(unittest.TestCase):
         self.assertIsNone(err)
         self.assertTrue(profile["verified_lender"])
         self.assertEqual(profile["reddit_username"], "lender_reddit_name")
+        self.assertEqual(profile["verified_lender_by"], "mod1")
 
     def test_profile_includes_verified_lender_false(self):
         conn, cur = _make_conn()
         from decimal import Decimal
         users_row = (1, 0, "100.00", "0.00", "90.00", 0, "0.00")
         active_row = (0, "0.00")
-        roles_row = (False, None)
+        roles_row = (False, None, None, None)
         cur.fetchone.side_effect = [users_row, active_row, roles_row]
         with patch("services._get_db", return_value=conn):
             from services import get_user_profile

@@ -95,10 +95,20 @@
       if (titleEl) {
         let extra = '';
         if (p.verified_lender) {
-          extra += ' <span style="display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(46,204,113,0.15);color:var(--green);vertical-align:middle">✓ Verified Lender</span>';
+          let vlTitle = 'Completed LoanCentral lender verification process';
+          if (p.verified_lender_at) {
+            const dt = new Date(p.verified_lender_at);
+            vlTitle += ` — verified ${dt.toLocaleDateString()}`;
+          }
+          if (p.verified_lender_by) vlTitle += ` by u/${p.verified_lender_by}`;
+          extra += ` <span title="${escapeHtml(vlTitle)}" style="display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(46,204,113,0.15);color:var(--green);vertical-align:middle;cursor:help">✓ Verified Lender</span>`;
+          if (p.verified_lender_at) {
+            const dt = new Date(p.verified_lender_at);
+            extra += ` <span style="font-size:11px;color:var(--muted);vertical-align:middle">since ${dt.toLocaleDateString()}${p.verified_lender_by ? ' · by u/' + escapeHtml(p.verified_lender_by) : ''}</span>`;
+          }
         }
         if (p.reddit_username) {
-          extra += ` <a href="https://www.reddit.com/user/${encodeURIComponent(p.reddit_username)}" target="_blank" style="font-size:12px;color:var(--accent-h);vertical-align:middle;margin-left:4px">r/u/${escapeHtml(p.reddit_username)}</a>`;
+          extra += ` <a href="https://www.reddit.com/user/${encodeURIComponent(p.reddit_username)}" target="_blank" style="font-size:12px;color:var(--accent-h);vertical-align:middle;margin-left:4px">u/${escapeHtml(p.reddit_username)} ↗</a>`;
         }
         titleEl.innerHTML = `u/{{ profile_username }}${extra}`;
       }

@@ -234,11 +234,20 @@
     <span class="section-title">Verification Applications</span>
     <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
   </div>
-  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Approve grants dashboard lender access only. Reddit flair changes stay manual until test Reddit integration is enabled.</p>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Approve grants dashboard lender access and marks the user as Verified Lender (completed LoanCentral process). Reddit flair changes stay manual until Reddit integration is enabled.</p>
+  <div class="toolbar" style="margin-bottom:12px">
+    <select id="verifStatusFilter" onchange="loadVerificationApplications()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:13px">
+      <option value="">All statuses</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="denied">Denied</option>
+    </select>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadVerificationApplications()">↻ Refresh</button>
+  </div>
   <div class="table-wrap">
     <table class="mobile-cards">
-      <thead><tr><th>User</th><th>Status</th><th>Requested</th><th>Submitted</th><th>Notes</th><th>Reviewer</th><th>Actions</th></tr></thead>
-      <tbody id="verificationBody"><tr><td colspan="7" class="table-placeholder">Loading...</td></tr></tbody>
+      <thead><tr><th>User</th><th>Reddit</th><th>Status</th><th>Requested</th><th>Submitted</th><th>Notes</th><th>Reviewer</th><th>Actions</th></tr></thead>
+      <tbody id="verificationBody"><tr><td colspan="8" class="table-placeholder">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -530,45 +539,79 @@
   }
 
   async function loadVerificationApplications() {
+    const statusFilter = document.getElementById('verifStatusFilter')?.value || '';
+    const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=200` : '?limit=200';
     try {
-      const rows = await apiFetch('/api/verification?limit=200');
+      const rows = await apiFetch(`/api/verification${qs}`);
       const tbody = document.getElementById('verificationBody');
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No verification applications</h3><p>New lender applications will appear here.</p></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>No verification applications</h3><p>New lender applications will appear here.</p></div></td></tr>';
         return;
       }
       tbody.innerHTML = rows.map(app => {
-        const pending = app.status === 'pending';
+        const actionable = app.status === 'pending';
+        const approved   = app.status === 'approved';
+        const badgeClass = approved ? 'badge-repaid' : app.status === 'denied' ? 'badge-unpaid' : 'badge-partially_repaid';
+        const redditCell = app.reddit_username
+          ? `<a href="https://www.reddit.com/user/${encodeURIComponent(app.reddit_username)}" target="_blank" style="color:var(--accent-h)">u/${escapeHtml(app.reddit_username)}</a>`
+          : '<span style="color:var(--border)">—</span>';
         return `<tr>
-          <td data-label="User">${redditUser(app.username)}</td>
-          <td data-label="Status"><span class="badge ${app.status === 'approved' ? 'badge-repaid' : app.status === 'denied' ? 'badge-unpaid' : 'badge-partially_repaid'}">${escapeHtml(app.status)}</span></td>
+          <td data-label="User">${redditUser(app.username)}
+            ${app.already_verified ? '<span style="font-size:10px;color:var(--green);font-weight:700;margin-left:4px">✓ VL</span>' : ''}
+          </td>
+          <td data-label="Reddit">${redditCell}</td>
+          <td data-label="Status"><span class="badge ${badgeClass}">${escapeHtml(app.status)}</span></td>
           <td data-label="Requested">${escapeHtml(app.requested_role)}</td>
           <td data-label="Submitted" class="date-cell">${fmtDate(app.submitted_at)}</td>
           <td data-label="Notes" style="color:var(--muted);font-size:12px">
-            ${escapeHtml(app.public_note || 'No public summary')}
+            ${escapeHtml(app.public_note || '—')}
             ${app.private_note ? `<br><strong style="color:var(--text2)">Private:</strong> ${escapeHtml(app.private_note)}` : ''}
-            ${app.review_note ? `<br><strong style="color:var(--text2)">Review:</strong> ${escapeHtml(app.review_note)}` : ''}
+            ${app.review_note ? `<br><strong style="color:var(--text2)">Mod note:</strong> ${escapeHtml(app.review_note)}` : ''}
           </td>
-          <td data-label="Reviewer">${app.reviewer ? redditUser(app.reviewer) : '-'}</td>
+          <td data-label="Reviewer">${app.reviewer ? redditUser(app.reviewer) : '<span style="color:var(--border)">—</span>'}</td>
           <td data-label="Actions"><div class="actions">
-            ${pending ? `<button class="btn-action btn-paid" onclick="decideVerification(${app.id},'approved')">Approve</button>
-            <button class="btn-action btn-unpaid" onclick="decideVerification(${app.id},'denied')">Deny</button>` : '-'}
+            ${actionable ? `
+              <button class="btn-action btn-paid" onclick="decideVerification(${app.id},'approved')">Approve</button>
+              <button class="btn-action btn-unpaid" onclick="decideVerification(${app.id},'denied')">Deny</button>
+              <button class="btn-action" style="background:rgba(243,156,18,0.15);color:var(--yellow)" onclick="decideVerification(${app.id},'more_info')">More Info</button>
+            ` : ''}
+            ${approved ? `
+              <button class="btn-action" style="background:rgba(231,76,60,0.12);color:var(--red)" onclick="revokeVerification('${escapeHtml(app.username)}')">Revoke</button>
+            ` : ''}
+            ${!actionable && !approved ? '<span style="color:var(--border);font-size:12px">—</span>' : ''}
           </div></td>
         </tr>`;
       }).join('');
     } catch(e) {
-      document.getElementById('verificationBody').innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+      document.getElementById('verificationBody').innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
   async function decideVerification(id, decision) {
-    const reviewNote = window.prompt(`${decision === 'approved' ? 'Approve' : 'Deny'} application #${id}. Optional mod note:`, '') || '';
+    const labels = { approved: 'Approve', denied: 'Deny', more_info: 'Request More Info' };
+    const reviewNote = window.prompt(`${labels[decision] || decision} application #${id}. Mod note (shown to applicant):`, '') || '';
     try {
       await apiFetch(`/api/verification/${id}/decision`, {
         method: 'POST',
         body: JSON.stringify({ decision, review_note: reviewNote })
       });
-      toast(`Application ${decision}.`, 'success');
+      toast(`Application ${decision === 'more_info' ? 'flagged — more info requested' : decision}.`, 'success');
+      loadVerificationApplications();
+      loadRoles();
+    } catch(e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  async function revokeVerification(username) {
+    if (!confirm(`Revoke Verified Lender status for u/${username}? This will remove their lender dashboard access.`)) return;
+    const note = window.prompt('Revocation reason (shown in audit log, not to user):', '') || '';
+    try {
+      await apiFetch(`/api/admin/verified-lender/${encodeURIComponent(username)}`, {
+        method: 'POST',
+        body: JSON.stringify({ verified: false, note })
+      });
+      toast(`Verified Lender status revoked for u/${username}.`, 'success');
       loadVerificationApplications();
       loadRoles();
     } catch(e) {
