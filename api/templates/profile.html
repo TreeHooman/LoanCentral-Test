@@ -202,8 +202,12 @@
     let score = 100;
     loans.forEach(loan => {
       const status = String(loan.status || '').toLowerCase();
+      const timing = String(loan.payment_timing || '').toLowerCase();
       if (status === 'unpaid') score -= 38;
       if (status === 'disputed') score -= 12;
+      // Payment timing affects rep
+      if (timing === 'early') score += 5;
+      if (timing === 'late')  score -= 8;
       if (loan.repay_date && ['confirmed','partially_repaid','unpaid'].includes(status)) {
         const due = new Date(loan.repay_date); due.setHours(0,0,0,0);
         const today = new Date(); today.setHours(0,0,0,0);

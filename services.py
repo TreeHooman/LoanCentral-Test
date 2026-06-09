@@ -447,7 +447,7 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
         conn.close()
 
 
-def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, actor_role: str = "lender"):
+def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, actor_role: str = "lender", payment_timing: str = None):
     """
     Record a repayment on a loan.
     actor_role: "lender" (paid_with_id) or "borrower" (repaid command)
@@ -519,15 +519,23 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         already_repaid = Decimal(already_repaid)
         remaining = loan_amount - already_repaid
 
+        # Allow up to 50% over the original repay_amount (total cap, not per payment).
+        # Any excess over the remaining balance is silently treated as full settlement.
+        max_allowed = loan_amount * Decimal("1.5") - already_repaid
+        if amount_paid > max_allowed:
+            return None, f"Payment amount {amount_paid:.2f} {currency} exceeds the maximum allowed for this loan."
         if amount_paid > remaining:
-            return None, f"Payment amount {amount_paid:.2f} {currency} exceeds the remaining balance of {remaining:.2f} {currency}."
+            amount_paid = remaining  # treat overpayment as exact settlement
+
+        # Normalise timing value
+        _timing = payment_timing if payment_timing in ("early", "late", "on_time") else None
 
         new_repaid = already_repaid + amount_paid
         new_status = "repaid" if new_repaid >= loan_amount else "partially_repaid"
 
         cur.execute('''
-            UPDATE loans SET amount_repaid = %s, status = %s, last_updated = %s WHERE id = %s
-        ''', (new_repaid, new_status, datetime.now(), db_id))
+            UPDATE loans SET amount_repaid = %s, status = %s, last_updated = %s, payment_timing = %s WHERE id = %s
+        ''', (new_repaid, new_status, datetime.now(), _timing, db_id))
 
         cur.execute('''
             UPDATE users SET amount_repaid = amount_repaid + %s, last_updated = %s WHERE username = %s
@@ -553,16 +561,18 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         conn.commit()
         logger.info(f"Repayment recorded: {borrower} paid {amount_paid} {currency} to {lender} (loan {db_id})")
         _lid = public_id or str(db_id)
+        timing_label = {"early": " (early)", "late": " (late)", "on_time": ""}.get(_timing or "", "")
         log_event("payment_recorded", actor=actor, actor_role=actor_role, target_user=borrower,
                   loan_id=_lid, source="service",
                   details={"amount_paid": str(amount_paid), "currency": currency,
-                           "new_status": new_status,
+                           "new_status": new_status, "payment_timing": _timing,
                            "remaining": str(max(loan_amount - new_repaid, Decimal("0.00")))})
         log_audit(actor, actor_role, "loan_repaid" if new_status == "repaid" else "payment_recorded",
                   "loan", _lid, new_value={"amount_paid": str(amount_paid),
-                                           "new_status": new_status, "currency": currency})
+                                           "new_status": new_status, "currency": currency,
+                                           "payment_timing": _timing})
         add_loan_event(_lid, "loan_repaid" if new_status == "repaid" else "payment_partial",
-                       actor, f"{amount_paid} {currency} received — status: {new_status}")
+                       actor, f"{amount_paid} {currency} received{timing_label} — status: {new_status}")
         # Notify lender of payment
         payment_msg = (
             f"u/{borrower} has fully repaid loan {_lid} ({amount_paid} {loan_currency})."
@@ -1097,7 +1107,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 SELECT id, loan_id, lender, borrower, amount, amount_repaid,
                        currency, status, date_created, original_thread, repay_date, notes, repay_amount,
                        payment_method, borrower_acknowledged_at, borrower_acknowledged_note,
-                       interest_amount, interest_rate
+                       interest_amount, interest_rate, payment_timing
                 FROM loans {where}
                 ORDER BY date_created DESC
                 LIMIT %s
@@ -1137,7 +1147,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 currency, status, date_created, original_thread = r[5], r[6], r[7], r[8]
                 repay_date, notes, raw_repay_amount, payment_method = None, None, None, None
                 ack_at, ack_note = None, None
-                interest_amount, interest_rate = None, None
+                interest_amount, interest_rate, payment_timing = None, None, None
             else:
                 db_id, public_id = r[0], r[1] or str(r[0])
                 lender, borrower, amount, amount_repaid = r[2], r[3], r[4], r[5]
@@ -1150,6 +1160,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 ack_note = r[15] if schema_mode == "dashboard" else None
                 interest_amount = r[16] if schema_mode == "dashboard" else None
                 interest_rate = r[17] if schema_mode == "dashboard" else None
+                payment_timing = r[18] if schema_mode == "dashboard" else None
             repay_amount = Decimal(raw_repay_amount) if raw_repay_amount is not None else Decimal(amount)
             loans.append({
                 "db_id": db_id,
@@ -1171,6 +1182,7 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
                 "remaining": repay_amount - Decimal(amount_repaid),
                 "interest_amount": Decimal(interest_amount) if interest_amount is not None else None,
                 "interest_rate": Decimal(interest_rate) if interest_rate is not None else None,
+                "payment_timing": payment_timing,
                 "schema_outdated": schema_mode != "dashboard",
             })
         return loans, None

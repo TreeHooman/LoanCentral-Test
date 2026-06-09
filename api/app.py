@@ -1639,11 +1639,12 @@ def set_loan_paid(loan_id):
     lender   = data.get("lender", session.get("username", "")).strip().lower()
     amount   = data.get("amount")
     currency = data.get("currency", "").upper()
+    timing   = data.get("timing")  # 'early', 'late', 'on_time', or None
     if not all([lender, amount, currency]):
         return _json({"error": "lender, amount, and currency are required"}, 400)
     if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
         return _json({"error": "Verified lender access required."}, 403)
-    result, error = mark_repaid(loan_id, Decimal(str(amount)), currency, lender, actor_role="lender")
+    result, error = mark_repaid(loan_id, Decimal(str(amount)), currency, lender, actor_role="lender", payment_timing=timing)
     if error:
         return _json({"error": error}, 400)
     return _json(result)

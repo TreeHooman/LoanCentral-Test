@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS loans (
     payment_method TEXT,
     borrower_acknowledged_at TIMESTAMP,
     borrower_acknowledged_note TEXT,
-    notes TEXT
+    notes TEXT,
+    interest_amount NUMERIC,
+    interest_rate NUMERIC,
+    payment_timing TEXT                       -- 'early', 'late', 'on_time', NULL
 );
 
 -- Create users table to store aggregate statistics about users

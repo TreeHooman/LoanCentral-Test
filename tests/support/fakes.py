@@ -201,7 +201,7 @@ class FakeDb:
 
     def insert_loan(self, loan_id, lender, borrower, amount, currency, date_created, original_thread, status,
                     repay_amount=None, repay_date=None, payment_method=None,
-                    interest_amount=None, interest_rate=None):
+                    interest_amount=None, interest_rate=None, payment_timing=None):
         db_id = self.next_id
         self.next_id += 1
         self.loans.append(
@@ -224,6 +224,7 @@ class FakeDb:
                 "notes": None,
                 "interest_amount": interest_amount,
                 "interest_rate": interest_rate,
+                "payment_timing": payment_timing,
             }
         )
         return db_id
@@ -381,11 +382,13 @@ class FakeCursor:
             return
 
         if normalized.startswith("update loans set amount_repaid"):
-            amount_repaid, status, _last_updated, db_id = params
+            # params: (amount_repaid, status, last_updated, payment_timing, db_id)
+            amount_repaid, status, _last_updated, payment_timing, db_id = params
             loan = self.fake_db.find_loan(db_id)
             if loan:
                 loan["amount_repaid"] = amount_repaid
                 loan["status"] = status
+                loan["payment_timing"] = payment_timing
             self.last_result = None
             return
 
@@ -527,6 +530,7 @@ class FakeCursor:
                     loan.get("borrower_acknowledged_note"),
                     loan.get("interest_amount"),
                     loan.get("interest_rate"),
+                    loan.get("payment_timing"),
                 )
                 for loan in matches
             ]
@@ -560,6 +564,7 @@ class FakeCursor:
                     loan.get("borrower_acknowledged_note"),
                     loan.get("interest_amount"),
                     loan.get("interest_rate"),
+                    loan.get("payment_timing"),
                 )
                 for loan in matches
             ]
@@ -634,6 +639,7 @@ def loan_record(
     currency="USD",
     status="confirmed",
     original_thread="https://www.reddit.com/r/LoanCentralTest/comments/abc/test/",
+    payment_timing=None,
 ):
     return {
         "id": db_id,
@@ -653,6 +659,7 @@ def loan_record(
         "notes": None,
         "interest_amount": None,
         "interest_rate": None,
+        "payment_timing": payment_timing,
     }
 
 

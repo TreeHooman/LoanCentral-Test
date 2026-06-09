@@ -67,18 +67,20 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("Currency mismatch", comment.replies[0])
 
-    def test_lender_cannot_record_more_than_remaining_balance(self):
+    def test_lender_cannot_record_more_than_150_percent_of_loan(self):
+        # Loan: amount=100, repaid=90, remaining=10.
+        # Max allowed = 100*1.5 - 90 = 60. Paying $61 exceeds the cap → error.
         fake_db = FakeDb(
             loans=[loan_record(db_id=12, amount="100.00", amount_repaid="90.00")],
             users={"borrower": {"amount_repaid": Decimal("90")}},
         )
 
-        comment = self.run_paid_command(fake_db, "$paid_with_id 12 20 USD")
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 61 USD")
 
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("90.00"))
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertEqual(fake_db.users["borrower"]["amount_repaid"], Decimal("90"))
-        self.assertIn("exceeds the remaining balance", comment.replies[0])
+        self.assertIn("exceeds the maximum allowed", comment.replies[0])
 
     def test_partial_payment_on_unpaid_loan_reduces_unpaid_amount_only(self):
         fake_db = FakeDb(
