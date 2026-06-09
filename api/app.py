@@ -357,6 +357,36 @@ def require_admin_api(f):
     return decorated
 
 
+# ---------------------------------------------------------------------------
+# Named permission decorators (Task 2)
+# ---------------------------------------------------------------------------
+
+def verified_lender_required(f):
+    """Requires verified lender (cached in session), mod, or admin."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("username"):
+            return redirect(url_for("login"))
+        role = session.get("role", "")
+        if role in ("mod", "admin"):
+            return f(*args, **kwargs)
+        if role == "lender":
+            # Cache verification status in session to avoid a DB hit on every request.
+            if session.get("verified_lender") is None:
+                from services import get_verified_lender_status
+                session["verified_lender"] = get_verified_lender_status(session["username"])[0]
+            if session.get("verified_lender"):
+                return f(*args, **kwargs)
+        flash("Verified lender access required.", "error")
+        return redirect(url_for("home"))
+    return decorated
+
+
+# Aliases — built on role_required so any future auth-flow change propagates automatically.
+mod_required   = role_required("mod", "admin")
+admin_required = role_required("admin")
+
+
 def _can_view_user_profile(target_username):
     key = request.headers.get("X-API-Key") or request.args.get("api_key")
     if key == API_KEY:

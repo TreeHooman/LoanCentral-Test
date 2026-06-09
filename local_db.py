@@ -15,6 +15,11 @@ from decimal import Decimal
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB_PATH = os.path.join(PROJECT_ROOT, "data", "loancentral_dev.sqlite3")
 
+# Skip the schema/migration checks after the first successful run in this process.
+# Schema shape doesn't change while the process is alive, so the 12+ PRAGMA calls
+# per connection open are wasted after the first time.
+_schema_applied: set = set()  # keyed by db_path
+
 
 def _adapt_datetime(value):
     return value.isoformat(sep=" ")
@@ -120,12 +125,20 @@ def _ensure_schema(conn):
     _ensure_column(conn, "loans", "notes", "TEXT")
     _ensure_column(conn, "loan_requests", "lender_note", "TEXT")
     _ensure_column(conn, "loan_requests", "expires_at", "TIMESTAMP")
+    # Verified lender columns on user_roles
+    _ensure_column(conn, "user_roles", "verified_lender", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "user_roles", "verified_lender_at", "TIMESTAMP")
+    _ensure_column(conn, "user_roles", "verified_lender_by", "TEXT")
+    _ensure_column(conn, "user_roles", "verification_note", "TEXT")
+    _ensure_column(conn, "user_roles", "contact_email", "TEXT")
+    _ensure_column(conn, "user_roles", "contact_phone", "TEXT")
     conn.commit()
 
 
 def get_sqlite_connection(path=None):
     db_path = path or os.getenv("SQLITE_DB_PATH", DEFAULT_DB_PATH)
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    already_set_up = db_path in _schema_applied
     conn = sqlite3.connect(
         db_path,
         detect_types=sqlite3.PARSE_DECLTYPES,
@@ -133,5 +146,7 @@ def get_sqlite_connection(path=None):
     )
     conn.execute("PRAGMA foreign_keys = ON")
     conn.create_function("GREATEST", -1, lambda *values: max(v for v in values if v is not None))
-    _ensure_schema(conn)
+    if not already_set_up:
+        _ensure_schema(conn)
+        _schema_applied.add(db_path)
     return SQLiteCompatConnection(conn)

@@ -2639,8 +2639,8 @@ def global_search(query: str, search_type: str = "all",
             where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
             cur.execute(f"""
                 SELECT loan_id, lender, borrower, amount, currency, status,
-                       repay_date, created_at
-                FROM loans {where} ORDER BY created_at DESC LIMIT %s OFFSET %s
+                       repay_date, date_created
+                FROM loans {where} ORDER BY date_created DESC LIMIT %s OFFSET %s
             """, params + [limit, offset])
             cols = ["loan_id", "lender", "borrower", "amount", "currency",
                     "status", "repay_date", "created_at"]

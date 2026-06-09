@@ -335,7 +335,7 @@
     const canRefund = !['repaid','refunded'].includes(loan.status);
     const due = dueLabel(loan.repay_date);
     return `<tr>
-      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCardKey(event,this)" role="button" tabindex="0">
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
         <div class="mobile-card-main">
           <div>
             <div class="mobile-card-title">${redditUser(loan.borrower)}</div>

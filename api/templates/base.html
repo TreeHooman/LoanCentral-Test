@@ -1212,14 +1212,13 @@
     return `<tr class="mobile-more-row"><td class="no-label" colspan="${colspan}"><button class="btn-secondary table-show-more" onclick="${onClick}()">Show ${next} more ${label} (${shown}/${total})</button></td></tr>`;
   }
   function toggleMobileCard(event, el) {
+    if (event.type === 'keydown') {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+    }
     if (!isMobileDashboard()) return;
     if (event?.target?.closest?.('button,a,input,label,select,textarea')) return;
     el.closest('tr')?.classList.toggle('mobile-expanded');
-  }
-  function toggleMobileCardKey(event, el) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    toggleMobileCard(event, el);
   }
   function fmt(n) { return parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fmtRaw(value) { return Number(value || 0).toFixed(2); }

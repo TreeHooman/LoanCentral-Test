@@ -41,7 +41,13 @@ CREATE TABLE IF NOT EXISTS user_roles (
     role TEXT NOT NULL DEFAULT 'borrower',       -- 'admin', 'mod', 'lender', 'borrower'
     subscription_status TEXT NOT NULL DEFAULT 'free',  -- 'free', 'paid'
     created_at TIMESTAMP DEFAULT NOW(),
-    last_login TIMESTAMP
+    last_login TIMESTAMP,
+    verified_lender BOOLEAN NOT NULL DEFAULT FALSE,
+    verified_lender_at TIMESTAMP,
+    verified_lender_by TEXT,
+    verification_note TEXT,
+    contact_email TEXT,
+    contact_phone TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
@@ -148,3 +154,49 @@ CREATE TABLE IF NOT EXISTS reddit_actions (
 CREATE INDEX IF NOT EXISTS idx_reddit_actions_status ON reddit_actions(status);
 CREATE INDEX IF NOT EXISTS idx_reddit_actions_type ON reddit_actions(action_type);
 CREATE INDEX IF NOT EXISTS idx_reddit_actions_target ON reddit_actions(target_user);
+
+-- Structured audit log (distinct from audit_events; tracks dashboard mod actions)
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    actor_username TEXT NOT NULL,
+    actor_role TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    target_type TEXT,
+    target_id TEXT,
+    old_value_json TEXT,
+    new_value_json TEXT,
+    ip_address TEXT,
+    metadata_json TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+
+-- Loan timeline events (immutable per-loan activity feed)
+CREATE TABLE IF NOT EXISTS loan_events (
+    id SERIAL PRIMARY KEY,
+    loan_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    actor_username TEXT,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_loan_events_loan_id ON loan_events(loan_id);
+CREATE INDEX IF NOT EXISTS idx_loan_events_created ON loan_events(created_at);
+
+-- In-app notifications
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    notification_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT,
+    read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(username, read);
