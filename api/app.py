@@ -187,6 +187,11 @@ def log_api_request():
             return _json({"error": "Too many API requests. Please slow down."}, 429)
         hits.append(now)
         _api_rate_hits[key] = hits
+        # Periodic cleanup: drop keys with no recent hits to prevent unbounded growth
+        if len(_api_rate_hits) > 500:
+            stale = [k for k, v in _api_rate_hits.items() if not v or max(v) < window_start]
+            for k in stale:
+                del _api_rate_hits[k]
         logger.info(
             "api_request method=%s path=%s user=%s role=%s remote=%s",
             request.method,

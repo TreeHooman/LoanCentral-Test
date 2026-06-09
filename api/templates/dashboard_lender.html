@@ -64,12 +64,21 @@
   <div class="search-wrap">
     <input id="loanSearch" type="search" placeholder="Filter by borrower, loan ID, status, notes..." oninput="renderLoans()" />
   </div>
-  <button class="btn-secondary" onclick="setRelevanceSort()">Most Relevant</button>
-  <button class="btn-secondary" onclick="showDueSoon()">Due Soon</button>
-  <button class="btn-secondary" onclick="showOverdueOnly()">Overdue</button>
-  <button class="btn-secondary" onclick="showNeedsAction()">Needs Action</button>
+  <div class="dropdown-wrap" style="position:relative">
+    <button class="btn-secondary" onclick="toggleLenderSort()" id="sortMenuBtn">Sort ▾</button>
+    <div id="sortMenu" style="display:none;position:absolute;left:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:100;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+      <button class="more-item" onclick="setRelevanceSort();closeLenderSort()">Most Relevant</button>
+      <button class="more-item" onclick="showDueSoon();closeLenderSort()">Due Soon</button>
+      <button class="more-item" onclick="showOverdueOnly();closeLenderSort()">Overdue</button>
+      <button class="more-item" onclick="showNeedsAction();closeLenderSort()">Needs Action</button>
+    </div>
+  </div>
   <button class="btn-secondary" id="refreshBtn" onclick="loadLoans()">Refresh</button>
   <button class="btn-secondary" onclick="bulkMarkPaid()">Mark Selected Paid</button>
+  <style>
+    .more-item { display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;border-radius:6px; }
+    .more-item:hover { background:var(--surface2);color:var(--text); }
+  </style>
 </div>
 
 <div class="table-wrap">
@@ -392,6 +401,17 @@
   function getLoanNote(loanId) {
     return findLoan(loanId)?.notes || '';
   }
+
+  function toggleLenderSort() {
+    const m = document.getElementById('sortMenu');
+    m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  }
+  function closeLenderSort() {
+    document.getElementById('sortMenu').style.display = 'none';
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dropdown-wrap')) closeLenderSort();
+  });
 
   function showOverdueOnly() {
     quickFilter = quickFilter === 'overdue' ? '' : 'overdue';

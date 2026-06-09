@@ -26,16 +26,28 @@
       <button class="tab" data-status="refunded">Refunded</button>
     </div>
     <div class="search-wrap">
-      <input type="text" id="searchInput" placeholder="Search by lender or borrower..." />
+      <input type="text" id="searchInput" placeholder="Search lender, borrower, or loan ID..." />
     </div>
     <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
-    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:var(--red)" onclick="showTab('unpaid')">⚑ Unpaid Review</button>
+    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:var(--red)" onclick="showTab('unpaid')">⚑ Unpaid</button>
     <button class="btn-primary" style="background:rgba(243,156,18,0.15);border:1px solid rgba(243,156,18,0.3);color:var(--yellow)" onclick="showTab('disputes')">⚠ Disputes</button>
-    <button class="btn-primary" style="background:rgba(91,110,245,0.15);border:1px solid rgba(91,110,245,0.3);color:var(--accent-h)" onclick="showTab('requests')">📋 Requests</button>
-    <button class="btn-primary" style="background:rgba(46,204,113,0.15);border:1px solid rgba(46,204,113,0.3);color:var(--green)" onclick="showTab('verification')">✓ Verification</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('roles')">👥 Roles</button>
-    <button class="btn-primary" style="background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.25);color:var(--red)" onclick="showTab('integrity')">🔍 Integrity</button>
+    <div class="dropdown-wrap" style="position:relative">
+      <button class="btn-primary" id="moreMenuBtn" onclick="toggleMoreMenu()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">More ▾</button>
+      <div id="moreMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+        <button class="more-item" onclick="showTab('requests')">📋 Requests</button>
+        <button class="more-item" onclick="showTab('verification')">✓ Verification</button>
+        <button class="more-item" onclick="showTab('roles')">👥 Roles</button>
+        <button class="more-item" onclick="showTab('activity')">📊 Activity</button>
+        <button class="more-item" onclick="showTab('reminders')">🔔 Reminders</button>
+        <button class="more-item" onclick="showTab('reddit-actions')">Reddit Queue</button>
+        <button class="more-item" onclick="showTab('integrity')" style="color:var(--red)">🔍 Integrity</button>
+      </div>
+    </div>
   </div>
+  <style>
+    .more-item { display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--text2); font-size:13px; cursor:pointer; border-radius:6px; }
+    .more-item:hover { background:var(--surface2); color:var(--text); }
+  </style>
   <div class="table-wrap">
     <table class="mobile-cards">
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th>{% if can_view_money %}<th>Amount</th><th>Repaid</th><th>Remaining</th><th>Interest $</th><th>Rate %</th>{% endif %}<th>Status</th><th>Date</th><th>Actions</th></tr></thead>
@@ -222,7 +234,6 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     loadStats(); loadLoans();
-    addModUtilityButtons();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -305,38 +316,21 @@
     </tr>`;
   }
 
-  function addModUtilityButtons() {
-    const toolbar = document.querySelector('#tab-loans .toolbar');
-    if (!toolbar || document.getElementById('activityTabBtn')) return;
-    const activityLink = document.createElement('a');
-    activityLink.id = 'activityTabBtn';
-    activityLink.className = 'btn-primary';
-    activityLink.href = '/dashboard/mod?tab=activity';
-    activityLink.style.cssText = 'background:var(--surface2);border:1px solid var(--border);color:var(--text2);text-decoration:none';
-    activityLink.textContent = 'Activity';
-    const reminderLink = document.createElement('a');
-    reminderLink.id = 'reminderTabBtn';
-    reminderLink.className = 'btn-primary';
-    reminderLink.href = '/dashboard/mod?tab=reminders';
-    reminderLink.style.cssText = 'background:rgba(243,156,18,0.14);border:1px solid rgba(243,156,18,0.28);color:var(--orange);text-decoration:none';
-    reminderLink.textContent = 'Reminders';
-    const verificationLink = document.createElement('a');
-    verificationLink.id = 'verificationTabBtn';
-    verificationLink.className = 'btn-primary';
-    verificationLink.href = '/dashboard/mod?tab=verification';
-    verificationLink.style.cssText = 'background:rgba(46,204,113,0.13);border:1px solid rgba(46,204,113,0.26);color:var(--green);text-decoration:none';
-    verificationLink.textContent = 'Verification';
-    const redditActionsLink = document.createElement('a');
-    redditActionsLink.id = 'redditActionsTabBtn';
-    redditActionsLink.className = 'btn-primary';
-    redditActionsLink.href = '/dashboard/mod?tab=reddit-actions';
-    redditActionsLink.style.cssText = 'background:rgba(91,110,245,0.13);border:1px solid rgba(91,110,245,0.26);color:var(--accent-h);text-decoration:none';
-    redditActionsLink.textContent = 'Reddit Queue';
-    toolbar.appendChild(activityLink);
-    toolbar.appendChild(reminderLink);
-    toolbar.appendChild(verificationLink);
-    toolbar.appendChild(redditActionsLink);
+  function toggleMoreMenu() {
+    const menu = document.getElementById('moreMenu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
   }
+  const _origShowTab = showTab;
+  function showTab(name) {
+    document.getElementById('moreMenu').style.display = 'none';
+    _origShowTab(name);
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.dropdown-wrap')) {
+      const m = document.getElementById('moreMenu');
+      if (m) m.style.display = 'none';
+    }
+  });
 
   function showTab(name) {
     ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity'].forEach(t =>
@@ -696,7 +690,7 @@
   function roleColor(r) { return { admin: 'var(--red)', mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
   Object.assign(window, {
-    addModUtilityButtons,
+    toggleMoreMenu,
     assignRole,
     clearUnpaid,
     confirmBan,
