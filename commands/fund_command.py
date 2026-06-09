@@ -31,21 +31,21 @@ def _parse_fund(text):
 
 
 def _verified_lender_or_reply(comment):
+    """Check lender status against the database — never Reddit flair."""
     try:
-        subreddit = comment.subreddit
-        user_flair = None
-        for flair in subreddit.flair(redditor=comment.author):
-            user_flair = flair["flair_text"]
-            break
-        if user_flair and "verified lender" in user_flair.lower():
+        from services import get_verified_lender_status
+        lender = comment.author.name.lower()
+        is_verified, _, err = get_verified_lender_status(lender)
+        if is_verified:
             return True
         comment.reply(with_dashboard_link(
-            f"Error: Only users with 'Verified Lender' flair can fund requests in r/{subreddit.display_name}."
+            "Error: Your account has not completed the LoanCentral lender verification process. "
+            "Contact a moderator to begin the process."
         ))
         return False
     except Exception as exc:
-        logger.error(f"Error checking flair for {comment.author.name}: {exc}")
-        comment.reply(with_dashboard_link("Error: Unable to verify your flair status. Please contact the moderators."))
+        logger.error(f"Error checking verified lender status for {comment.author.name}: {exc}")
+        comment.reply(with_dashboard_link("Error: Unable to verify your lender status. Please contact the moderators."))
         return False
 
 

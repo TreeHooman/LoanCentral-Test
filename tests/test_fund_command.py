@@ -6,13 +6,14 @@ from tests.support.fakes import FakeComment, FakeSubreddit
 
 
 class FundCommandTests(unittest.TestCase):
-    def run_fund_command(self, body, flair_text="Verified Lender"):
-        subreddit = FakeSubreddit(flair_text=flair_text)
-        comment = FakeComment(body=body, author_name="lender", subreddit=subreddit)
+    def run_fund_command(self, body, is_verified_lender=True):
+        comment = FakeComment(body=body, author_name="lender")
         fund_command = importlib.import_module("commands.fund_command")
+        vl_return = (True, None, None) if is_verified_lender else (False, None, None)
         with patch("services.get_loan_request") as get_req, \
              patch("services.fund_loan_request") as fund_req, \
-             patch("services.update_last_login"):
+             patch("services.update_last_login"), \
+             patch("services.get_verified_lender_status", return_value=vl_return):
             get_req.return_value = ({
                 "request_id": "REQ-0001",
                 "borrower": "borrower",
@@ -34,17 +35,20 @@ class FundCommandTests(unittest.TestCase):
         self.assertIn("$paid_with_id 1700001234", comment.replies[0])
 
     def test_non_verified_lender_is_rejected(self):
-        comment, _get_req, fund_req = self.run_fund_command("$fund REQ-0001 125 USD 2026-06-30", flair_text="Regular")
+        comment, _get_req, fund_req = self.run_fund_command(
+            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=False
+        )
 
         fund_req.assert_not_called()
-        self.assertIn("Verified Lender", comment.replies[0])
+        self.assertIn("verification process", comment.replies[0])
 
     def test_currency_mismatch_is_rejected(self):
         comment = FakeComment(body="$fund REQ-0001 125 CAD 2026-06-30", author_name="lender")
         fund_command = importlib.import_module("commands.fund_command")
         with patch("services.get_loan_request") as get_req, \
              patch("services.fund_loan_request") as fund_req, \
-             patch("services.update_last_login"):
+             patch("services.update_last_login"), \
+             patch("services.get_verified_lender_status", return_value=(True, None, None)):
             get_req.return_value = ({
                 "request_id": "REQ-0001",
                 "borrower": "borrower",
