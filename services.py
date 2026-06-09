@@ -497,11 +497,11 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         else:
             db_id, public_id, lender, borrower, principal_amount, already_repaid, loan_currency, status, repay_total = result
 
-        # Role check
-        if actor_role == "lender" and actor != lender:
+        # Role check (case-insensitive — stored names may differ in case from session username)
+        if actor_role == "lender" and actor.lower() != lender.lower():
             logger.warning(f"Payment auth mismatch for loan {loan_id}: actor={actor}, lender={lender}")
             return None, f"Loan ID {loan_id} exists, but it is recorded under lender u/{lender}. Only that lender can use $paid_with_id for this loan."
-        if actor_role == "borrower" and actor != borrower:
+        if actor_role == "borrower" and actor.lower() != borrower.lower():
             logger.warning(f"Repaid auth mismatch for loan {loan_id}: actor={actor}, borrower={borrower}")
             return None, f"No loan {loan_id} found where you are the borrower."
 
@@ -621,7 +621,7 @@ def mark_unpaid(loan_id: str, lender: str):
                 SELECT id, amount, currency, amount_repaid, original_thread, status, borrower,
                        COALESCE(repay_amount, amount)
                 FROM loans
-                WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+                WHERE (id::text = %s OR loan_id = %s) AND lower(lender) = lower(%s)
                 ORDER BY id DESC LIMIT 1
             ''', (loan_id, loan_id, lender))
         except Exception as e:
@@ -633,7 +633,7 @@ def mark_unpaid(loan_id: str, lender: str):
             cur.execute('''
                 SELECT id, amount, currency, amount_repaid, original_thread, status, borrower
                 FROM loans
-                WHERE id::text = %s AND lender = %s
+                WHERE id::text = %s AND lower(lender) = lower(%s)
                 ORDER BY id DESC LIMIT 1
             ''', (loan_id, lender))
 
@@ -793,7 +793,7 @@ def mark_refunded_by_id(loan_id: str, lender: str):
             cur.execute('''
                 SELECT id, borrower, amount, currency, status
                 FROM loans
-                WHERE (id::text = %s OR loan_id = %s) AND lender = %s
+                WHERE (id::text = %s OR loan_id = %s) AND lower(lender) = lower(%s)
                 ORDER BY id DESC LIMIT 1
             ''', (loan_id, loan_id, lender))
         except Exception as e:
@@ -804,7 +804,7 @@ def mark_refunded_by_id(loan_id: str, lender: str):
             cur.execute('''
                 SELECT id, borrower, amount, currency, status
                 FROM loans
-                WHERE id::text = %s AND lender = %s
+                WHERE id::text = %s AND lower(lender) = lower(%s)
                 ORDER BY id DESC LIMIT 1
             ''', (loan_id, lender))
 
@@ -1092,13 +1092,13 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
         username = username.lower()
 
         if role == "borrower":
-            where = "WHERE borrower = %s"
+            where = "WHERE lower(borrower) = lower(%s)"
             params = (username, limit)
         elif role == "lender":
-            where = "WHERE lender = %s"
+            where = "WHERE lower(lender) = lower(%s)"
             params = (username, limit)
         else:  # both
-            where = "WHERE borrower = %s OR lender = %s"
+            where = "WHERE lower(borrower) = lower(%s) OR lower(lender) = lower(%s)"
             params = (username, username, limit)
 
         schema_mode = "dashboard"

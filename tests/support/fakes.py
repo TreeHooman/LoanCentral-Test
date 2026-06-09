@@ -494,20 +494,21 @@ class FakeCursor:
         # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
         if normalized.startswith("select id, loan_id, lender, borrower, amount, amount_repaid") and "id::text" not in normalized and "limit %s" in normalized:
             username = params[0]
-            if "borrower = %s or lender = %s" in normalized:
+            if "lower(borrower) = lower(%s) or lower(lender) = lower(%s)" in normalized or \
+               "borrower = %s or lender = %s" in normalized:
                 # "both" role: params are (username, username, limit)
                 username2 = params[1]
                 limit = params[2]
                 matches = [
                     loan for loan in self.fake_db.loans
-                    if loan["borrower"] == username or loan["lender"] == username2
+                    if loan["borrower"].lower() == username.lower() or loan["lender"].lower() == username2.lower()
                 ]
-            elif "borrower = %s" in normalized:
+            elif "lower(borrower) = lower(%s)" in normalized or "borrower = %s" in normalized:
                 limit = params[1]
-                matches = [loan for loan in self.fake_db.loans if loan["borrower"] == username]
+                matches = [loan for loan in self.fake_db.loans if loan["borrower"].lower() == username.lower()]
             else:
                 limit = params[1]
-                matches = [loan for loan in self.fake_db.loans if loan["lender"] == username]
+                matches = [loan for loan in self.fake_db.loans if loan["lender"].lower() == username.lower()]
 
             matches = sorted(matches, key=lambda l: l.get("date_created", 0), reverse=True)[:limit]
             self.last_result = [
