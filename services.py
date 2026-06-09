@@ -2013,7 +2013,7 @@ def run_integrity_checks():
         for r in cur.fetchall():
             issues.append({"check": "Overpaid", "severity": "error",
                 "loan_id": r[0], "lender": r[1], "borrower": r[2],
-                "detail": f"repaid {r[5]} > repay_amount {r[3]} {r[6]}"})
+                "detail": f"repaid {r[5]} > repay_amount {r[4]} {r[6]}"})
 
         # Status repaid but remaining > 0
         cur.execute("""
