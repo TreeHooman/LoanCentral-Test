@@ -2,6 +2,21 @@
 {% block title %}{{ view_label|default('Mod Dashboard') }} - LoanCentral{% endblock %}
 
 {% block content %}
+<!-- Onboarding card for new mods -->
+<div id="onboardingCard" style="display:none;background:rgba(241,196,15,0.07);border:1px solid rgba(241,196,15,0.25);border-radius:10px;padding:18px 20px;margin-bottom:20px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+    <div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">Moderator Quick Reference</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+        <div class="flow-step"><div class="flow-step-num">1</div><div><div class="flow-step-title">Verification queue</div><div class="flow-step-copy">Review lender applications under the Verification tab. Approve or deny with a note.</div></div></div>
+        <div class="flow-step"><div class="flow-step-num">2</div><div><div class="flow-step-title">Audit logs</div><div class="flow-step-copy">All dashboard actions are logged. Use Audit Log → user timeline to investigate a specific user.</div></div></div>
+        <div class="flow-step"><div class="flow-step-num">3</div><div><div class="flow-step-title">Search tools</div><div class="flow-step-copy">Global Search lets you look up any loan, user, or REQ-ID across the entire platform.</div></div></div>
+      </div>
+    </div>
+    <button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;flex-shrink:0;line-height:1;padding:2px 6px" title="Dismiss">×</button>
+  </div>
+</div>
+
 <!-- Stats -->
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
@@ -72,6 +87,13 @@
         <button class="more-item" onclick="showTab('reddit-actions')">Reddit Queue</button>
         <button class="more-item" onclick="showTab('integrity')" style="color:var(--red)">🔍 Integrity</button>
         <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+        <a class="more-item" href="/mod/queue" style="display:block;text-decoration:none;color:var(--text2)">📋 Mod Queue</a>
+        <a class="more-item" href="/admin/health" style="display:block;text-decoration:none;color:var(--text2)">📊 Community Health</a>
+        <a class="more-item" href="/admin/lenders/management" style="display:block;text-decoration:none;color:var(--text2)">🏦 Lender Mgmt</a>
+        <a class="more-item" href="/admin/borrowers" style="display:block;text-decoration:none;color:var(--text2)">👥 Borrowers</a>
+        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+        <button class="more-item" onclick="showTab('announcements')">📣 Announcements</button>
         <a class="more-item" href="/dashboard/admin/audit-log" style="display:block;text-decoration:none;color:var(--text2)">📜 Audit Log</a>
         <a class="more-item" href="/dashboard/admin/search" style="display:block;text-decoration:none;color:var(--text2)">🔎 Global Search</a>
       </div>
@@ -282,6 +304,54 @@
   </div>
 </div>
 
+<!-- Announcements tab -->
+<div id="tab-announcements" style="display:none">
+  <div class="section-header">
+    <span class="section-title">Announcements</span>
+    <button class="btn-primary" onclick="showTab('loans')">← Back</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Active banners shown to all users. Dismissable per-user via localStorage.</p>
+
+  <!-- Create form -->
+  <div class="panel" style="margin-bottom:16px;padding:16px 18px">
+    <div class="panel-title" style="margin-bottom:12px">Post New Announcement</div>
+    <div style="display:grid;gap:10px">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Title</label>
+        <input id="annTitle" type="text" placeholder="Short headline…"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Body</label>
+        <textarea id="annBody" rows="3" placeholder="Announcement body text…"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+        <div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Expires (optional)</label>
+          <input id="annExpires" type="date"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none" />
+        </div>
+        <label style="font-size:12px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:6px;padding-bottom:7px">
+          <input type="checkbox" id="annPinned" style="accent-color:var(--accent)" />
+          Pinned (shown first)
+        </label>
+        <button class="btn-primary" onclick="postAnnouncement()">Post</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active list -->
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Title</th><th>Body</th><th>Author</th><th>Pinned</th><th>Expires</th><th>Created</th><th>Action</th></tr></thead>
+      <tbody id="annBody_list">
+        <tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Reddit action queue tab -->
 <div id="tab-reddit-actions" style="display:none">
   <div class="section-header">
@@ -307,7 +377,15 @@
   let modLoans = [];
   let modLoanLimit = 40;
 
+  function dismissOnboarding() {
+    localStorage.setItem('lc_onboarding_mod', '1');
+    document.getElementById('onboardingCard').style.display = 'none';
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
+    if (!localStorage.getItem('lc_onboarding_mod')) {
+      document.getElementById('onboardingCard').style.display = 'block';
+    }
     loadStats(); loadLoans();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -458,7 +536,7 @@
   function showTab(name) {
     const m = document.getElementById('moreMenu');
     if (m) m.style.display = 'none';
-    ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity'].forEach(t =>
+    ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity','announcements'].forEach(t =>
       document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
     );
     if (name === 'roles')    loadRoles();
@@ -476,6 +554,7 @@
     if (name === 'reminders') loadReminders();
     if (name === 'verification') loadVerificationApplications();
     if (name === 'reddit-actions') loadRedditActions();
+    if (name === 'announcements') loadAnnouncements();
   }
 
   async function loadActivity() {
@@ -850,6 +929,66 @@
   function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { admin: 'var(--red)', mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
+  async function loadAnnouncements() {
+    const tbody = document.getElementById('annBody_list');
+    tbody.innerHTML = '<tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>';
+    try {
+      const res  = await fetch('/api/admin/announcements', { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Load failed');
+      const rows = data.announcements || [];
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No active announcements</h3><p style="margin-top:6px;font-size:13px">Post one above to notify all users.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(a => `<tr>
+        <td style="font-weight:600;font-size:13px">${escapeHtml(a.title)}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(a.body)}">${escapeHtml(a.body)}</td>
+        <td style="font-size:12px">u/${escapeHtml(a.author||'')}</td>
+        <td>${a.pinned ? '<span class="badge badge-repaid">Pinned</span>' : '<span style="color:var(--muted);font-size:12px">—</span>'}</td>
+        <td class="date-cell" style="font-size:12px">${a.expires_at ? a.expires_at.slice(0,10) : '—'}</td>
+        <td class="date-cell" style="font-size:12px">${a.created_at ? a.created_at.slice(0,10) : '—'}</td>
+        <td><button class="btn-action btn-unpaid" onclick="deleteAnnouncement(${a.id})">Deactivate</button></td>
+      </tr>`).join('');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function postAnnouncement() {
+    const title   = document.getElementById('annTitle').value.trim();
+    const body    = document.getElementById('annBody').value.trim();
+    const expires = document.getElementById('annExpires').value || null;
+    const pinned  = document.getElementById('annPinned').checked;
+    if (!title || !body) return toast('Title and body are required.', 'error');
+    try {
+      const res  = await fetch('/api/admin/announcements', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body, pinned, expires_at: expires })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Post failed');
+      document.getElementById('annTitle').value   = '';
+      document.getElementById('annBody').value    = '';
+      document.getElementById('annExpires').value = '';
+      document.getElementById('annPinned').checked = false;
+      toast('Announcement posted.', 'success');
+      loadAnnouncements();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function deleteAnnouncement(id) {
+    if (!confirm('Deactivate this announcement? It will no longer show to users.')) return;
+    try {
+      const res  = await fetch(`/api/admin/announcements/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      toast('Announcement deactivated.', 'success');
+      loadAnnouncements();
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
   Object.assign(window, {
     toggleMoreMenu,
     assignRole,
@@ -872,7 +1011,10 @@
     decideVerification,
     updateRedditAction,
     showTab,
-    loadIntegrity
+    loadIntegrity,
+    loadAnnouncements,
+    postAnnouncement,
+    deleteAnnouncement
   });
 
   let contactModalUsername = '';

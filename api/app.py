@@ -2676,6 +2676,362 @@ def api_admin_metrics():
     return _json(metrics)
 
 
+@app.route("/api/admin/metrics/expanded", methods=["GET"])
+@require_admin_api
+def api_admin_metrics_expanded():
+    from services import get_expanded_metrics
+    metrics, error = get_expanded_metrics()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(metrics)
+
+
+# ---------------------------------------------------------------------------
+# Feedback — user-facing
+# ---------------------------------------------------------------------------
+
+@app.route("/feedback")
+@login_required
+def feedback_page():
+    from services import get_feedback_list, log_analytics_event
+    username = session["username"]
+    role     = session["role"]
+    my_feedback, _, _ = get_feedback_list(username=username, limit=50)
+    log_analytics_event(username, "page_view", page="/feedback")
+    return render_template("feedback.html", username=username, role=role,
+                           my_feedback=my_feedback)
+
+
+@app.route("/api/feedback", methods=["POST"])
+@require_auth
+def api_submit_feedback():
+    from services import create_feedback, log_analytics_event
+    username = session["username"]
+    data     = request.get_json(silent=True) or {}
+    category    = data.get("category", "").strip()
+    title       = data.get("title", "").strip()
+    description = data.get("description", "").strip()
+    fid, error = create_feedback(username, category, title, description)
+    if error:
+        return _json({"error": error}, 400)
+    log_analytics_event(username, "feedback_submit",
+                        metadata={"category": category})
+    return _json({"id": fid, "message": "Feedback submitted. Thank you!"}, 201)
+
+
+@app.route("/api/feedback", methods=["GET"])
+@require_auth
+def api_my_feedback():
+    from services import get_feedback_list
+    username = session["username"]
+    items, total, error = get_feedback_list(username=username, limit=50)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"feedback": items, "total": total})
+
+
+# ---------------------------------------------------------------------------
+# Feedback — admin management
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/feedback")
+@login_required
+def admin_feedback_page():
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import get_feedback_list, log_analytics_event
+    username = session["username"]
+    role     = session["role"]
+    log_analytics_event(username, "page_view", page="/admin/feedback")
+    return render_template("admin_feedback.html", username=username, role=role)
+
+
+@app.route("/api/admin/feedback", methods=["GET"])
+@require_mod_api
+def api_admin_feedback_list():
+    from services import get_feedback_list
+    status   = request.args.get("status") or None
+    category = request.args.get("category") or None
+    limit    = min(int(request.args.get("limit", 100)), 500)
+    offset   = int(request.args.get("offset", 0))
+    items, total, error = get_feedback_list(status=status, category=category,
+                                            limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"feedback": items, "total": total})
+
+
+@app.route("/api/admin/feedback/<int:feedback_id>", methods=["PATCH"])
+@require_mod_api
+def api_admin_feedback_update(feedback_id):
+    from services import update_feedback_status
+    data          = request.get_json(silent=True) or {}
+    status        = data.get("status", "").strip()
+    reviewer_note = data.get("reviewer_note", "").strip() or None
+    reviewer      = session.get("username", "system")
+    ok, error = update_feedback_status(feedback_id, status, reviewer, reviewer_note)
+    if not ok:
+        return _json({"error": error}, 400)
+    return _json({"message": "Updated"})
+
+
+# ---------------------------------------------------------------------------
+# Notification preferences
+# ---------------------------------------------------------------------------
+
+@app.route("/api/notifications/preferences", methods=["GET"])
+@require_auth
+def api_get_notif_prefs():
+    from services import get_notification_preferences
+    prefs, _ = get_notification_preferences(session["username"])
+    return _json(prefs)
+
+
+@app.route("/api/notifications/preferences", methods=["PUT"])
+@require_auth
+def api_update_notif_prefs():
+    from services import update_notification_preferences
+    data = request.get_json(silent=True) or {}
+    ok, error = update_notification_preferences(
+        session["username"],
+        bool(data.get("due_date_reminders", True)),
+        bool(data.get("status_updates", True)),
+        bool(data.get("verification_updates", True)),
+        bool(data.get("dispute_updates", True)),
+    )
+    if not ok:
+        return _json({"error": error}, 500)
+    return _json({"message": "Preferences saved"})
+
+
+# ---------------------------------------------------------------------------
+# User activity timeline (audit investigations)
+# ---------------------------------------------------------------------------
+
+@app.route("/audit/user/<username>")
+@login_required
+def audit_user_timeline(username):
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import get_user_activity_timeline, log_analytics_event
+    viewer   = session["username"]
+    role     = session["role"]
+    events, error = get_user_activity_timeline(username, limit=100)
+    log_analytics_event(viewer, "page_view", page=f"/audit/user/{username}")
+    return render_template("audit_user.html", username=viewer, role=role,
+                           target_user=username, events=events, error=error)
+
+
+@app.route("/api/audit/user/<username>/timeline", methods=["GET"])
+@require_mod_api
+def api_user_timeline(username):
+    from services import get_user_activity_timeline
+    limit  = min(int(request.args.get("limit", 100)), 500)
+    events, error = get_user_activity_timeline(username, limit=limit)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"username": username, "events": events, "total": len(events)})
+
+
+# ---------------------------------------------------------------------------
+# Beta analytics
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/analytics", methods=["GET"])
+@require_admin_api
+def api_admin_analytics():
+    from services import get_analytics_summary
+    days = min(int(request.args.get("days", 30)), 365)
+    summary, error = get_analytics_summary(days)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(summary)
+
+
+# =============================================================================
+# SPRINT 10 — MOD QUEUE, COMMUNITY HEALTH, LENDER/BORROWER MGMT, ANNOUNCEMENTS
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Moderator work queue
+# ---------------------------------------------------------------------------
+
+@app.route("/mod/queue")
+@login_required
+def mod_queue_page():
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/mod/queue")
+    return render_template("mod_queue.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/api/mod/queue", methods=["GET"])
+@require_mod_api
+def api_mod_queue():
+    from services import get_mod_queue
+    queue, error = get_mod_queue()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(queue)
+
+
+# ---------------------------------------------------------------------------
+# Community health dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/health")
+@login_required
+def community_health_page():
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/admin/health")
+    return render_template("community_health.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/api/admin/health", methods=["GET"])
+@require_mod_api
+def api_community_health():
+    from services import get_community_health
+    try:
+        period = int(request.args.get("period", 30))
+    except (TypeError, ValueError):
+        period = 30
+    period = period if period in (7, 30, 90) else 30
+    health, error = get_community_health(period)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(health)
+
+
+# ---------------------------------------------------------------------------
+# Lender management
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/lenders/management")
+@login_required
+def lender_management_page():
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/admin/lenders/management")
+    return render_template("lender_management.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/api/admin/lenders/management", methods=["GET"])
+@require_mod_api
+def api_lender_management():
+    from services import get_lender_management_list
+    q        = request.args.get("q", "").strip() or None
+    verified = request.args.get("verified") or None
+    limit    = min(int(request.args.get("limit", 100)), 500)
+    offset   = int(request.args.get("offset", 0))
+    items, total, error = get_lender_management_list(
+        q=q, verified_filter=verified, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"lenders": items, "total": total})
+
+
+# ---------------------------------------------------------------------------
+# Borrower activity dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/borrowers")
+@login_required
+def borrower_activity_page():
+    if session.get("role") not in ("mod", "admin"):
+        return redirect(url_for("dashboard_lender"))
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/admin/borrowers")
+    return render_template("admin_borrowers.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/api/admin/borrowers", methods=["GET"])
+@require_mod_api
+def api_borrower_activity():
+    from services import get_borrower_activity_list
+    q            = request.args.get("q", "").strip() or None
+    has_disputes = request.args.get("disputes") == "1"
+    limit        = min(int(request.args.get("limit", 100)), 500)
+    offset       = int(request.args.get("offset", 0))
+    items, total, error = get_borrower_activity_list(
+        q=q, has_disputes=has_disputes, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"borrowers": items, "total": total})
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+@app.route("/api/announcements", methods=["GET"])
+def api_get_announcements():
+    from services import get_announcements
+    items, error = get_announcements(active_only=True)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"announcements": items})
+
+
+@app.route("/api/admin/announcements", methods=["GET"])
+@require_mod_api
+def api_admin_get_announcements():
+    from services import get_announcements
+    active_only = request.args.get("active_only", "0") != "0"
+    items, error = get_announcements(active_only=active_only, limit=100)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"announcements": items})
+
+
+@app.route("/api/admin/announcements", methods=["POST"])
+@require_mod_api
+def api_create_announcement():
+    from services import create_announcement
+    data    = request.get_json(silent=True) or {}
+    title   = data.get("title", "").strip()
+    body    = data.get("body", "").strip()
+    pinned  = bool(data.get("pinned", False))
+    expires = data.get("expires_at") or None
+    author  = session.get("username", "system")
+    aid, error = create_announcement(title, body, author, pinned, expires)
+    if error:
+        return _json({"error": error}, 400)
+    return _json({"id": aid, "message": "Announcement posted"}, 201)
+
+
+@app.route("/api/admin/announcements/<int:announcement_id>", methods=["DELETE"])
+@require_mod_api
+def api_delete_announcement(announcement_id):
+    from services import deactivate_announcement
+    actor = session.get("username", "system")
+    ok, error = deactivate_announcement(announcement_id, actor)
+    if not ok:
+        return _json({"error": error}, 400)
+    return _json({"message": "Announcement deactivated"})
+
+
+# ---------------------------------------------------------------------------
+# Audit investigation summary
+# ---------------------------------------------------------------------------
+
+@app.route("/api/audit/user/<username>/summary", methods=["GET"])
+@require_mod_api
+def api_audit_investigation_summary(username):
+    from services import get_audit_investigation_summary
+    summary, error = get_audit_investigation_summary(username)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(summary)
+
+
 # ---------------------------------------------------------------------------
 # Error handlers
 # ---------------------------------------------------------------------------

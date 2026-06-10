@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Community Health — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:16px">
+  <div>
+    <div class="section-title">Community Health</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Platform activity metrics by time period</div>
+  </div>
+  <button class="btn-secondary" onclick="loadHealth()">↻ Refresh</button>
+</div>
+<div class="tabs" id="periodTabs" style="margin-bottom:20px">
+  <button class="tab active" onclick="setPeriod(7, this)">7 days</button>
+  <button class="tab" onclick="setPeriod(30, this)">30 days</button>
+  <button class="tab" onclick="setPeriod(90, this)">90 days</button>
+</div>
+
+<div id="healthContent">
+  <div style="text-align:center;padding:48px;color:var(--muted)"><div class="spinner"></div><br>Loading…</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _period = 7;
+
+function setPeriod(p, btn) {
+  _period = p;
+  document.querySelectorAll('#periodTabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  loadHealth();
+}
+
+async function loadHealth() {
+  const wrap = document.getElementById('healthContent');
+  wrap.innerHTML = '<div style="text-align:center;padding:48px;color:var(--muted)"><div class="spinner"></div><br>Loading…</div>';
+  try {
+    const res = await fetch(`/api/admin/health?period=${_period}`, { credentials: 'same-origin' });
+    const d   = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Load failed');
+    renderHealth(d);
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:var(--red);padding:24px">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderHealth(d) {
+  const l = d.loans        || {};
+  const v = d.verifications || {};
+  const u = d.users         || {};
+  const f = d.feedback      || {};
+
+  const cards = [
+    { label: 'New Loans',        value: l.new        ?? 0, cls: 'c-accent'  },
+    { label: 'Repaid Loans',     value: l.repaid     ?? 0, cls: 'c-green'   },
+    { label: 'Active Loans',     value: l.active     ?? 0, cls: 'c-accent'  },
+    { label: 'New Unpaid',       value: l.new_unpaid ?? 0, cls: l.new_unpaid ? 'c-red' : '' },
+    { label: 'Active Disputes',  value: l.disputes   ?? 0, cls: l.disputes  ? 'c-red' : '' },
+    { label: 'Verif. Requests',  value: v.requests   ?? 0, cls: 'c-yellow'  },
+    { label: 'Verif. Approvals', value: v.approvals  ?? 0, cls: 'c-green'   },
+    { label: 'Active Users',     value: u.active     ?? 0, cls: 'c-accent'  },
+    { label: 'Feedback Submitted', value: f.submitted ?? 0, cls: ''         },
+  ];
+
+  document.getElementById('healthContent').innerHTML = `
+    <div class="stats-grid" style="margin-bottom:24px">
+      ${cards.map(c => `
+        <div class="stat-card">
+          <div class="stat-label">${c.label}</div>
+          <div class="stat-value ${c.cls}">${c.value}</div>
+          <div class="stat-sub">last ${_period} days</div>
+        </div>`).join('')}
+    </div>
+    <div style="background:rgba(91,110,245,0.07);border:1px solid rgba(91,110,245,0.2);border-radius:8px;padding:14px 18px;font-size:13px;color:var(--text2);line-height:1.6">
+      <strong style="color:var(--text)">Period summary (${_period}-day window):</strong>
+      The platform saw <strong>${l.new ?? 0}</strong> new loan${l.new !== 1 ? 's' : ''},
+      <strong>${l.repaid ?? 0}</strong> repaid, and
+      <strong>${l.disputes ?? 0}</strong> active dispute${l.disputes !== 1 ? 's' : ''}.
+      <strong>${u.active ?? 0}</strong> unique user${u.active !== 1 ? 's' : ''} were active.
+      <strong>${v.requests ?? 0}</strong> verification application${v.requests !== 1 ? 's' : ''} submitted,
+      <strong>${v.approvals ?? 0}</strong> approved.
+    </div>`;
+}
+
+document.addEventListener('DOMContentLoaded', loadHealth);
+</script>
+{% endblock %}

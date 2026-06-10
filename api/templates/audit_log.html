@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Audit Log — LoanCentral{% endblock %}
 {% block content %}
-<div class="section-header">
+<div class="section-header" style="margin-bottom:16px">
   <div><h2 class="section-title">Audit Log</h2></div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    <input id="timelineUser" placeholder="username" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;outline:none;min-width:120px;flex:1 1 120px" />
+    <button class="btn-secondary" onclick="viewUserTimeline()" style="white-space:nowrap;flex-shrink:0">User Timeline</button>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom:16px">
@@ -110,7 +114,7 @@ function renderAudit(data) {
   const total = data.total || 0;
   const wrap = document.getElementById('audit-table-wrap');
   if (!rows.length) {
-    wrap.innerHTML = '<div class="table-placeholder">No audit entries found.</div>';
+    wrap.innerHTML = `<div class="empty-state"><h3>No audit entries found</h3><p style="margin-top:6px;font-size:13px">Try adjusting the filters above, or actions will appear here once bot or dashboard activity occurs.</p></div>`;
     document.getElementById('audit-pagination').innerHTML = '';
     return;
   }
@@ -159,5 +163,14 @@ function renderAudit(data) {
 }
 
 loadAudit(0);
+
+function viewUserTimeline() {
+  const u = document.getElementById('timelineUser').value.trim().toLowerCase();
+  if (!u) { toast('Enter a username first.', 'error'); return; }
+  window.location.href = `/audit/user/${encodeURIComponent(u)}`;
+}
+document.getElementById('timelineUser').addEventListener('keydown', e => {
+  if (e.key === 'Enter') viewUserTimeline();
+});
 </script>
 {% endblock %}

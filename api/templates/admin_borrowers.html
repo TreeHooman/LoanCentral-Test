@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Borrower Activity — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Borrower Activity</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Factual borrower history — no scoring, no predictions</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="panel" style="margin-bottom:16px;padding:14px 16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div style="flex:1;min-width:160px">
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Search username</label>
+      <input id="bwQ" type="text" placeholder="username…"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none"
+        onkeydown="if(event.key==='Enter')loadBorrowers()" />
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:8px">
+      <label style="font-size:12px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:6px;padding-bottom:7px">
+        <input type="checkbox" id="bwDisputes" style="accent-color:var(--accent)" />
+        Has unpaid loans
+      </label>
+    </div>
+    <button class="btn-primary" onclick="loadBorrowers()">Filter</button>
+    <button class="btn-secondary" onclick="clearBwFilters()">Clear</button>
+  </div>
+  <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <span style="font-size:11px;color:var(--muted);font-weight:600">QUICK FILTERS:</span>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyBwPreset('all')">All borrowers</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyBwPreset('unpaid')">Has unpaid</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyBwPreset('recent')">Recent activity</button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Total Loans</th>
+        <th>Borrowed</th>
+        <th>Repaid</th>
+        <th>Unpaid Loans</th>
+        <th>Disputes</th>
+        <th>Last Active</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="bwBody">
+      <tr><td colspan="8" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+<div id="bwPager" style="display:flex;gap:8px;margin-top:12px;align-items:center;font-size:13px;color:var(--muted)"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BW_PAGE = 100;
+let _bwOffset = 0;
+
+function clearBwFilters() {
+  document.getElementById('bwQ').value = '';
+  document.getElementById('bwDisputes').checked = false;
+  _bwOffset = 0;
+  loadBorrowers();
+}
+
+function applyBwPreset(name) {
+  document.getElementById('bwQ').value = '';
+  document.getElementById('bwDisputes').checked = name === 'unpaid';
+  _bwOffset = 0;
+  loadBorrowers();
+}
+
+async function loadBorrowers() {
+  const q        = document.getElementById('bwQ').value.trim();
+  const disputes = document.getElementById('bwDisputes').checked ? '1' : '0';
+  const params   = new URLSearchParams({ limit: BW_PAGE, offset: _bwOffset, disputes });
+  if (q) params.set('q', q);
+
+  const tbody = document.getElementById('bwBody');
+  tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder"><div class="spinner"></div></td></tr>';
+
+  try {
+    const res  = await fetch('/api/admin/borrowers?' + params, { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+    renderBwTable(data.borrowers || [], data.total || 0);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderBwTable(rows, total) {
+  const tbody = document.getElementById('bwBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No borrowers found</h3><p style="margin-top:6px;font-size:13px">No borrower records match the current filters.</p></div></td></tr>`;
+    document.getElementById('bwPager').innerHTML = '';
+    return;
+  }
+  tbody.innerHTML = rows.map(b => {
+    const unpaidCls = (b.unpaid_loans || 0) > 0 ? 'c-red' : '';
+    const dispCls   = (b.disputed_count || 0) > 0 ? 'c-orange' : '';
+    return `<tr>
+      <td class="username"><a href="/dashboard/users/${encodeURIComponent(b.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(b.username)}</a></td>
+      <td style="font-weight:600">${b.loans_as_borrower ?? 0}</td>
+      <td>${parseFloat(b.amount_borrowed||0).toFixed(2)}</td>
+      <td>${parseFloat(b.amount_repaid||0).toFixed(2)}</td>
+      <td class="${unpaidCls}" style="font-weight:${unpaidCls?'700':'400'}">${b.unpaid_loans ?? 0}</td>
+      <td class="${dispCls}">${b.disputed_count ?? 0}</td>
+      <td class="date-cell">${b.last_login ? b.last_login.slice(0,10) : 'Never'}</td>
+      <td>
+        <a class="btn-action btn-extension" href="/dashboard/users/${encodeURIComponent(b.username)}" style="text-decoration:none;display:inline-block;margin-right:4px">Profile</a>
+        <a class="btn-action btn-paid" href="/audit/user/${encodeURIComponent(b.username)}" style="text-decoration:none;display:inline-block">Timeline</a>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const shown = _bwOffset + rows.length;
+  const pager = document.getElementById('bwPager');
+  pager.innerHTML = `Showing ${shown} of ${total}`;
+  if (_bwOffset > 0) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="_bwOffset-=${BW_PAGE};loadBorrowers()">← Prev</button>`;
+  }
+  if (shown < total) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="_bwOffset+=${BW_PAGE};loadBorrowers()">Next →</button>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadBorrowers);
+</script>
+{% endblock %}

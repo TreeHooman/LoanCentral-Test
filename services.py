@@ -3275,3 +3275,916 @@ def purge_old_notifications(days: int = 90):
     finally:
         cur.close()
         conn.close()
+
+
+# =============================================================================
+# SPRINT 8 — FEEDBACK, NOTIFICATION PREFERENCES, EXPANDED METRICS, ANALYTICS
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Feedback submissions
+# ---------------------------------------------------------------------------
+
+FEEDBACK_CATEGORIES = {"bug", "suggestion", "feature_request"}
+FEEDBACK_STATUSES   = {"open", "reviewed", "completed", "duplicate"}
+
+
+def create_feedback(username: str, category: str, title: str, description: str):
+    """Insert a feedback submission. Returns (feedback_id, error)."""
+    if category not in FEEDBACK_CATEGORIES:
+        return None, f"Invalid category '{category}'"
+    title = title.strip()[:200]
+    description = description.strip()[:2000]
+    if not title:
+        return None, "Title is required"
+    if not description:
+        return None, "Description is required"
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO feedback_submissions (username, category, title, description)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (username, category, title, description))
+        row = cur.fetchone()
+        conn.commit()
+        return row[0], None
+    except Exception as e:
+        logger.error(f"create_feedback error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_feedback_list(status: str = None, category: str = None, username: str = None,
+                      limit: int = 100, offset: int = 0):
+    """Return paginated feedback submissions with optional filters. Returns (list, total, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        conditions = []
+        params = []
+        if status:
+            conditions.append("status = %s")
+            params.append(status)
+        if category:
+            conditions.append("category = %s")
+            params.append(category)
+        if username:
+            conditions.append("username = %s")
+            params.append(username)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        cur.execute(f"SELECT COUNT(*) FROM feedback_submissions {where}", params)
+        total = cur.fetchone()[0]
+        cur.execute(f"""
+            SELECT id, username, category, title, description, status,
+                   reviewed_by, reviewer_note, created_at, updated_at
+            FROM feedback_submissions {where}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        rows = cur.fetchall()
+        cols = ["id", "username", "category", "title", "description", "status",
+                "reviewed_by", "reviewer_note", "created_at", "updated_at"]
+        result = [dict(zip(cols, r)) for r in rows]
+        for item in result:
+            for k in ("created_at", "updated_at"):
+                if item[k]:
+                    item[k] = item[k].isoformat()
+        return result, total, None
+    except Exception as e:
+        logger.error(f"get_feedback_list error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_feedback_status(feedback_id: int, status: str, reviewed_by: str,
+                           reviewer_note: str = None):
+    """Update feedback status. Returns (success, error)."""
+    if status not in FEEDBACK_STATUSES:
+        return False, f"Invalid status '{status}'"
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE feedback_submissions
+            SET status = %s, reviewed_by = %s, reviewer_note = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (status, reviewed_by, reviewer_note, feedback_id))
+        if cur.rowcount == 0:
+            return False, "Feedback not found"
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"update_feedback_status error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Notification preferences
+# ---------------------------------------------------------------------------
+
+_NOTIF_PREF_DEFAULTS = {
+    "due_date_reminders": True,
+    "status_updates": True,
+    "verification_updates": True,
+    "dispute_updates": True,
+}
+
+
+def get_notification_preferences(username: str):
+    """Return preferences dict for a user, falling back to defaults. Returns (prefs, error)."""
+    conn = _get_db()
+    if not conn:
+        return dict(_NOTIF_PREF_DEFAULTS), "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT due_date_reminders, status_updates, verification_updates, dispute_updates
+            FROM notification_preferences WHERE username = %s
+        """, (username,))
+        row = cur.fetchone()
+        if not row:
+            return dict(_NOTIF_PREF_DEFAULTS), None
+        return {
+            "due_date_reminders": row[0],
+            "status_updates": row[1],
+            "verification_updates": row[2],
+            "dispute_updates": row[3],
+        }, None
+    except Exception as e:
+        logger.error(f"get_notification_preferences error: {e}", exc_info=True)
+        return dict(_NOTIF_PREF_DEFAULTS), str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_notification_preferences(username: str, due_date_reminders: bool,
+                                    status_updates: bool, verification_updates: bool,
+                                    dispute_updates: bool):
+    """Upsert notification preferences. Returns (success, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notification_preferences
+                (username, due_date_reminders, status_updates, verification_updates,
+                 dispute_updates, updated_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (username) DO UPDATE SET
+                due_date_reminders   = EXCLUDED.due_date_reminders,
+                status_updates       = EXCLUDED.status_updates,
+                verification_updates = EXCLUDED.verification_updates,
+                dispute_updates      = EXCLUDED.dispute_updates,
+                updated_at           = NOW()
+        """, (username, due_date_reminders, status_updates, verification_updates,
+              dispute_updates))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"update_notification_preferences error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Expanded platform metrics (Sprint 8)
+# ---------------------------------------------------------------------------
+
+def get_expanded_metrics():
+    """
+    Extends base metrics with monthly activity, active-user counts,
+    verification monthly stats, disputes, and feedback summary.
+    Returns (metrics_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                COUNT(*)                                                           AS total_loans,
+                COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
+                COUNT(*) FILTER (WHERE status = 'repaid')                          AS repaid_loans,
+                COUNT(*) FILTER (WHERE status = 'unpaid')                          AS unpaid_loans,
+                COUNT(*) FILTER (WHERE status = 'disputed')                        AS disputed_loans,
+                COUNT(*) FILTER (WHERE status = 'refunded')                        AS refunded_loans,
+                COUNT(*) FILTER (WHERE date_created >= DATE_TRUNC('month', NOW())) AS loans_this_month,
+                COUNT(*) FILTER (WHERE status = 'repaid'
+                    AND last_updated >= DATE_TRUNC('month', NOW()))                 AS repayments_this_month
+            FROM loans
+        """)
+        loan_row = cur.fetchone()
+
+        cur.execute("""
+            SELECT
+                COUNT(*)                                              AS total_users,
+                COUNT(*) FILTER (WHERE role = 'lender')              AS total_lenders,
+                COUNT(*) FILTER (WHERE role = 'borrower')            AS total_borrowers,
+                COUNT(*) FILTER (WHERE role = 'mod')                 AS total_mods,
+                COUNT(*) FILTER (WHERE verified_lender = TRUE)       AS verified_lenders,
+                COUNT(*) FILTER (WHERE role = 'lender'
+                    AND last_login >= NOW() - INTERVAL '30 days')    AS active_lenders,
+                COUNT(*) FILTER (WHERE role = 'borrower'
+                    AND last_login >= NOW() - INTERVAL '30 days')    AS active_borrowers
+            FROM user_roles
+        """)
+        user_row = cur.fetchone()
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending')                          AS pending,
+                COUNT(*) FILTER (WHERE status = 'approved'
+                    AND reviewed_at >= DATE_TRUNC('month', NOW()))                  AS approvals_this_month,
+                COUNT(*) FILTER (WHERE status = 'denied'
+                    AND reviewed_at >= DATE_TRUNC('month', NOW()))                  AS denials_this_month
+            FROM verification_applications
+        """)
+        verif_row = cur.fetchone()
+
+        cur.execute("SELECT COUNT(*) FROM notifications WHERE read = FALSE")
+        unread_notifs = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'open')              AS open_feedback,
+                COUNT(*) FILTER (WHERE category = 'bug')             AS bugs,
+                COUNT(*) FILTER (WHERE category = 'suggestion')      AS suggestions,
+                COUNT(*) FILTER (WHERE category = 'feature_request') AS features,
+                COUNT(*)                                              AS total
+            FROM feedback_submissions
+        """)
+        fb_row = cur.fetchone()
+
+        return {
+            "loans": {
+                "total":    loan_row[0],
+                "active":   loan_row[1],
+                "repaid":   loan_row[2],
+                "unpaid":   loan_row[3],
+                "disputed": loan_row[4],
+                "refunded": loan_row[5],
+                "created_this_month":    loan_row[6],
+                "repayments_this_month": loan_row[7],
+            },
+            "users": {
+                "total":            user_row[0],
+                "lenders":          user_row[1],
+                "borrowers":        user_row[2],
+                "mods":             user_row[3],
+                "verified_lenders": user_row[4],
+                "active_lenders":   user_row[5],
+                "active_borrowers": user_row[6],
+            },
+            "verifications": {
+                "pending":              verif_row[0],
+                "approvals_this_month": verif_row[1],
+                "denials_this_month":   verif_row[2],
+            },
+            "disputes": {
+                "active": loan_row[4],
+            },
+            "notifications": {
+                "unread_system": unread_notifs,
+            },
+            "feedback": {
+                "open":        fb_row[0],
+                "bugs":        fb_row[1],
+                "suggestions": fb_row[2],
+                "features":    fb_row[3],
+                "total":       fb_row[4],
+            },
+        }, None
+    except Exception as e:
+        logger.error(f"get_expanded_metrics error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# User activity timeline (for audit investigations)
+# ---------------------------------------------------------------------------
+
+def get_user_activity_timeline(username: str, limit: int = 50):
+    """
+    Return a unified activity feed for a user across audit_logs, loan_events,
+    and verification_applications — merged and sorted by date.
+    Returns (events_list, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 'audit' AS source, action_type AS event_type,
+                   actor_username AS actor, created_at,
+                   COALESCE(target_id, '') AS ref,
+                   COALESCE(new_value_json, '') AS detail
+            FROM audit_logs
+            WHERE actor_username = %s OR target_id = %s
+            UNION ALL
+            SELECT 'loan_event', event_type, actor_username, created_at,
+                   loan_id, COALESCE(details, '')
+            FROM loan_events
+            WHERE actor_username = %s
+            UNION ALL
+            SELECT 'verification', status, username, submitted_at,
+                   CAST(id AS TEXT), COALESCE(public_note, '')
+            FROM verification_applications
+            WHERE username = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (username, username, username, username, limit))
+        rows = cur.fetchall()
+        cols = ["source", "event_type", "actor", "created_at", "ref", "detail"]
+        result = [dict(zip(cols, r)) for r in rows]
+        for ev in result:
+            if ev["created_at"]:
+                ev["created_at"] = ev["created_at"].isoformat()
+        return result, None
+    except Exception as e:
+        logger.error(f"get_user_activity_timeline error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Beta analytics
+# ---------------------------------------------------------------------------
+
+def log_analytics_event(username: str, event_type: str, page: str = None,
+                         metadata: dict = None):
+    """
+    Log a lightweight operational analytics event.
+    Silently swallows errors so analytics never breaks user flows.
+    """
+    import json as _json
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO analytics_events (username, event_type, page, metadata)
+            VALUES (%s, %s, %s, %s)
+        """, (username, event_type, page,
+              _json.dumps(metadata) if metadata else None))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"log_analytics_event swallowed: {e}")
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+
+def get_analytics_summary(days: int = 30):
+    """
+    Return operational analytics summary for the admin dashboard.
+    Returns (summary_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT event_type, COUNT(*) AS cnt
+            FROM analytics_events
+            WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
+            GROUP BY event_type
+            ORDER BY cnt DESC
+        """, (str(days),))
+        by_type = {r[0]: r[1] for r in cur.fetchall()}
+
+        cur.execute("""
+            SELECT page, COUNT(*) AS cnt
+            FROM analytics_events
+            WHERE event_type = 'page_view'
+              AND created_at >= NOW() - (%s || ' days')::INTERVAL
+              AND page IS NOT NULL
+            GROUP BY page
+            ORDER BY cnt DESC
+            LIMIT 10
+        """, (str(days),))
+        top_pages = [{"page": r[0], "views": r[1]} for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT username)
+            FROM analytics_events
+            WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
+              AND username IS NOT NULL
+        """, (str(days),))
+        unique_users = cur.fetchone()[0]
+
+        return {
+            "period_days": days,
+            "by_event_type": by_type,
+            "top_pages": top_pages,
+            "unique_active_users": unique_users,
+        }, None
+    except Exception as e:
+        logger.error(f"get_analytics_summary error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# SPRINT 10 — MOD QUEUE, COMMUNITY HEALTH, ANNOUNCEMENTS, INVESTIGATION TOOLS
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Moderator work queue
+# ---------------------------------------------------------------------------
+
+def get_mod_queue():
+    """
+    Return a unified queue of items needing moderator attention:
+    pending verifications, disputed loans, and open feedback.
+    Returns (queue_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT id, username, requested_role, public_note, submitted_at
+            FROM verification_applications
+            WHERE status = 'pending'
+            ORDER BY submitted_at ASC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+        verif_cols = ["id", "username", "requested_role", "public_note", "submitted_at"]
+        verifications = [dict(zip(verif_cols, r)) for r in rows]
+        for v in verifications:
+            if v["submitted_at"]:
+                v["submitted_at"] = v["submitted_at"].isoformat()
+
+        cur.execute("""
+            SELECT loan_id, lender, borrower, amount, currency, date_created
+            FROM loans
+            WHERE status = 'disputed'
+            ORDER BY date_created ASC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+        dispute_cols = ["loan_id", "lender", "borrower", "amount", "currency", "date_created"]
+        disputes = [dict(zip(dispute_cols, r)) for r in rows]
+        for d in disputes:
+            if d["date_created"]:
+                d["date_created"] = d["date_created"].isoformat()
+            d["amount"] = str(d["amount"])
+
+        cur.execute("""
+            SELECT id, username, category, title, created_at
+            FROM feedback_submissions
+            WHERE status = 'open'
+            ORDER BY created_at ASC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+        fb_cols = ["id", "username", "category", "title", "created_at"]
+        feedback = [dict(zip(fb_cols, r)) for r in rows]
+        for f in feedback:
+            if f["created_at"]:
+                f["created_at"] = f["created_at"].isoformat()
+
+        return {
+            "verifications": verifications,
+            "disputes": disputes,
+            "feedback": feedback,
+            "totals": {
+                "verifications": len(verifications),
+                "disputes": len(disputes),
+                "feedback": len(feedback),
+                "total": len(verifications) + len(disputes) + len(feedback),
+            },
+        }, None
+    except Exception as e:
+        logger.error(f"get_mod_queue error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Community health dashboard
+# ---------------------------------------------------------------------------
+
+def get_community_health(period_days: int = 30):
+    """
+    Time-windowed platform health metrics for the community dashboard.
+    Returns (health_dict, error).
+    """
+    if period_days not in (7, 30, 90):
+        period_days = 30
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        interval = f"{period_days} days"
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE date_created >= NOW() - %s::INTERVAL) AS new_loans,
+                COUNT(*) FILTER (WHERE status = 'repaid'
+                    AND last_updated >= NOW() - %s::INTERVAL)                AS repaid_loans,
+                COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
+                COUNT(*) FILTER (WHERE status = 'disputed')                  AS disputes,
+                COUNT(*) FILTER (WHERE status = 'unpaid'
+                    AND last_updated >= NOW() - %s::INTERVAL)                AS new_unpaid
+            FROM loans
+        """, (interval, interval, interval))
+        loan_row = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*) FROM verification_applications
+            WHERE submitted_at >= NOW() - %s::INTERVAL
+        """, (interval,))
+        verif_requests = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM verification_applications
+            WHERE status = 'approved' AND reviewed_at >= NOW() - %s::INTERVAL
+        """, (interval,))
+        verif_approvals = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT username) FROM user_roles
+            WHERE last_login >= NOW() - %s::INTERVAL
+        """, (interval,))
+        active_users = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM feedback_submissions
+            WHERE created_at >= NOW() - %s::INTERVAL
+        """, (interval,))
+        feedback_count = cur.fetchone()[0]
+
+        return {
+            "period_days": period_days,
+            "loans": {
+                "new":        loan_row[0],
+                "repaid":     loan_row[1],
+                "active":     loan_row[2],
+                "disputes":   loan_row[3],
+                "new_unpaid": loan_row[4],
+            },
+            "verifications": {
+                "requests":  verif_requests,
+                "approvals": verif_approvals,
+            },
+            "users": {
+                "active": active_users,
+            },
+            "feedback": {
+                "submitted": feedback_count,
+            },
+        }, None
+    except Exception as e:
+        logger.error(f"get_community_health error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Lender management
+# ---------------------------------------------------------------------------
+
+def get_lender_management_list(q: str = None, verified_filter: str = None,
+                                limit: int = 100, offset: int = 0):
+    """
+    Return lenders with activity data for the management dashboard.
+    Returns (list, total, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        conditions = ["role = 'lender'"]
+        params = []
+        if q:
+            conditions.append("(username ILIKE %s OR reddit_username ILIKE %s)")
+            params.extend([f"%{q}%", f"%{q}%"])
+        if verified_filter == "verified":
+            conditions.append("verified_lender = TRUE")
+        elif verified_filter == "unverified":
+            conditions.append("verified_lender = FALSE")
+        where = "WHERE " + " AND ".join(conditions)
+
+        cur.execute(f"SELECT COUNT(*) FROM user_roles {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT ur.username, ur.verified_lender, ur.verified_lender_at,
+                   ur.last_login, ur.created_at, ur.reddit_username,
+                   COUNT(l.loan_id) AS loan_count,
+                   COUNT(l.loan_id) FILTER (WHERE l.status IN ('confirmed','partially_repaid')) AS active_loans,
+                   COUNT(l.loan_id) FILTER (WHERE l.status = 'unpaid') AS unpaid_loans
+            FROM user_roles ur
+            LEFT JOIN loans l ON l.lender = ur.username
+            {where}
+            GROUP BY ur.username, ur.verified_lender, ur.verified_lender_at,
+                     ur.last_login, ur.created_at, ur.reddit_username
+            ORDER BY ur.last_login DESC NULLS LAST
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        rows = cur.fetchall()
+        cols = ["username", "verified_lender", "verified_lender_at", "last_login",
+                "created_at", "reddit_username", "loan_count", "active_loans", "unpaid_loans"]
+        result = [dict(zip(cols, r)) for r in rows]
+        for item in result:
+            for k in ("verified_lender_at", "last_login", "created_at"):
+                if item[k]:
+                    item[k] = item[k].isoformat()
+        return result, total, None
+    except Exception as e:
+        logger.error(f"get_lender_management_list error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Borrower activity
+# ---------------------------------------------------------------------------
+
+def get_borrower_activity_list(q: str = None, has_disputes: bool = False,
+                                limit: int = 100, offset: int = 0):
+    """
+    Return borrowers with activity summary for the borrower dashboard.
+    Returns (list, total, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        conditions = []
+        params = []
+        if q:
+            conditions.append("(u.username ILIKE %s)")
+            params.append(f"%{q}%")
+        if has_disputes:
+            conditions.append("u.unpaid_loans > 0")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        cur.execute(f"SELECT COUNT(*) FROM users u {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT u.username, u.loans_as_borrower, u.amount_borrowed,
+                   u.amount_repaid, u.unpaid_loans, u.unpaid_amount,
+                   ur.last_login, ur.verified_lender,
+                   COUNT(l.loan_id) FILTER (WHERE l.status = 'disputed') AS disputed_count
+            FROM users u
+            LEFT JOIN user_roles ur ON ur.username = u.username
+            LEFT JOIN loans l ON l.borrower = u.username
+            {where}
+            GROUP BY u.username, u.loans_as_borrower, u.amount_borrowed,
+                     u.amount_repaid, u.unpaid_loans, u.unpaid_amount,
+                     ur.last_login, ur.verified_lender
+            ORDER BY u.loans_as_borrower DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        rows = cur.fetchall()
+        cols = ["username", "loans_as_borrower", "amount_borrowed", "amount_repaid",
+                "unpaid_loans", "unpaid_amount", "last_login", "verified_lender",
+                "disputed_count"]
+        result = [dict(zip(cols, r)) for r in rows]
+        for item in result:
+            if item["last_login"]:
+                item["last_login"] = item["last_login"].isoformat()
+            for k in ("amount_borrowed", "amount_repaid", "unpaid_amount"):
+                if item[k] is not None:
+                    item[k] = str(item[k])
+        return result, total, None
+    except Exception as e:
+        logger.error(f"get_borrower_activity_list error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+def create_announcement(title: str, body: str, author: str,
+                         pinned: bool = False, expires_at=None):
+    """Create a platform announcement. Returns (announcement_id, error)."""
+    title = title.strip()[:200]
+    body  = body.strip()[:2000]
+    if not title:
+        return None, "Title is required"
+    if not body:
+        return None, "Body is required"
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO announcements (title, body, author, pinned, expires_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        """, (title, body, author, pinned, expires_at))
+        aid = cur.fetchone()[0]
+        conn.commit()
+        return aid, None
+    except Exception as e:
+        logger.error(f"create_announcement error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_announcements(active_only: bool = True, limit: int = 20):
+    """Return platform announcements. Returns (list, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        cur = conn.cursor()
+        where = "WHERE active = TRUE AND (expires_at IS NULL OR expires_at > NOW())" \
+                if active_only else ""
+        cur.execute(f"""
+            SELECT id, title, body, author, pinned, active, expires_at, created_at
+            FROM announcements {where}
+            ORDER BY pinned DESC, created_at DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cols = ["id", "title", "body", "author", "pinned", "active", "expires_at", "created_at"]
+        result = [dict(zip(cols, r)) for r in rows]
+        for item in result:
+            for k in ("expires_at", "created_at"):
+                if item[k]:
+                    item[k] = item[k].isoformat()
+        return result, None
+    except Exception as e:
+        logger.error(f"get_announcements error: {e}", exc_info=True)
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def deactivate_announcement(announcement_id: int, actor: str):
+    """Deactivate (soft-delete) an announcement. Returns (success, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE announcements SET active = FALSE, updated_at = NOW()
+            WHERE id = %s
+        """, (announcement_id,))
+        if cur.rowcount == 0:
+            return False, "Announcement not found"
+        conn.commit()
+        return True, None
+    except Exception as e:
+        logger.error(f"deactivate_announcement error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Audit investigation summary
+# ---------------------------------------------------------------------------
+
+def get_audit_investigation_summary(username: str):
+    """
+    Return a complete investigation bundle for a user:
+    their loans (as lender and borrower), verification history,
+    recent audit actions, and basic user record.
+    Returns (summary_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT username, role, verified_lender, verified_lender_at,
+                   last_login, created_at, reddit_username
+            FROM user_roles WHERE username = %s
+        """, (username,))
+        row = cur.fetchone()
+        user_record = None
+        if row:
+            cols = ["username", "role", "verified_lender", "verified_lender_at",
+                    "last_login", "created_at", "reddit_username"]
+            user_record = dict(zip(cols, row))
+            for k in ("verified_lender_at", "last_login", "created_at"):
+                if user_record[k]:
+                    user_record[k] = user_record[k].isoformat()
+
+        cur.execute("""
+            SELECT loan_id, borrower, amount, currency, status, date_created
+            FROM loans WHERE lender = %s
+            ORDER BY date_created DESC LIMIT 20
+        """, (username,))
+        lender_loans = [dict(zip(
+            ["loan_id", "borrower", "amount", "currency", "status", "date_created"], r
+        )) for r in cur.fetchall()]
+        for l in lender_loans:
+            l["amount"] = str(l["amount"])
+            if l["date_created"]: l["date_created"] = l["date_created"].isoformat()
+
+        cur.execute("""
+            SELECT loan_id, lender, amount, currency, status, date_created
+            FROM loans WHERE borrower = %s
+            ORDER BY date_created DESC LIMIT 20
+        """, (username,))
+        borrower_loans = [dict(zip(
+            ["loan_id", "lender", "amount", "currency", "status", "date_created"], r
+        )) for r in cur.fetchall()]
+        for l in borrower_loans:
+            l["amount"] = str(l["amount"])
+            if l["date_created"]: l["date_created"] = l["date_created"].isoformat()
+
+        cur.execute("""
+            SELECT id, status, public_note, review_note, reviewer,
+                   submitted_at, reviewed_at
+            FROM verification_applications WHERE username = %s
+            ORDER BY submitted_at DESC
+        """, (username,))
+        verif_cols = ["id", "status", "public_note", "review_note", "reviewer",
+                      "submitted_at", "reviewed_at"]
+        verifications = [dict(zip(verif_cols, r)) for r in cur.fetchall()]
+        for v in verifications:
+            for k in ("submitted_at", "reviewed_at"):
+                if v[k]: v[k] = v[k].isoformat()
+
+        cur.execute("""
+            SELECT action_type, actor_username, target_id, created_at
+            FROM audit_logs
+            WHERE actor_username = %s OR target_id = %s
+            ORDER BY created_at DESC LIMIT 30
+        """, (username, username))
+        audit_cols = ["action_type", "actor", "target_id", "created_at"]
+        audit_actions = [dict(zip(audit_cols, r)) for r in cur.fetchall()]
+        for a in audit_actions:
+            if a["created_at"]: a["created_at"] = a["created_at"].isoformat()
+
+        return {
+            "username": username,
+            "user_record": user_record,
+            "lender_loans": lender_loans,
+            "borrower_loans": borrower_loans,
+            "verifications": verifications,
+            "audit_actions": audit_actions,
+        }, None
+    except Exception as e:
+        logger.error(f"get_audit_investigation_summary error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()

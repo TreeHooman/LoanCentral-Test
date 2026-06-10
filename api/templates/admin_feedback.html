@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Feedback Dashboard — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Feedback Dashboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Review and manage user feedback submissions</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="toolbar" style="margin-bottom:16px">
+  <div class="tabs" id="statusTabs">
+    <button class="tab active" onclick="setFilter('status','')">All</button>
+    <button class="tab" onclick="setFilter('status','open')">Open</button>
+    <button class="tab" onclick="setFilter('status','reviewed')">Reviewed</button>
+    <button class="tab" onclick="setFilter('status','completed')">Completed</button>
+    <button class="tab" onclick="setFilter('status','duplicate')">Duplicate</button>
+  </div>
+  <select id="catFilter" onchange="setFilter('category', this.value)"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+    <option value="">All Categories</option>
+    <option value="bug">Bug</option>
+    <option value="suggestion">Suggestion</option>
+    <option value="feature_request">Feature Request</option>
+  </select>
+</div>
+
+<!-- Table -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>User</th>
+        <th>Category</th>
+        <th>Title</th>
+        <th>Status</th>
+        <th>Submitted</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="fbBody">
+      <tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+<div id="fbPager" style="display:flex;gap:8px;margin-top:12px;align-items:center;font-size:13px;color:var(--muted)"></div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="width:500px">
+    <h3>Feedback #<span id="dmId"></span></h3>
+    <div style="margin-bottom:10px">
+      <span id="dmCatBadge" class="badge"></span>
+      <span id="dmStatusBadge" class="badge" style="margin-left:6px"></span>
+      <span style="font-size:12px;color:var(--muted);margin-left:8px">u/<span id="dmUser"></span> · <span id="dmDate"></span></span>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px" id="dmTitle"></div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.5;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:14px" id="dmDesc"></div>
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Update Status</label>
+    <select id="dmStatus" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;outline:none">
+      <option value="open">Open</option>
+      <option value="reviewed">Reviewed</option>
+      <option value="completed">Completed</option>
+      <option value="duplicate">Duplicate</option>
+    </select>
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Reviewer Note <span style="opacity:.6">(optional)</span></label>
+    <textarea id="dmNote" rows="2" placeholder="Internal note visible to the submitter…"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit;margin-bottom:12px"></textarea>
+    <div id="dmError" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('detailModal')">Cancel</button>
+      <button class="btn-confirm" onclick="saveStatus()">Save</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _filters = { status: '', category: '' };
+let _page    = 0;
+const PAGE   = 50;
+let _currentId = null;
+
+function setFilter(key, val) {
+  _filters[key] = val;
+  _page = 0;
+  if (key === 'status') {
+    document.querySelectorAll('#statusTabs .tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+  loadFeedback();
+}
+
+async function loadFeedback() {
+  const params = new URLSearchParams({ limit: PAGE, offset: _page * PAGE });
+  if (_filters.status)   params.set('status',   _filters.status);
+  if (_filters.category) params.set('category', _filters.category);
+  const res  = await fetch('/api/admin/feedback?' + params, { credentials: 'same-origin' });
+  const data = await res.json();
+  renderTable(data.feedback || [], data.total || 0);
+}
+
+const CAT_LABELS = { bug: 'Bug', suggestion: 'Suggestion', feature_request: 'Feature Request' };
+const ST_LABELS  = { open: 'Open', reviewed: 'Reviewed', completed: 'Completed', duplicate: 'Duplicate' };
+
+function renderTable(rows, total) {
+  const tbody = document.getElementById('fbBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="table-placeholder">
+      <div class="empty-state"><h3>No feedback found</h3>
+      <p style="margin-top:6px;font-size:13px">No submissions match the current filters.</p></div>
+    </td></tr>`;
+    document.getElementById('fbPager').innerHTML = '';
+    return;
+  }
+  tbody.innerHTML = rows.map(f => `
+    <tr>
+      <td style="font-size:12px;color:var(--muted)">${f.id}</td>
+      <td class="username"><a href="/audit/user/${escapeHtml(f.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(f.username)}</a></td>
+      <td><span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</td>
+      <td><span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span></td>
+      <td class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '—'}</td>
+      <td><button class="btn-action btn-extension" onclick='openDetail(${JSON.stringify(f)})'>Review</button></td>
+    </tr>`).join('');
+
+  const shown  = _page * PAGE + rows.length;
+  const pager  = document.getElementById('fbPager');
+  pager.innerHTML = `Showing ${shown} of ${total}`;
+  if (_page > 0) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="prevPage()">← Prev</button>`;
+  }
+  if (shown < total) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="nextPage()">Next →</button>`;
+  }
+}
+
+function prevPage() { _page = Math.max(0, _page - 1); loadFeedback(); }
+function nextPage() { _page++; loadFeedback(); }
+
+function openDetail(f) {
+  _currentId = f.id;
+  document.getElementById('dmId').textContent   = f.id;
+  document.getElementById('dmUser').textContent = f.username;
+  document.getElementById('dmDate').textContent = f.created_at ? f.created_at.slice(0,10) : '—';
+  document.getElementById('dmTitle').textContent = f.title;
+  document.getElementById('dmDesc').textContent  = f.description;
+  document.getElementById('dmStatus').value      = f.status;
+  document.getElementById('dmNote').value        = f.reviewer_note || '';
+  document.getElementById('dmError').style.display = 'none';
+  const catBadge = document.getElementById('dmCatBadge');
+  catBadge.className = `badge badge-fb-${f.category}`;
+  catBadge.textContent = CAT_LABELS[f.category] || f.category;
+  const stBadge = document.getElementById('dmStatusBadge');
+  stBadge.className = `badge badge-fbstatus-${f.status}`;
+  stBadge.textContent = ST_LABELS[f.status] || f.status;
+  document.getElementById('detailModal').classList.add('open');
+}
+
+async function saveStatus() {
+  const status = document.getElementById('dmStatus').value;
+  const note   = document.getElementById('dmNote').value.trim();
+  const errEl  = document.getElementById('dmError');
+  try {
+    const res = await fetch(`/api/admin/feedback/${_currentId}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, reviewer_note: note })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Update failed');
+    closeModal('detailModal');
+    toast('Feedback updated.', 'success');
+    loadFeedback();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadFeedback);
+</script>
+{% endblock %}

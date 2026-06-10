@@ -210,3 +210,60 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_username ON notifications(username);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(username, read);
+
+-- Sprint 8: User notification preferences
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    username TEXT PRIMARY KEY,
+    due_date_reminders BOOLEAN NOT NULL DEFAULT TRUE,
+    status_updates BOOLEAN NOT NULL DEFAULT TRUE,
+    verification_updates BOOLEAN NOT NULL DEFAULT TRUE,
+    dispute_updates BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Sprint 8: User feedback submissions (bugs, suggestions, feature requests)
+CREATE TABLE IF NOT EXISTS feedback_submissions (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    category TEXT NOT NULL,          -- 'bug', 'suggestion', 'feature_request'
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',  -- 'open', 'reviewed', 'completed', 'duplicate'
+    reviewed_by TEXT,
+    reviewer_note TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_username ON feedback_submissions(username);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback_submissions(status);
+CREATE INDEX IF NOT EXISTS idx_feedback_category ON feedback_submissions(category);
+
+-- Sprint 8: Lightweight operational analytics
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id SERIAL PRIMARY KEY,
+    username TEXT,
+    event_type TEXT NOT NULL,   -- 'page_view', 'search', 'verification_submit', 'feedback_submit'
+    page TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_type ON analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_created_at ON analytics_events(created_at);
+
+-- Sprint 10: Internal announcements / platform notices
+CREATE TABLE IF NOT EXISTS announcements (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    author TEXT NOT NULL,
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(active);
+CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);

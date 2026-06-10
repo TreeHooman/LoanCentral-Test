@@ -83,7 +83,7 @@ function renderResults(data, q) {
   const verifs  = results.verifications || [];
 
   if (!loans.length && !users.length && !verifs.length) {
-    wrap.innerHTML = '<div class="table-placeholder">No results found.</div>';
+    wrap.innerHTML = `<div class="empty-state"><h3>No results found</h3><p style="margin-top:6px;font-size:13px">Try a different loan ID, username, or REQ-ID. Searches are case-insensitive.</p></div>`;
     document.getElementById('search-pagination').innerHTML = '';
     return;
   }

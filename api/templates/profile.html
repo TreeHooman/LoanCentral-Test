@@ -56,6 +56,21 @@
     <tbody id="profileLoans"><tr><td colspan="13" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
+
+{% if profile_username == username %}
+<!-- Notification Preferences (own profile only) -->
+<div class="section-header" style="margin-top:28px;margin-bottom:12px">
+  <span class="section-title">Notification Preferences</span>
+</div>
+<div class="panel" style="max-width:480px">
+  <p class="panel-copy" style="margin-bottom:14px">Control which in-app notifications you receive.</p>
+  <div id="prefSaved" style="display:none;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:12px">Preferences saved.</div>
+  <div style="display:grid;gap:10px" id="prefGrid">
+    <div style="color:var(--muted);font-size:13px">Loading…</div>
+  </div>
+  <button class="btn-primary" style="margin-top:14px" onclick="savePrefs()">Save Preferences</button>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -246,5 +261,54 @@
     return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
   function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
+
+  // ---- Notification Preferences (own profile only) ----
+  const PREF_LABELS = {
+    due_date_reminders:   'Due date reminders',
+    status_updates:       'Loan status updates',
+    verification_updates: 'Verification status updates',
+    dispute_updates:      'Dispute notifications',
+  };
+
+  async function loadPrefs() {
+    const grid = document.getElementById('prefGrid');
+    if (!grid) return;
+    try {
+      const res = await fetch('/api/notifications/preferences', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Failed to load');
+      const prefs = await res.json();
+      grid.innerHTML = Object.entries(PREF_LABELS).map(([key, label]) => `
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--text2)">
+          <input type="checkbox" id="pref_${key}" ${prefs[key] !== false ? 'checked' : ''}
+            style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" />
+          ${label}
+        </label>`).join('');
+    } catch(e) {
+      grid.innerHTML = `<div style="color:var(--red);font-size:13px">${e.message}</div>`;
+    }
+  }
+
+  async function savePrefs() {
+    const body = {};
+    for (const key of Object.keys(PREF_LABELS)) {
+      const el = document.getElementById('pref_' + key);
+      if (el) body[key] = el.checked;
+    }
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      const saved = document.getElementById('prefSaved');
+      if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('prefGrid')) loadPrefs();
+  });
 </script>
 {% endblock %}

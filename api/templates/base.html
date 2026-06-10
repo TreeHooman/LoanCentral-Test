@@ -69,7 +69,8 @@
     .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
     .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
     .panel-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(min(320px, 100%), .8fr); gap: 16px; margin-bottom: 22px; }
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+    .panel, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+    .search-input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; font-family: inherit; }
     .panel-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
     .panel-copy { color: var(--muted); font-size: 13px; line-height: 1.45; }
     .mini-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -170,6 +171,16 @@
     /* NOTIFICATION BADGE */
     .nav-badge { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 4px; vertical-align: middle; }
 
+    /* FEEDBACK CATEGORY & STATUS BADGES */
+    .badge-fb-bug             { background: rgba(231,76,60,0.15);  color: var(--red); }
+    .badge-fb-suggestion      { background: rgba(91,110,245,0.18); color: var(--accent-h); }
+    .badge-fb-feature_request { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-fb-other           { background: rgba(136,145,170,0.15); color: var(--muted); }
+    .badge-fbstatus-open      { background: rgba(91,110,245,0.18); color: var(--accent-h); }
+    .badge-fbstatus-reviewed  { background: rgba(241,196,15,0.15);  color: var(--yellow); }
+    .badge-fbstatus-completed { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-fbstatus-duplicate { background: rgba(136,145,170,0.15); color: var(--muted); }
+
     /* NOTES & ATTACHMENTS */
     .notes-preview { font-size: 11px; color: var(--muted); font-style: italic; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     .notes-preview:hover { color: var(--accent-h); }
@@ -202,36 +213,56 @@
         flex-wrap: wrap;
       }
       .nav-brand { font-size: 16px; line-height: 30px; flex: 0 0 auto; min-height: 34px; }
-      .nav-links { order: 3; width: 100%; overflow-x: auto; padding-top: 2px; }
-      .nav-link { display: inline-flex; align-items: center; min-height: 36px; }
-      .nav-right { gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
-      .nav-user { max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .role-badge { padding: 3px 7px; }
+      .nav-links { order: 3; width: 100%; overflow-x: auto; padding-top: 2px; scrollbar-width: none; }
+      .nav-links::-webkit-scrollbar { display: none; }
+      .nav-link { display: inline-flex; align-items: center; min-height: 36px; white-space: nowrap; }
+      .nav-right { gap: 6px; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
+      .nav-user { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+      .role-badge { padding: 3px 6px; font-size: 10px; }
       .btn-logout { padding: 6px 9px; min-height: 34px; display: inline-flex; align-items: center; }
+      /* Notification panel: prevent overflow on narrow screens */
+      #notif-panel { width: min(320px, calc(100vw - 20px)) !important; right: 0 !important; }
       main { padding: 14px 10px 20px; }
       main > * { max-width: 100%; }
+      /* Announcement banner matches main padding */
+      #announcementBanner { margin: 10px 10px 0 !important; }
       footer { padding: 0 12px 18px; }
       .session-warning { margin: 10px 10px 0; font-size: 12px; }
+
+      /* SECTION HEADER — flex column on mobile, buttons wrap as rows */
       .section-header {
         align-items: flex-start;
         gap: 8px;
         flex-direction: column;
         margin-bottom: 12px !important;
       }
-      .section-header > div:last-child {
+      /* Button container inside section-header: flex-wrap so 2 per row */
+      .section-header > div:last-child,
+      .section-header > a:last-child {
         width: 100%;
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: flex !important;
+        flex-wrap: wrap;
         gap: 8px;
         min-width: 0;
       }
       .section-header .btn-secondary,
-      .section-header .btn-primary { width: 100%; min-height: 38px; justify-content: center; text-align: center; padding-left: 8px; padding-right: 8px; }
-      .section-header > div:last-child .tabs,
-      .section-header > div:last-child .search-wrap {
-        grid-column: 1 / -1;
+      .section-header .btn-primary {
+        flex: 1 1 calc(50% - 4px);
+        min-height: 38px;
+        justify-content: center;
+        text-align: center;
+        padding-left: 8px;
+        padding-right: 8px;
+        box-sizing: border-box;
       }
+      /* Single button takes full width */
+      .section-header > div:last-child > *:only-child,
+      .section-header > a:last-child:first-of-type:last-of-type {
+        flex: 1 1 100%;
+      }
+      .section-header .search-wrap { flex: 1 1 100%; }
       .section-header .search-wrap input { min-width: 0 !important; }
+
       .panel-grid { gap: 10px; margin-bottom: 12px; }
       .panel { padding: 12px; }
       .panel-title { font-size: 14px; }
@@ -273,17 +304,10 @@
         gap: 6px;
         padding-bottom: 2px;
         scrollbar-width: none;
+        overflow-x: auto;
+        flex-wrap: nowrap;
       }
       .tabs::-webkit-scrollbar { display: none; }
-      .section-header > .tabs {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        width: 100%;
-        overflow: visible;
-      }
-      .section-header > .tabs .tab {
-        width: 100%;
-      }
       .tab {
         flex: 0 0 auto;
         padding: 8px 12px;
@@ -303,12 +327,24 @@
       }
       .search-wrap { min-width: 0; }
       .search-wrap input { min-height: 40px; font-size: 16px; }
-      .table-wrap {
+      /* Prevent iOS auto-zoom on any focused input/select/textarea */
+      input, select, textarea { font-size: 16px !important; }
+      /* Keep small display text small where it doesn't take input focus */
+      .badge, .stat-label, .mini-label, .date-cell, .loan-id { font-size: inherit !important; }
+
+      /* table-wrap: strip container only for mobile-card tables;
+         regular admin tables keep the box and scroll horizontally */
+      .table-wrap:has(table.mobile-cards) {
         background: transparent;
         border: 0;
         overflow: visible;
         border-radius: 0;
       }
+      .table-wrap:not(:has(table.mobile-cards)) {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
       table.mobile-cards,
       table.mobile-cards thead,
       table.mobile-cards tbody,
@@ -616,6 +652,9 @@
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
       <a class="nav-link {% if request.endpoint == 'global_search_page' %}active{% endif %}" href="{{ url_for('global_search_page') }}">Search</a>
       <a class="nav-link {% if request.endpoint == 'audit_log_page' %}active{% endif %}" href="{{ url_for('audit_log_page') }}">Audit Log</a>
+      <a class="nav-link {% if request.endpoint == 'mod_queue_page' %}active{% endif %}" href="{{ url_for('mod_queue_page') }}">Queue</a>
+      <a class="nav-link {% if request.endpoint == 'community_health_page' %}active{% endif %}" href="{{ url_for('community_health_page') }}">Health</a>
+      <a class="nav-link {% if request.endpoint == 'admin_feedback_page' %}active{% endif %}" href="{{ url_for('admin_feedback_page') }}">Feedback</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
   </div>
@@ -640,6 +679,7 @@
         </div>
       </div>
     </div>
+    <a class="nav-link {% if request.endpoint == 'feedback_page' %}active{% endif %}" href="{{ url_for('feedback_page') }}" style="font-size:12px">Feedback</a>
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>
 </nav>
@@ -655,6 +695,9 @@
 {% endwith %}
 
 <div id="sessionWarning" class="session-warning"></div>
+
+<!-- Announcements banner (loaded async, dismissed per-id via localStorage) -->
+<div id="announcementBanner" style="display:none;margin:10px 24px 0"></div>
 
 <main>{% block content %}{% endblock %}</main>
 <footer>
@@ -1321,6 +1364,41 @@
   }
 </script>
 {% block scripts %}{% endblock %}
+<script>
+// Announcements banner
+(async function loadAnnouncements() {
+  try {
+    const res  = await fetch('/api/announcements', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const items = (data.announcements || []).filter(a => {
+      return !localStorage.getItem('lc_ann_dismissed_' + a.id);
+    });
+    if (!items.length) return;
+    const wrap = document.getElementById('announcementBanner');
+    if (!wrap) return;
+    wrap.style.display = 'block';
+    wrap.innerHTML = items.map(a => `
+      <div id="ann-${a.id}" style="display:flex;align-items:flex-start;gap:10px;background:rgba(91,110,245,0.09);border:1px solid rgba(91,110,245,0.25);border-radius:8px;padding:10px 14px;margin-bottom:8px">
+        ${a.pinned ? '<span style="font-size:14px;flex-shrink:0">📌</span>' : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${escapeHtml(a.title)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px;line-height:1.45">${escapeHtml(a.body)}</div>
+        </div>
+        <button onclick="dismissAnnouncement(${a.id})" title="Dismiss"
+          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;flex-shrink:0;line-height:1;padding:2px 4px">×</button>
+      </div>`).join('');
+  } catch(e) {}
+})();
+
+function dismissAnnouncement(id) {
+  localStorage.setItem('lc_ann_dismissed_' + id, '1');
+  const el = document.getElementById('ann-' + id);
+  if (el) el.remove();
+  const wrap = document.getElementById('announcementBanner');
+  if (wrap && !wrap.children.length) wrap.style.display = 'none';
+}
+</script>
 <script>
 // Notification bell
 let _notifOpen = false;

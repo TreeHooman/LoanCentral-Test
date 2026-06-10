@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Mod Queue — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Moderation Queue</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">All items needing moderator attention in one place</div>
+  </div>
+  <button class="btn-secondary" onclick="loadQueue()">↻ Refresh</button>
+</div>
+
+<!-- Summary badges -->
+<div class="stats-grid" id="queueStats" style="margin-bottom:20px">
+  <div class="stat-card"><div class="stat-label">Verifications</div><div class="stat-value c-yellow" id="qs-verif">—</div></div>
+  <div class="stat-card"><div class="stat-label">Disputes</div><div class="stat-value c-red" id="qs-disputes">—</div></div>
+  <div class="stat-card"><div class="stat-label">Open Feedback</div><div class="stat-value c-accent" id="qs-feedback">—</div></div>
+  <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="qs-total">—</div></div>
+</div>
+
+<!-- Section tabs -->
+<div class="tabs" style="margin-bottom:16px">
+  <button class="tab active" onclick="switchSection('verifications', this)">Verifications</button>
+  <button class="tab" onclick="switchSection('disputes', this)">Disputes</button>
+  <button class="tab" onclick="switchSection('feedback', this)">Feedback</button>
+</div>
+
+<!-- Verifications -->
+<div id="section-verifications">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Role Requested</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody id="verifBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Disputes -->
+<div id="section-disputes" style="display:none">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody id="disputeBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Feedback -->
+<div id="section-feedback" style="display:none">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>User</th><th>Category</th><th>Title</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody id="feedbackBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Verification quick-review modal (with templates) -->
+<div class="modal-overlay" id="verifModal">
+  <div class="modal" style="width:520px">
+    <h3>Review Verification — u/<span id="vmUser"></span></h3>
+    <input type="hidden" id="vmId" />
+    <div style="margin-bottom:10px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Public Note from applicant</div>
+      <div id="vmNote" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--text2);min-height:40px;line-height:1.5"></div>
+    </div>
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Decision</label>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn-action btn-paid" data-decision="approved" style="flex:1;padding:8px;min-height:36px" onclick="setVerifDecision('approved')">Approve</button>
+      <button class="btn-action btn-unpaid" data-decision="denied" style="flex:1;padding:8px;min-height:36px" onclick="setVerifDecision('denied')">Deny</button>
+    </div>
+    <input type="hidden" id="vmDecision" />
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Review Note</label>
+    <textarea id="vmReviewNote" rows="3"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit;margin-bottom:8px"
+      placeholder="Reason for decision (visible to applicant)…"></textarea>
+    <!-- Quick templates -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600">QUICK TEMPLATES</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="verifTemplates"></div>
+    </div>
+    <div id="vmError" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('verifModal')">Cancel</button>
+      <button class="btn-confirm" onclick="submitVerifDecision()">Submit Decision</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VERIF_TEMPLATES = {
+  approved: [
+    { label: "Standard Approval",   text: "Verification approved. Welcome to the verified lender program." },
+    { label: "With Note",           text: "Verification approved. Please review the lender guidelines if you haven't already." },
+  ],
+  denied: [
+    { label: "Insufficient History", text: "Verification denied: insufficient lending history on record. You may reapply after additional activity." },
+    { label: "Missing Evidence",     text: "Verification denied: required documentation not provided. Please reapply with supporting evidence." },
+    { label: "Policy",               text: "Verification denied at this time. Please review the verification requirements and reapply." },
+  ],
+  more_info: [
+    { label: "More Info Needed",     text: "Your application is under review. Could you provide additional information about your lending history?" },
+  ],
+};
+
+let _queueData = null;
+
+async function loadQueue() {
+  const res  = await fetch('/api/mod/queue', { credentials: 'same-origin' });
+  const data = await res.json();
+  _queueData = data;
+
+  document.getElementById('qs-verif').textContent    = data.totals?.verifications ?? 0;
+  document.getElementById('qs-disputes').textContent  = data.totals?.disputes     ?? 0;
+  document.getElementById('qs-feedback').textContent  = data.totals?.feedback     ?? 0;
+  document.getElementById('qs-total').textContent     = data.totals?.total        ?? 0;
+
+  renderVerifications(data.verifications || []);
+  renderDisputes(data.disputes || []);
+  renderFeedback(data.feedback || []);
+}
+
+function renderVerifications(rows) {
+  const tbody = document.getElementById('verifBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><h3>No pending verifications</h3><p style="font-size:13px;margin-top:6px">All verification applications are resolved.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(v => `
+    <tr>
+      <td class="username"><a href="/audit/user/${escapeHtml(v.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(v.username)}</a></td>
+      <td style="font-size:12px">${escapeHtml(v.requested_role)}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.public_note || '—')}</td>
+      <td class="date-cell">${v.submitted_at ? v.submitted_at.slice(0,10) : '—'}</td>
+      <td><button class="btn-action btn-extension" onclick='openVerifModal(${JSON.stringify(v)})'>Review</button></td>
+    </tr>`).join('');
+}
+
+function renderDisputes(rows) {
+  const tbody = document.getElementById('disputeBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><h3>No active disputes</h3><p style="font-size:13px;margin-top:6px">No loans are currently in disputed status.</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(d => `
+    <tr>
+      <td><span class="loan-id">${escapeHtml(d.loan_id)}</span></td>
+      <td class="username">u/${escapeHtml(d.lender)}</td>
+      <td class="username">u/${escapeHtml(d.borrower)}</td>
+      <td class="amount">${parseFloat(d.amount||0).toFixed(2)} ${escapeHtml(d.currency)}</td>
+      <td class="date-cell">${d.date_created ? d.date_created.slice(0,10) : '—'}</td>
+      <td>
+        <a class="btn-action btn-extension" href="/audit/user/${escapeHtml(d.borrower)}" style="text-decoration:none;display:inline-block">Investigate</a>
+      </td>
+    </tr>`).join('');
+}
+
+function renderFeedback(rows) {
+  const tbody = document.getElementById('feedbackBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><h3>No open feedback</h3><p style="font-size:13px;margin-top:6px">All feedback has been reviewed.</p></div></td></tr>`;
+    return;
+  }
+  const CAT = { bug: 'Bug', suggestion: 'Suggestion', feature_request: 'Feature Request' };
+  tbody.innerHTML = rows.map(f => `
+    <tr>
+      <td style="font-size:12px;color:var(--muted)">${f.id}</td>
+      <td class="username">u/${escapeHtml(f.username)}</td>
+      <td><span class="badge badge-fb-${f.category}">${CAT[f.category]||f.category}</span></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.title)}</td>
+      <td class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '—'}</td>
+      <td><a href="/admin/feedback" class="btn-action btn-extension" style="text-decoration:none;display:inline-block">Review</a></td>
+    </tr>`).join('');
+}
+
+function switchSection(name, btn) {
+  ['verifications','disputes','feedback'].forEach(s => {
+    document.getElementById('section-' + s).style.display = s === name ? '' : 'none';
+  });
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function openVerifModal(v) {
+  document.getElementById('vmId').value    = v.id;
+  document.getElementById('vmUser').textContent = v.username;
+  document.getElementById('vmNote').textContent = v.public_note || '(none)';
+  document.getElementById('vmReviewNote').value = '';
+  document.getElementById('vmDecision').value   = '';
+  document.getElementById('vmError').style.display = 'none';
+  renderVerifTemplates('approved');
+  document.getElementById('verifModal').classList.add('open');
+}
+
+function setVerifDecision(decision) {
+  document.getElementById('vmDecision').value = decision;
+  renderVerifTemplates(decision);
+  document.querySelectorAll('#verifModal [data-decision]').forEach(b => {
+    const active = b.dataset.decision === decision;
+    b.style.opacity = active ? '1' : '0.35';
+    b.style.outline  = active ? '2px solid currentColor' : 'none';
+    b.style.outlineOffset = active ? '2px' : '0';
+  });
+}
+
+function renderVerifTemplates(decision) {
+  const container = document.getElementById('verifTemplates');
+  const templates = [...(VERIF_TEMPLATES[decision] || []), ...VERIF_TEMPLATES.more_info];
+  container.innerHTML = templates.map(t =>
+    `<button class="btn-secondary" style="font-size:11px;padding:4px 10px"
+       onclick="document.getElementById('vmReviewNote').value=${JSON.stringify(t.text)}">${escapeHtml(t.label)}</button>`
+  ).join('');
+}
+
+async function submitVerifDecision() {
+  const id       = parseInt(document.getElementById('vmId').value);
+  const decision = document.getElementById('vmDecision').value;
+  const note     = document.getElementById('vmReviewNote').value.trim();
+  const errEl    = document.getElementById('vmError');
+  if (!decision) { errEl.textContent = 'Choose Approve or Deny first.'; errEl.style.display = 'block'; return; }
+  try {
+    const endpoint = decision === 'approved'
+      ? `/api/verification/${id}/approve`
+      : `/api/verification/${id}/deny`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_note: note }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Action failed');
+    closeModal('verifModal');
+    toast(`Verification ${decision}.`, 'success');
+    loadQueue();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadQueue);
+</script>
+{% endblock %}

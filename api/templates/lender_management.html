@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Lender Management — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Lender Management</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Verified lenders, activity, and verification history</div>
+  </div>
+  <a href="{{ url_for('admin_lenders_page') }}" class="btn-secondary">Directory ↗</a>
+</div>
+
+<!-- Filters + saved filter presets -->
+<div class="panel" style="margin-bottom:16px;padding:14px 16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div style="flex:1;min-width:160px">
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Search username</label>
+      <input id="lmQ" type="text" placeholder="username…"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none"
+        onkeydown="if(event.key==='Enter')loadLenders()" />
+    </div>
+    <div>
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:3px">Verification</label>
+      <select id="lmVerified"
+        style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none">
+        <option value="">All</option>
+        <option value="verified">Verified</option>
+        <option value="unverified">Unverified</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="loadLenders()">Filter</button>
+    <button class="btn-secondary" onclick="clearFilters()">Clear</button>
+  </div>
+  <!-- Saved filter presets (localStorage) -->
+  <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+    <span style="font-size:11px;color:var(--muted);font-weight:600">QUICK FILTERS:</span>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyPreset('verified')">Verified only</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyPreset('unverified')">Unverified</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applyPreset('active')">Active (30d)</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" id="savePresetBtn" onclick="saveCurrentFilter()" title="Save current filter as a preset">+ Save Filter</button>
+    <div id="savedPresets" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Verified</th>
+        <th>Total Loans</th>
+        <th>Active</th>
+        <th>Unpaid</th>
+        <th>Last Login</th>
+        <th>Reddit</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="lmBody">
+      <tr><td colspan="8" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+<div id="lmPager" style="display:flex;gap:8px;margin-top:12px;align-items:center;font-size:13px;color:var(--muted)"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LM_PAGE = 100;
+let _lmOffset = 0;
+
+function applyPreset(name) {
+  document.getElementById('lmQ').value = '';
+  document.getElementById('lmVerified').value = '';
+  if (name === 'verified')   document.getElementById('lmVerified').value = 'verified';
+  if (name === 'unverified') document.getElementById('lmVerified').value = 'unverified';
+  _lmOffset = 0;
+  loadLenders();
+}
+
+function clearFilters() {
+  document.getElementById('lmQ').value       = '';
+  document.getElementById('lmVerified').value = '';
+  _lmOffset = 0;
+  loadLenders();
+}
+
+function saveCurrentFilter() {
+  const q = document.getElementById('lmQ').value.trim();
+  const v = document.getElementById('lmVerified').value;
+  const label = [q && `"${q}"`, v && v].filter(Boolean).join(' + ') || 'All';
+  const saved = JSON.parse(localStorage.getItem('lc_lm_filters') || '[]');
+  if (saved.length >= 5) saved.shift();
+  saved.push({ label, q, v });
+  localStorage.setItem('lc_lm_filters', JSON.stringify(saved));
+  renderSavedPresets();
+  toast('Filter saved.', 'success');
+}
+
+function renderSavedPresets() {
+  const saved = JSON.parse(localStorage.getItem('lc_lm_filters') || '[]');
+  const el = document.getElementById('savedPresets');
+  el.innerHTML = saved.map((f, i) => `
+    <button class="btn-secondary" style="font-size:11px;padding:3px 10px" onclick="applySaved(${i})">${escapeHtml(f.label)}</button>
+  `).join('');
+}
+
+function applySaved(idx) {
+  const saved = JSON.parse(localStorage.getItem('lc_lm_filters') || '[]');
+  const f = saved[idx];
+  if (!f) return;
+  document.getElementById('lmQ').value       = f.q || '';
+  document.getElementById('lmVerified').value = f.v || '';
+  _lmOffset = 0;
+  loadLenders();
+}
+
+async function loadLenders() {
+  const q   = document.getElementById('lmQ').value.trim();
+  const ver = document.getElementById('lmVerified').value;
+  const params = new URLSearchParams({ limit: LM_PAGE, offset: _lmOffset });
+  if (q)   params.set('q', q);
+  if (ver) params.set('verified', ver);
+
+  const tbody = document.getElementById('lmBody');
+  tbody.innerHTML = '<tr><td colspan="8" class="table-placeholder"><div class="spinner"></div></td></tr>';
+
+  try {
+    const res  = await fetch('/api/admin/lenders/management?' + params, { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Load failed');
+    renderTable(data.lenders || [], data.total || 0);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderTable(rows, total) {
+  const tbody = document.getElementById('lmBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No lenders found</h3><p style="margin-top:6px;font-size:13px">Try adjusting the filters above.</p></div></td></tr>`;
+    document.getElementById('lmPager').innerHTML = '';
+    return;
+  }
+  tbody.innerHTML = rows.map(l => `
+    <tr>
+      <td class="username"><a href="/admin/lenders/${encodeURIComponent(l.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(l.username)}</a></td>
+      <td>${l.verified_lender
+        ? `<span class="badge badge-repaid">✓ Verified</span>`
+        : `<span class="badge badge-refunded">Unverified</span>`}</td>
+      <td style="font-weight:600">${l.loan_count ?? 0}</td>
+      <td>${l.active_loans ?? 0}</td>
+      <td style="color:${(l.unpaid_loans||0)>0?'var(--red)':'inherit'}">${l.unpaid_loans ?? 0}</td>
+      <td class="date-cell">${l.last_login ? l.last_login.slice(0,10) : 'Never'}</td>
+      <td style="font-size:12px;color:var(--muted)">${l.reddit_username ? 'u/' + escapeHtml(l.reddit_username) : '—'}</td>
+      <td>
+        <a class="btn-action btn-extension" href="/admin/lenders/${encodeURIComponent(l.username)}" style="text-decoration:none;display:inline-block;margin-right:4px">Profile</a>
+        <a class="btn-action btn-paid" href="/audit/user/${encodeURIComponent(l.username)}" style="text-decoration:none;display:inline-block">Timeline</a>
+      </td>
+    </tr>`).join('');
+
+  const shown = _lmOffset + rows.length;
+  const pager = document.getElementById('lmPager');
+  pager.innerHTML = `Showing ${shown} of ${total}`;
+  if (_lmOffset > 0) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="_lmOffset-=${LM_PAGE};loadLenders()">← Prev</button>`;
+  }
+  if (shown < total) {
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="_lmOffset+=${LM_PAGE};loadLenders()">Next →</button>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderSavedPresets();
+  loadLenders();
+});
+</script>
+{% endblock %}

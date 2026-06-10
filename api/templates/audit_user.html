@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Investigation — {{ target_user }} — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Investigation — u/{{ target_user }}</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">User record, loans, verification history, and audit trail</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="{{ url_for('audit_log_page') }}" class="btn-secondary">← Audit Log</a>
+    <a href="/admin/lenders/{{ target_user }}" class="btn-secondary">Profile</a>
+    <a href="/dashboard/users/{{ target_user }}" class="btn-secondary">Loan Record</a>
+  </div>
+</div>
+
+<!-- Investigation summary (loaded async) -->
+<div id="invSummary" style="margin-bottom:20px">
+  <div style="text-align:center;padding:24px;color:var(--muted)"><div class="spinner"></div></div>
+</div>
+
+<!-- Tabs for different views -->
+<div class="tabs" style="margin-bottom:14px">
+  <button class="tab active" onclick="switchInvTab('timeline', this)">Activity Timeline</button>
+  <button class="tab" onclick="switchInvTab('lender-loans', this)">As Lender</button>
+  <button class="tab" onclick="switchInvTab('borrower-loans', this)">As Borrower</button>
+  <button class="tab" onclick="switchInvTab('verifications', this)">Verifications</button>
+  <button class="tab" onclick="switchInvTab('audit-actions', this)">Audit Actions</button>
+</div>
+
+{% if error %}
+<div style="color:var(--red);background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px">
+  Error loading timeline: {{ error }}
+</div>
+{% endif %}
+
+<!-- Timeline tab -->
+<div id="inv-tab-timeline">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Source</th><th>Event</th><th>Actor</th><th>Reference</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        {% if events %}
+          {% for ev in events %}
+          <tr>
+            <td class="date-cell">{{ ev.created_at[:10] if ev.created_at else '—' }}</td>
+            <td>
+              {% if ev.source == 'audit' %}
+                <span class="badge" style="background:rgba(241,196,15,0.15);color:var(--yellow)">Audit</span>
+              {% elif ev.source == 'loan_event' %}
+                <span class="badge badge-confirmed">Loan</span>
+              {% else %}
+                <span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green)">Verif</span>
+              {% endif %}
+            </td>
+            <td style="font-size:12px;font-weight:600;color:var(--text)">{{ ev.event_type.replace('_',' ').title() }}</td>
+            <td style="font-size:12px;color:var(--text2)">{{ ev.actor or '—' }}</td>
+            <td style="font-family:monospace;font-size:12px;color:var(--accent-h)">{{ ev.ref or '—' }}</td>
+            <td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                title="{{ ev.detail }}">{{ ev.detail or '—' }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="6" class="table-placeholder">
+            <div class="empty-state">
+              <h3>No activity found</h3>
+              <p style="margin-top:6px;font-size:13px">No audit entries, loan events, or verification records found for u/{{ target_user }}.</p>
+            </div>
+          </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if events %}
+  <div style="margin-top:8px;font-size:12px;color:var(--muted)">{{ events|length }} event{{ 's' if events|length != 1 else '' }} shown (max 100)</div>
+  {% endif %}
+</div>
+
+<!-- Dynamic tabs filled by JS -->
+<div id="inv-tab-lender-loans"    style="display:none"></div>
+<div id="inv-tab-borrower-loans"  style="display:none"></div>
+<div id="inv-tab-verifications"   style="display:none"></div>
+<div id="inv-tab-audit-actions"   style="display:none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _targetUser = {{ target_user | tojson }};
+let _invData = null;
+
+function switchInvTab(name, btn) {
+  ['timeline','lender-loans','borrower-loans','verifications','audit-actions'].forEach(t => {
+    document.getElementById('inv-tab-' + t).style.display = t === name ? '' : 'none';
+  });
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  if (_invData) renderInvTab(name);
+}
+
+async function loadInvestigation() {
+  try {
+    const res  = await fetch(`/api/audit/user/${encodeURIComponent(_targetUser)}/summary`, { credentials: 'same-origin' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load');
+    _invData = data;
+    renderSummaryPanel(data);
+  } catch(e) {
+    document.getElementById('invSummary').innerHTML =
+      `<div style="color:var(--red);font-size:13px">Investigation summary unavailable: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderSummaryPanel(d) {
+  const u = d.user_record || {};
+  const loanCount    = d.lender_loans?.length   ?? 0;
+  const borrowCount  = d.borrower_loans?.length  ?? 0;
+  const verifCount   = d.verifications?.length   ?? 0;
+  const auditCount   = d.audit_actions?.length   ?? 0;
+
+  document.getElementById('invSummary').innerHTML = `
+    <div class="panel-grid" style="margin-bottom:0">
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:10px">User Record</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+          <div class="mini-stat"><div class="mini-label">Role</div><div class="mini-value" style="font-size:14px">${escapeHtml(u.role||'unknown')}</div></div>
+          <div class="mini-stat"><div class="mini-label">Verified Lender</div><div class="mini-value ${u.verified_lender?'c-green':''}" style="font-size:14px">${u.verified_lender?'Yes':'No'}</div></div>
+          <div class="mini-stat"><div class="mini-label">Last Login</div><div class="mini-value" style="font-size:12px">${u.last_login?u.last_login.slice(0,10):'Never'}</div></div>
+          <div class="mini-stat"><div class="mini-label">Joined</div><div class="mini-value" style="font-size:12px">${u.created_at?u.created_at.slice(0,10):'—'}</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:10px">Records on File</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+          <div class="mini-stat"><div class="mini-label">Loans (Lender)</div><div class="mini-value c-accent">${loanCount}</div></div>
+          <div class="mini-stat"><div class="mini-label">Loans (Borrower)</div><div class="mini-value c-accent">${borrowCount}</div></div>
+          <div class="mini-stat"><div class="mini-label">Verif. History</div><div class="mini-value">${verifCount}</div></div>
+          <div class="mini-stat"><div class="mini-label">Audit Events</div><div class="mini-value">${auditCount}</div></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Pre-render all tab content now that we have data
+  ['lender-loans','borrower-loans','verifications','audit-actions'].forEach(renderInvTab);
+}
+
+function renderInvTab(name) {
+  if (!_invData) return;
+  const el = document.getElementById('inv-tab-' + name);
+  if (!el) return;
+
+  if (name === 'lender-loans') {
+    const rows = _invData.lender_loans || [];
+    el.innerHTML = loanTable(rows, 'lender', 'No loans funded as lender.');
+  } else if (name === 'borrower-loans') {
+    const rows = _invData.borrower_loans || [];
+    el.innerHTML = loanTable(rows, 'borrower', 'No loans as borrower.');
+  } else if (name === 'verifications') {
+    const rows = _invData.verifications || [];
+    if (!rows.length) { el.innerHTML = emptyState('No verification history.'); return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>ID</th><th>Status</th><th>Reviewer</th><th>Review Note</th><th>Submitted</th><th>Reviewed</th></tr></thead>
+      <tbody>${rows.map(v => `<tr>
+        <td style="font-size:12px;color:var(--muted)">${v.id}</td>
+        <td><span class="badge badge-${v.status==='approved'?'repaid':v.status==='denied'?'unpaid':'confirmed'}">${escapeHtml(v.status)}</span></td>
+        <td style="font-size:12px">${escapeHtml(v.reviewer||'—')}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.review_note||'—')}</td>
+        <td class="date-cell">${v.submitted_at?v.submitted_at.slice(0,10):'—'}</td>
+        <td class="date-cell">${v.reviewed_at?v.reviewed_at.slice(0,10):'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } else if (name === 'audit-actions') {
+    const rows = _invData.audit_actions || [];
+    if (!rows.length) { el.innerHTML = emptyState('No audit actions found.'); return; }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Action</th><th>Actor</th><th>Target</th><th>Date</th></tr></thead>
+      <tbody>${rows.map(a => `<tr>
+        <td style="font-size:12px;font-weight:600">${escapeHtml((a.action_type||'').replace(/_/g,' '))}</td>
+        <td style="font-size:12px">u/${escapeHtml(a.actor||'system')}</td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(a.target_id||'—')}</td>
+        <td class="date-cell">${a.created_at?a.created_at.slice(0,10):'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+}
+
+function loanTable(rows, role, emptyMsg) {
+  if (!rows.length) return emptyState(emptyMsg);
+  const otherRole = role === 'lender' ? 'borrower' : 'lender';
+  const otherKey  = role === 'lender' ? 'borrower'  : 'lender';
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Loan ID</th><th>${escapeHtml(otherRole.charAt(0).toUpperCase()+otherRole.slice(1))}</th><th>Amount</th><th>Currency</th><th>Status</th><th>Date</th></tr></thead>
+    <tbody>${rows.map(l => `<tr>
+      <td><span class="loan-id">${escapeHtml(l.loan_id)}</span></td>
+      <td class="username">u/${escapeHtml(l[otherKey]||'')}</td>
+      <td>${parseFloat(l.amount||0).toFixed(2)}</td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(l.currency||'')}</td>
+      <td><span class="badge badge-${l.status}">${escapeHtml(l.status||'')}</span></td>
+      <td class="date-cell">${l.date_created?l.date_created.slice(0,10):'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function emptyState(msg) {
+  return `<div class="empty-state"><h3>Nothing here</h3><p style="margin-top:6px;font-size:13px">${escapeHtml(msg)}</p></div>`;
+}
+
+document.addEventListener('DOMContentLoaded', loadInvestigation);
+</script>
+{% endblock %}

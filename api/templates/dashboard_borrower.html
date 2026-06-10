@@ -14,6 +14,21 @@
   </div>
 </div>
 
+<!-- Onboarding card -->
+<div id="onboardingCard" style="display:none;background:rgba(46,204,113,0.07);border:1px solid rgba(46,204,113,0.25);border-radius:10px;padding:18px 20px;margin-bottom:20px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+    <div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">Welcome to your Borrower Dashboard</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+        <div class="flow-step"><div class="flow-step-num">1</div><div><div class="flow-step-title">Your loan record</div><div class="flow-step-copy">Lenders record loans after you agree on Reddit. This dashboard shows your current balance and full history.</div></div></div>
+        <div class="flow-step"><div class="flow-step-num">2</div><div><div class="flow-step-title">Repayment status</div><div class="flow-step-copy">Loans move from Active → Partially Repaid → Repaid as your lender records payments. Unpaid means overdue.</div></div></div>
+        <div class="flow-step"><div class="flow-step-num">3</div><div><div class="flow-step-title">Notifications</div><div class="flow-step-copy">You'll receive in-app notifications for status changes, due date reminders, and disputes.</div></div></div>
+      </div>
+    </div>
+    <button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;flex-shrink:0;line-height:1;padding:2px 6px" title="Dismiss">×</button>
+  </div>
+</div>
+
 <!-- Borrower → Lender verification application modal -->
 <div class="modal-overlay" id="borrowerVerificationModal">
   <div class="modal">
@@ -191,7 +206,15 @@
   let historySortDir = 'desc';
   let historyRenderLimit = 40;
 
+  function dismissOnboarding() {
+    localStorage.setItem('lc_onboarding_borrower', '1');
+    document.getElementById('onboardingCard').style.display = 'none';
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
+    if (!localStorage.getItem('lc_onboarding_borrower')) {
+      document.getElementById('onboardingCard').style.display = 'block';
+    }
     loadAll();
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
