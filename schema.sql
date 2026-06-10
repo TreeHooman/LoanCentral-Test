@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
+CREATE INDEX IF NOT EXISTS idx_user_roles_reddit_username ON user_roles(reddit_username);
+CREATE INDEX IF NOT EXISTS idx_user_roles_verified_lender ON user_roles(verified_lender);
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_loans_lender ON loans(lender);
@@ -180,6 +182,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action_type);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(target_type, target_id);
 
 -- Loan timeline events (immutable per-loan activity feed)
 CREATE TABLE IF NOT EXISTS loan_events (

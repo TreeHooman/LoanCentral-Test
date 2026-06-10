@@ -348,8 +348,9 @@
       }
       table.mobile-cards td.mobile-card-head {
         display: block;
-        padding: 10px 11px;
+        padding: 9px 10px;
         background: rgba(91,110,245,0.07) !important;
+        position: relative;
       }
       table.mobile-cards td.mobile-card-head::before {
         display: none;
@@ -381,6 +382,7 @@
         font-weight: 800;
         text-align: right;
         white-space: nowrap;
+        font-size: 12px;
       }
       .mobile-card-side {
         display: flex;
@@ -391,14 +393,14 @@
       .mobile-card-meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
+        gap: 5px;
+        margin-top: 6px;
       }
       .mobile-chip {
         display: inline-flex;
         align-items: center;
-        min-height: 34px;
-        padding: 3px 7px;
+        min-height: 26px;
+        padding: 2px 7px;
         border: 1px solid var(--border);
         border-radius: 5px;
         color: var(--text2);
@@ -472,16 +474,16 @@
       .mobile-card-actions {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-        margin-top: 9px;
+        gap: 5px;
+        margin-top: 7px;
       }
       .mobile-card-actions .btn-action {
-        min-height: 34px;
-        padding: 7px 6px;
+        min-height: 31px;
+        padding: 6px 5px;
         font-size: 11px;
       }
       table.compact-command-table td.mobile-card-head {
-        padding: 8px 9px;
+        padding: 7px 8px;
       }
       table.compact-command-table .mobile-card-main {
         align-items: center;
@@ -503,15 +505,15 @@
         margin-top: 7px;
       }
       table.compact-command-table .mobile-card-actions .btn-action {
-        min-height: 32px;
+        min-height: 30px;
       }
       table.compact-command-table td.mobile-card-head {
         cursor: pointer;
       }
       .mobile-card-details {
         display: none;
-        margin-top: 8px;
-        padding-top: 8px;
+        margin-top: 7px;
+        padding-top: 7px;
         border-top: 1px solid rgba(46,50,72,0.72);
       }
       tr.mobile-expanded .mobile-card-details {
@@ -520,11 +522,11 @@
       .mobile-card-detail-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
+        gap: 5px;
       }
       .mobile-card-detail-item {
-        min-height: 42px;
-        padding: 6px 7px;
+        min-height: 36px;
+        padding: 5px 6px;
         border: 1px solid var(--border);
         border-radius: 6px;
         background: rgba(255,255,255,0.025);
@@ -539,19 +541,19 @@
       }
       .mobile-card-detail-value {
         color: var(--text2);
-        font-size: 12px;
-        line-height: 1.25;
+        font-size: 11px;
+        line-height: 1.2;
         overflow-wrap: anywhere;
       }
       .mobile-card-extra-actions {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-        margin-top: 8px;
+        gap: 5px;
+        margin-top: 7px;
       }
       .mobile-card-extra-actions .btn-action,
       .mobile-card-extra-actions .thread-link {
-        min-height: 32px;
+        min-height: 30px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -608,9 +610,12 @@
   <div class="nav-links">
       {% if role == 'admin' %}
       <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Admin View</a>
+      <a class="nav-link {% if request.endpoint in ('admin_lenders_page', 'admin_lender_profile_page') %}active{% endif %}" href="{{ url_for('admin_lenders_page') }}">Lenders</a>
       <a class="nav-link {% if request.endpoint == 'admin_keys_page' %}active{% endif %}" href="{{ url_for('admin_keys_page') }}">🔑 Keys</a>
       {% endif %}
       <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
+      <a class="nav-link {% if request.endpoint == 'global_search_page' %}active{% endif %}" href="{{ url_for('global_search_page') }}">Search</a>
+      <a class="nav-link {% if request.endpoint == 'audit_log_page' %}active{% endif %}" href="{{ url_for('audit_log_page') }}">Audit Log</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
       <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
   </div>

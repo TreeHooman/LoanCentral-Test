@@ -1,5 +1,5 @@
 """
-Tests for $refunded [loan_id] — lender cancels a loan by ID.
+Tests for $refunded [loan_id] - lender cancels a loan by ID.
 """
 import importlib
 import sys
@@ -7,12 +7,12 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from tests.support.fakes import FakeComment, FakeDb, FakeReddit, FakeSubmission, fake_utils_module, loan_record
+from tests.support.fakes import FakeComment, FakeDb, FakeReddit, FakeSubmission, FakeSubreddit, fake_utils_module, loan_record
 
 
 class RefundCommandTests(unittest.TestCase):
-    def run_refund_command(self, fake_db, body, author_name="lender"):
-        subreddit = FakeReddit().subreddit("LoanCentralTest")
+    def run_refund_command(self, fake_db, body, author_name="lender", flair_text="Verified Lender"):
+        subreddit = FakeSubreddit("LoanCentralTest", flair_text=flair_text)
         submission = FakeSubmission(author_name="borrower", subreddit=subreddit)
         comment = FakeComment(
             body=body,
@@ -49,7 +49,10 @@ class RefundCommandTests(unittest.TestCase):
         self.assertEqual(len(subreddit.messages), 1)
 
     def test_wrong_lender_cannot_refund(self):
-        fake_db = FakeDb(loans=[loan_record(db_id=41, lender="real_lender")])
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=41, lender="real_lender")],
+            verified_lenders=["wrong_lender"],
+        )
 
         comment, subreddit = self.run_refund_command(fake_db, "$refunded 41", author_name="wrong_lender")
 
@@ -81,6 +84,14 @@ class RefundCommandTests(unittest.TestCase):
         fake_db = FakeDb(loans=[loan_record(db_id=41, status="repaid")])
         comment, _ = self.run_refund_command(fake_db, "$refunded 41")
         self.assertIn("already been fully repaid", comment.replies[0])
+
+    def test_verified_lender_without_flair_is_rejected(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=41)])
+        comment, subreddit = self.run_refund_command(fake_db, "$refunded 41", flair_text="")
+
+        self.assertEqual(fake_db.loans[0]["status"], "confirmed")
+        self.assertEqual(subreddit.messages, [])
+        self.assertIn("Verified Lender flair", comment.replies[0])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Lender Profile — u/{{ lender_username }} — LoanCentral{% endblock %}
+{% block content %}
+<div class="section-header">
+  <div>
+    <h2 class="section-title">Lender Profile — u/{{ lender_username }}</h2>
+    <a href="{{ url_for('admin_lenders_page') }}" style="color:var(--accent-h);font-size:13px">← Back to Lender Directory</a>
+  </div>
+</div>
+
+<div id="lp-identity" class="card" style="margin-bottom:16px">
+  <div class="table-placeholder"><div class="spinner"></div></div>
+</div>
+
+<div class="stats-grid" id="lp-stats" style="margin-bottom:16px"></div>
+
+<h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">LOANS</h3>
+<div id="lp-loans" style="margin-bottom:20px">
+  <div class="table-placeholder"><div class="spinner"></div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="lp-activity-grid">
+  <div>
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">RECENT LOAN EVENTS</h3>
+    <div id="lp-events" class="card"></div>
+  </div>
+  <div>
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">RECENT AUDIT LOG</h3>
+    <div id="lp-audit" class="card"></div>
+  </div>
+</div>
+
+<style>
+@media (max-width: 700px) { .lp-activity-grid { grid-template-columns: 1fr !important; } }
+</style>
+
+<script>
+const LENDER = {{ lender_username|tojson }};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function statusBadge(s) {
+  const cls = {confirmed:'active',partially_repaid:'partial',repaid:'repaid',
+               unpaid:'unpaid',refunded:'refunded',disputed:'disputed'}[s] || '';
+  return `<span class="badge badge-${cls}">${esc(s)}</span>`;
+}
+
+async function loadProfile() {
+  const res = await fetch('/api/admin/lenders/' + encodeURIComponent(LENDER));
+  if (!res.ok) {
+    document.getElementById('lp-identity').innerHTML =
+      '<div style="color:var(--red)">Failed to load profile.</div>';
+    return;
+  }
+  const p = await res.json();
+  renderIdentity(p);
+  renderStats(p);
+  renderLoans(p.loans || []);
+  renderEvents(p.recent_loan_events || []);
+  renderAudit(p.recent_audit_logs || []);
+}
+
+function renderIdentity(p) {
+  const vl = p.verified_lender
+    ? `<span style="color:var(--green);font-weight:700">✓ Completed LoanCentral lender verification process</span>
+       <span style="color:var(--muted);font-size:12px">(${p.verified_lender_at ? new Date(p.verified_lender_at).toLocaleDateString() : '—'} by ${esc(p.verified_lender_by || '—')})</span>`
+    : (p.verified_lender_at
+        ? '<span style="color:var(--orange);font-weight:700">Verification revoked</span>'
+        : '<span style="color:var(--muted)">Not verified</span>');
+  const rn = p.reddit_username
+    ? `<a href="https://www.reddit.com/user/${encodeURIComponent(p.reddit_username)}" target="_blank" rel="noopener" style="color:var(--accent-h)">u/${esc(p.reddit_username)}</a>`
+    : '<span style="color:var(--muted)">not linked</span>';
+  document.getElementById('lp-identity').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center">
+      <div><div style="font-size:12px;color:var(--muted)">Username</div><div style="font-weight:700">u/${esc(p.username)}</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Role</div><div><span class="badge badge-${esc(p.role || 'borrower')}">${esc(p.role || '—')}</span></div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Reddit</div><div>${rn}</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Verification</div><div>${vl}</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Perm version</div><div>${p.perm_version}</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Created</div><div style="font-size:13px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Last login</div><div style="font-size:13px">${p.last_login ? new Date(p.last_login).toLocaleDateString() : '—'}</div></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      ${p.verified_lender
+        ? `<button class="btn-secondary" onclick="setVerified(false)">Revoke verification</button>`
+        : `<button class="btn-primary" onclick="setVerified(true)">Mark verification complete</button>`}
+      ${p.reddit_username
+        ? `<button class="btn-secondary" onclick="unlinkReddit()">Unlink Reddit username</button>`
+        : `<button class="btn-secondary" onclick="linkReddit()">Link Reddit username</button>`}
+      <a class="btn-secondary" href="/dashboard/admin/audit-log?username=${encodeURIComponent(p.username)}">Full audit history</a>
+    </div>`;
+}
+
+function statCard(label, value, cls) {
+  return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value ${cls||'c-accent'}">${value}</div></div>`;
+}
+
+function renderStats(p) {
+  const ls = p.loans_as_lender_by_status || {};
+  const active = (ls.confirmed||0) + (ls.partially_repaid||0);
+  document.getElementById('lp-stats').innerHTML =
+    statCard('Total funded', p.loans_as_lender_total||0) +
+    statCard('Active', active) +
+    statCard('Repaid', ls.repaid||0, 'c-green') +
+    statCard('Unpaid', ls.unpaid||0, (ls.unpaid ? 'c-red' : '')) +
+    statCard('Refunded', ls.refunded||0) +
+    statCard('Disputed', ls.disputed||0, (ls.disputed ? 'c-yellow' : '')) +
+    statCard('Total $ funded', (p.total_amount_funded||0).toFixed(2), 'c-yellow') +
+    statCard('Outstanding $', (p.outstanding_as_lender||0).toFixed(2));
+}
+
+function renderLoans(loans) {
+  const wrap = document.getElementById('lp-loans');
+  if (!loans.length) {
+    wrap.innerHTML = '<div class="table-placeholder">No loans funded.</div>';
+    return;
+  }
+  let html = `<div class="table-wrap"><table class="data-table mobile-cards"><thead><tr>
+    <th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Status</th>
+    <th>Due</th><th>Created</th><th>Thread</th>
+  </tr></thead><tbody>`;
+  for (const l of loans) {
+    const thread = l.original_thread || l.thread_url
+      ? `<a href="${esc(l.original_thread || l.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h);font-size:12px">thread</a>` : '—';
+    html += `<tr>
+      <td data-label="Loan ID" style="font-family:monospace;font-size:12px">${esc(l.loan_id)}</td>
+      <td data-label="Borrower"><a href="/dashboard/users/${encodeURIComponent(l.borrower)}" style="color:var(--accent-h)">u/${esc(l.borrower)}</a></td>
+      <td data-label="Amount">${Number(l.amount).toFixed(2)} ${esc(l.currency||'')}</td>
+      <td data-label="Status">${statusBadge(l.status)}</td>
+      <td data-label="Due" style="font-size:12px;color:var(--muted)">${esc(l.repay_date||'—')}</td>
+      <td data-label="Created" style="font-size:12px;color:var(--muted)">${l.date_created ? new Date(l.date_created).toLocaleDateString() : '—'}</td>
+      <td data-label="Thread">${thread}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+function renderEvents(events) {
+  const el = document.getElementById('lp-events');
+  if (!events.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No recent loan events.</div>'; return; }
+  el.innerHTML = events.map(e => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="color:var(--muted);font-size:11px">${e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span><br>
+      <strong>${esc(e.event_type)}</strong> — loan <span style="font-family:monospace">${esc(e.loan_id)}</span>
+      ${e.actor_username ? `by u/${esc(e.actor_username)}` : ''}
+      ${e.details ? `<div style="color:var(--muted);font-size:12px">${esc(e.details)}</div>` : ''}
+    </div>`).join('');
+}
+
+function renderAudit(rows) {
+  const el = document.getElementById('lp-audit');
+  if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No recent audit entries.</div>'; return; }
+  el.innerHTML = rows.map(r => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="color:var(--muted);font-size:11px">${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</span><br>
+      <strong>${esc(r.action_type)}</strong> by u/${esc(r.actor_username)}
+      ${r.target_id ? `→ ${esc(r.target_type||'')} ${esc(r.target_id)}` : ''}
+    </div>`).join('');
+}
+
+async function setVerified(verified) {
+  const note = prompt(verified
+    ? 'Optional note for granting verification:'
+    : 'Optional note for revoking verification:');
+  if (note === null) return;
+  const res = await fetch('/api/admin/verified-lender/' + encodeURIComponent(LENDER), {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({verified, note})
+  });
+  if (res.ok) loadProfile(); else alert('Action failed.');
+}
+
+async function linkReddit() {
+  const rn = prompt('Reddit username to link (without u/):');
+  if (!rn) return;
+  const res = await fetch('/api/admin/users/' + encodeURIComponent(LENDER) + '/reddit-link', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reddit_username: rn})
+  });
+  if (res.ok) loadProfile(); else alert((await res.json()).error || 'Link failed.');
+}
+
+async function unlinkReddit() {
+  if (!confirm('Unlink the Reddit username from this account?')) return;
+  const res = await fetch('/api/admin/users/' + encodeURIComponent(LENDER) + '/reddit-link', {method: 'DELETE'});
+  if (res.ok) loadProfile(); else alert('Unlink failed.');
+}
+
+loadProfile();
+</script>
+{% endblock %}

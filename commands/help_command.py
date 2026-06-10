@@ -8,14 +8,14 @@ COMMAND_TRIGGER = "$help"
 
 
 def process_help_command(comment):
-    """Process $help command — lists all bot commands."""
+    """Process $help command - lists all bot commands."""
     if "$help" not in comment.body.lower():
         return
 
     help_text = f"""
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})** — sign in with Reddit.
+The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})** - sign in with Reddit.
 
 ---
 
@@ -25,13 +25,13 @@ The bot tracks loans. Everything else (history, health scores, stats, mod tools)
 ```
 $loan [amount] [currency] u/[borrower]
 ```
-*Requires Verified Lender flair. Loan is recorded immediately.*
+*Requires LoanCentral verified lender approval and the Reddit Verified Lender flair. Loan is recorded immediately.*
 
 **Fund a REQ code**
 ```
 $fund REQ-0001 [repay_amount] [currency] [YYYY-MM-DD]
 ```
-*Creates the live loan and returns a Paid ID for Reddit repayment commands.*
+*Requires LoanCentral verified lender approval and the Reddit Verified Lender flair.*
 
 **Record a repayment received**
 ```
@@ -59,7 +59,7 @@ $dispute [paid_id]
 
 ---
 
-**Dashboard:** {DASHBOARD_URL} — view history, health score, active loans.
+**Dashboard:** {DASHBOARD_URL} - view history, health score, active loans.
 **Need help?** Contact the moderators.
 """
 

@@ -34,19 +34,19 @@ Likely areas:
 
 Status: Partially fixed in upgrade branch. `$paid_with_id`, `$repaid`, and `$unpaid` now support internal database IDs and stored public loan IDs.
 
-### `$stats` uses deprecated UTC datetime helpers on Python 3.14
+### `$stats` used deprecated UTC datetime helpers on Python 3.14
 
 Command: `$stats`
 
 Expected: Tests and runtime should not emit datetime deprecation warnings.
 
-Actual: Offline tests pass, but Python 3.14 warns about `datetime.utcnow()` and `datetime.utcfromtimestamp()`.
+Actual: Older upgrade-branch runs emitted Python 3.14 warnings for `datetime.utcnow()` and `datetime.utcfromtimestamp()`.
 
 Likely areas:
 
 - `commands/stats_command.py`
 
-Status: Fixed in upgrade branch.
+Status: Fixed in upgrade branch. Sprint 6 also fixed the dashboard ICS route to use timezone-aware timestamps.
 
 ### Commands accept zero-value amounts or payments on refunded loans
 

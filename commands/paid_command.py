@@ -1,8 +1,9 @@
-import re
 import logging
+import re
 from decimal import Decimal
 
 from bot_messages import DASHBOARD_URL, with_dashboard_link
+from commands.lender_gate import require_verified_lender
 
 logger = logging.getLogger("LoanCentral")
 
@@ -11,11 +12,11 @@ COMMAND_TRIGGER = "$paid_with_id"
 
 def _parse_paid(text):
     """Parse $paid_with_id from text. Returns (loan_id, amount, currency) or None."""
-    pattern = r'\$paid_with_id\s+([A-Z0-9_-]+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})'
+    pattern = r"\$paid_with_id\s+([A-Z0-9_-]+)\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})"
     match = re.search(pattern, text, re.IGNORECASE)
     if match:
         return match.group(1), Decimal(match.group(2)), match.group(3).upper()
-    for block in re.findall(r'```\s*(.*?)\s*```', text, re.DOTALL):
+    for block in re.findall(r"```\s*(.*?)\s*```", text, re.DOTALL):
         match = re.search(pattern, block, re.IGNORECASE)
         if match:
             return match.group(1), Decimal(match.group(2)), match.group(3).upper()
@@ -32,6 +33,8 @@ def process_paid_command(comment):
 
     loan_id, amount_paid, currency = parsed
     lender = comment.author.name.lower()
+    if not require_verified_lender(comment):
+        return
     update_last_login(lender)
 
     result, error = mark_repaid(loan_id, amount_paid, currency, lender, actor_role="lender")

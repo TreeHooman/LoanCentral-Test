@@ -1,45 +1,84 @@
-NEXT SESSION CONTEXT — LoanCentral
+NEXT SESSION CONTEXT - LoanCentral
 Last updated: 2026-06-09
 
 ## Status
-Sprint 5 COMPLETE. 138/138 tests passing. Private beta ready.
+Sprint 7 COMPLETE. 225/225 tests passing, 1 deprecation warning (in third-party update_checker, not our code).
+
+LoanCentral is production-hardened and ready for beta launch after completing the 3 pending manual steps (H1, H2, H3 in LAUNCH_BLOCKERS.md).
 
 ## Completed Sprints
 - Sprint 1: Core loan lifecycle (create, confirm, repay, dispute)
 - Sprint 2: Mod dashboard, audit logs, role management, verified lender flag
 - Sprint 3: Visual QA, notification center, global search, Reddit username linking, ICS calendar, private beta checklist
 - Sprint 4: Verified lender badge in UI, notification delivery for loan events, OTP rate limiting, borrower verification UI
-- Sprint 5: Verification queue improvements (more_info, revoke, audit log, notifications), profile badge with date/approver, global search reddit_username, beta readiness report
+- Sprint 5: Verification queue improvements, profile verification badge metadata, global search reddit_username, beta readiness report
+- Sprint 6: Admin lender directory/profile, expanded admin search, audit log filters, permission audit, schema parity report, backup/restore docs, visual QA checklist, timezone-aware ICS timestamps
+- Sprint 7: DB index audit, query performance, error logging helper, /health endpoint, notification pagination/purge, session cookie hardening, security headers, admin metrics dashboard, backup validation, 38 new tests
 
-## Files Modified (Sprint 5)
-- services.py — decide_verification_application rewritten (more_info, audit, notifications, set_verified_lender on approve)
-- services.py — list_verification_applications LEFT JOINs user_roles (reddit_username, already_verified)
-- services.py — get_user_profile returns verified_lender_at, verified_lender_by
-- services.py — global_search matches reddit_username, returns reddit_username and verified_lender bool
-- api/templates/dashboard_mod.html — verification tab: 8 cols, status filter, More Info button, Revoke button
-- api/templates/global_search.html — users table: Reddit column
-- api/templates/profile.html — badge shows verified_at and verified_by
-- tests/test_sprint4.py — fixed roles_row mock tuples (2→4 fields)
-- tests/test_sprint5.py — NEW: 15 tests for Sprint 5 features
-- BETA_READINESS_REPORT.md — NEW
+## Files Modified / Added (Sprint 7)
+- services.py - get_platform_metrics, purge_old_notifications, get_notifications pagination (offset/total)
+- api/app.py - log_request_error helper, /health endpoint, /api/admin/metrics, /api/admin/notifications/purge, session cookie hardening, security headers (@app.after_request), BUILD_ID, @app.errorhandler(Exception), /api/admin/roles pagination fix
+- api/templates/dashboard_mod.html - admin metrics widget panel (users, lenders, verifications, disputes)
+- schema.sql - Sprint 7 indexes are a superset of Sprint 6 (no new ones; parity confirmed)
+- tests/test_sprint7.py - new 38-test Sprint 7 suite
+- tests/test_sprint3.py - fixed 3→4 tuple unpack for get_notifications
+- tests/test_audit_log.py - fixed 3→4 tuple unpack for get_notifications
+- INDEX_AUDIT_REPORT.md - full index coverage analysis
+- QUERY_PERFORMANCE_REPORT.md - N+1 audit, unbounded query fixes
+- ERROR_LOGGING.md - log_request_error helper documentation
+- PRODUCTION_AUDIT.md - prod config findings (debug, cookies, headers, secrets, CSRF, CSP, rate limits)
+- BACKUP_VALIDATION_REPORT.md - backup strategy validation + checklist
+- LAUNCH_CHECKLIST.md (existing) - not modified
+- LAUNCH_BLOCKERS.md - new: categorized blocker list for beta launch
 
 ## Test Count
-138 passed, 1 warning (utcnow deprecation in ICS route — cosmetic)
+225 tests passing (was 187 before Sprint 7).
+
+Command:
+python -m pytest tests/ -q
 
 ## Security Constraints (MUST PRESERVE)
 - Do NOT trust Reddit flair for permissions. Database remains source of truth.
 - Do NOT implement Reddit OAuth yet.
 - Do NOT touch production credentials.
 - Do NOT make live Reddit API changes.
-- Database-driven permissions only.
+- Do NOT add debt collection, loan brokering, payment processing, credit scoring, or guarantee language.
+- Keep verified lender checks database-driven and fresh where sensitive POST routes need it.
 
-## Deferred (see memory/project_auth_future.md)
-- Lender API keys
-- Borrower auth
-- Reddit OAuth / flair sync
+## Sprint 7 Highlights
+- /health endpoint returns db status; returns 503 if DB unreachable.
+- Admin metrics dashboard widget shows user counts, verified lenders, pending verifications, disputed loans.
+- Notification center now paginated (offset/total); old read notifications can be purged via admin API.
+- Session cookies: HTTPONLY=True, SameSite=Lax, Secure=True (prod only).
+- Security headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS (prod).
+- log_request_error() centralizes all request-context error logging with method/path/user/role/IP/traceback.
+- /api/admin/roles now paginated (default 500 cap, max 1000).
+- get_active_loans() has no row cap — flagged for M3 in LAUNCH_BLOCKERS.md.
 
-## Suggested Next Work
-- Fix utcnow() deprecation in api/app.py ICS route (use datetime.now(UTC))
-- security_audit.md update to reflect Sprint 5 new routes
-- Onboard first private beta users
-- Monitor notification delivery in production
+## Pre-launch Manual Steps (from LAUNCH_BLOCKERS.md)
+- H1: Enable Render automatic PostgreSQL snapshots (upgrade plan or add cron dump).
+- H2: Perform a full restore drill: restore prod backup to scratch DB, run table count queries, verify dashboard loads.
+- H3: Confirm API_KEY is set (not "changeme") in Render environment variables.
+- M5: Run `\d loans` in psql on prod to confirm all schema.sql indexes are present.
+
+## Reports To Read First
+- LAUNCH_BLOCKERS.md          — blocker categories and pre-launch checklist
+- PRODUCTION_AUDIT.md         — security config findings and gaps
+- BACKUP_VALIDATION_REPORT.md — backup/restore validation
+- PERMISSION_AUDIT_REPORT.md  — route access matrix
+- SCHEMA_PARITY_REPORT.md     — index parity status
+
+## Known Issues / Residual Risk
+- Content-Security-Policy header not set (M1 in LAUNCH_BLOCKERS.md).
+- Rate limiting is in-process only; will not scale past 1 Render worker without Redis.
+- Full backup restore drill not yet performed (requires manual step on Render).
+- Per-lender API keys exist but are not enforced per-route; static API_KEY is still accepted.
+- Reddit OAuth/flair sync remains intentionally deferred.
+
+## Recommended Next Sprint
+- Complete the 3 manual pre-launch steps (H1, H2, H3).
+- Add Content-Security-Policy header (M1).
+- Add `LIMIT 1000` to get_active_loans (M3).
+- Connect a Render log drain for extended log retention (M4).
+- After beta: evaluate per-lender scoped API key enforcement.
+- After beta: server-side loan timeline drill-down from admin lender profile.

@@ -31,6 +31,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(days=7)
 
+# Session cookie hardening — enforce in prod, relax in dev for localhost HTTP
+_is_prod = os.getenv("LOANCENTRAL_ENV", "prod") == "prod"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = _is_prod  # HTTPS only in prod
+
 API_KEY = os.getenv("API_KEY", "changeme")
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,8 +80,49 @@ def _looks_like_missing_column(error):
 
 
 # ---------------------------------------------------------------------------
+# Version identifier (set BUILD_ID in env to a git SHA or deploy tag)
+# ---------------------------------------------------------------------------
+BUILD_ID = os.getenv("BUILD_ID", "dev")
+
+
+# ---------------------------------------------------------------------------
+# Centralized error logging
+# ---------------------------------------------------------------------------
+
+def log_request_error(exc: Exception, *, extra: str = ""):
+    """
+    Log a structured error record. Never exposes internal detail to end users.
+    Fields: timestamp, method, path, user, role, remote_addr, exc_type, message, extra.
+    Stack trace is always emitted at ERROR level so it appears in server logs.
+    """
+    logger.error(
+        "request_error method=%s path=%s user=%s role=%s remote=%s exc=%s msg=%s%s",
+        request.method,
+        request.path,
+        session.get("username", "anonymous"),
+        session.get("role", "-"),
+        request.remote_addr,
+        type(exc).__name__,
+        str(exc),
+        f" extra={extra}" if extra else "",
+        exc_info=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "0"  # modern browsers: rely on CSP not this
+    if _is_prod:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
 
 @app.before_request
 def require_public_dev_access():
@@ -520,7 +567,7 @@ def admin_keys_page():
 
 
 @app.route("/api/admin/keys", methods=["GET"])
-@role_required("admin")
+@require_admin_api
 def api_list_keys():
     from services import list_lender_keys
     username_filter = request.args.get("username")
@@ -795,8 +842,8 @@ def loan_calendar_ics(loan_id):
         due_str = str(repay_date)[:10].replace("-", "")
         due_amt = repay_amount or amount or 0
         import uuid as _uuid
-        from datetime import datetime as _dt
-        now_str = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        from datetime import datetime as _dt, timezone as _tz
+        now_str = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
         uid = str(_uuid.uuid4())
         summary = f"LoanCentral reminder: Loan {pub_id} due"
         desc = (f"LoanCentral loan {pub_id}\\n"
@@ -850,8 +897,8 @@ def _build_ics(username: str, loans: list) -> str:
         "METHOD:PUBLISH",
     ]
     import uuid as _uuid
-    from datetime import datetime as _dt
-    now_str = _dt.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    from datetime import datetime as _dt, timezone as _tz
+    now_str = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
     for loan in loans:
         if not loan.get("repay_date") or loan.get("status") in ("repaid", "refunded"):
             continue
@@ -890,7 +937,7 @@ def _build_ics(username: str, loans: list) -> str:
 
 
 @app.route("/api/admin/integrity")
-@role_required("mod")
+@require_mod_api
 def api_integrity_checks():
     from services import run_integrity_checks
     issues, error = run_integrity_checks()
@@ -1091,13 +1138,15 @@ def list_roles():
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
+    limit  = min(int(request.args.get("limit", 500)), 1000)
+    offset = int(request.args.get("offset", 0))
     try:
         cur = conn.cursor()
         cur.execute("""
             SELECT username, role, subscription_status, last_login, contact_email, contact_phone,
                    reddit_username
-            FROM user_roles ORDER BY role, username
-        """)
+            FROM user_roles ORDER BY role, username LIMIT %s OFFSET %s
+        """, (limit, offset))
         rows = cur.fetchall()
         return _json([
             {"username": r[0], "role": r[1], "subscription_status": r[2],
@@ -2310,19 +2359,22 @@ def cancel_request(request_id):
 @require_mod_api
 def api_audit_log():
     from services import get_audit_log
-    username    = request.args.get("username")
-    action_type = request.args.get("action_type")
-    target_type = request.args.get("target_type")
-    target_id   = request.args.get("target_id")
-    date_from   = request.args.get("date_from")
-    date_to     = request.args.get("date_to")
-    limit       = min(int(request.args.get("limit", 50)), 200)
-    offset      = int(request.args.get("offset", 0))
+    username        = request.args.get("username")
+    target_username = request.args.get("target_username")
+    loan_id         = request.args.get("loan_id")
+    action_type     = request.args.get("action_type")
+    target_type     = request.args.get("target_type")
+    target_id       = request.args.get("target_id")
+    date_from       = request.args.get("date_from")
+    date_to         = request.args.get("date_to")
+    limit           = min(int(request.args.get("limit", 50)), 200)
+    offset          = int(request.args.get("offset", 0))
     rows, total, error = get_audit_log(
         username=username, action_type=action_type,
         target_type=target_type, target_id=target_id,
         date_from=date_from, date_to=date_to,
-        limit=limit, offset=offset)
+        limit=limit, offset=offset,
+        target_username=target_username, loan_id=loan_id)
     if error:
         return _json({"error": error}, 500)
     return _json({"rows": rows, "total": total, "limit": limit, "offset": offset})
@@ -2375,12 +2427,28 @@ def api_add_loan_event(loan_id):
 def api_get_notifications():
     from services import get_notifications
     unread_only = request.args.get("unread") == "1"
-    limit = min(int(request.args.get("limit", 50)), 100)
-    notifs, unread_count, error = get_notifications(
-        session["username"], unread_only=unread_only, limit=limit)
+    limit  = min(int(request.args.get("limit", 50)), 100)
+    offset = int(request.args.get("offset", 0))
+    notifs, unread_count, total, error = get_notifications(
+        session["username"], unread_only=unread_only, limit=limit, offset=offset)
     if error:
         return _json({"error": error}, 500)
-    return _json({"notifications": notifs, "unread_count": unread_count})
+    return _json({"notifications": notifs, "unread_count": unread_count,
+                  "total": total, "limit": limit, "offset": offset})
+
+
+@app.route("/api/admin/notifications/purge", methods=["POST"])
+@require_admin_api
+def api_purge_notifications():
+    from services import purge_old_notifications
+    data = request.get_json() or {}
+    days = int(data.get("days", 90))
+    if days < 7:
+        return _json({"error": "Minimum retention is 7 days."}, 400)
+    deleted, error = purge_old_notifications(days=days)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"ok": True, "deleted": deleted, "days": days})
 
 
 @app.route("/api/notifications/read", methods=["POST"])
@@ -2469,6 +2537,62 @@ def global_search_page():
 
 
 # ---------------------------------------------------------------------------
+# Admin: lender directory + lender profile (Sprint 6)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/lenders", methods=["GET"])
+@require_admin_api
+def api_admin_lenders():
+    from services import list_lenders
+    verified_filter = request.args.get("verified") or None
+    if verified_filter not in (None, "verified", "unverified", "revoked"):
+        return _json({"error": "Invalid verified filter."}, 400)
+    has_reddit = None
+    if request.args.get("has_reddit") == "1":
+        has_reddit = True
+    elif request.args.get("has_reddit") == "0":
+        has_reddit = False
+    q      = request.args.get("q", "").strip() or None
+    limit  = min(int(request.args.get("limit", 100)), 200)
+    offset = int(request.args.get("offset", 0))
+    rows, total, error = list_lenders(
+        verified_filter=verified_filter, has_reddit=has_reddit,
+        q=q, limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"lenders": rows, "total": total, "limit": limit, "offset": offset})
+
+
+@app.route("/dashboard/admin/lenders")
+@admin_required
+def admin_lenders_page():
+    return render_template("admin_lenders.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
+@app.route("/api/admin/lenders/<username>", methods=["GET"])
+@require_admin_api
+def api_admin_lender_profile(username):
+    from services import get_admin_user_profile, get_loan_history
+    profile, error = get_admin_user_profile(username)
+    if error:
+        return _json({"error": error}, 500)
+    loans, _ = get_loan_history(username, role="lender", limit=100)
+    profile["loans"] = loans or []
+    return _json(profile)
+
+
+@app.route("/dashboard/admin/lenders/<username>")
+@admin_required
+def admin_lender_profile_page(username):
+    return render_template("admin_lender_profile.html",
+                           username=session["username"],
+                           role=session["role"],
+                           lender_username=username.lower())
+
+
+# ---------------------------------------------------------------------------
 # Reddit username linking
 # ---------------------------------------------------------------------------
 
@@ -2510,6 +2634,49 @@ def api_delete_reddit_link(username):
 
 
 # ---------------------------------------------------------------------------
+# Health endpoint
+# ---------------------------------------------------------------------------
+
+@app.route("/health")
+def health_check():
+    """Lightweight health endpoint for uptime monitors. Never exposes secrets."""
+    db_ok = False
+    try:
+        from services import _get_db
+        conn = _get_db()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.close()
+            conn.close()
+            db_ok = True
+    except Exception:
+        pass
+    status = "ok" if db_ok else "degraded"
+    return _json({
+        "status": status,
+        "db": "ok" if db_ok else "error",
+        "env": "dev" if IS_DEV else "prod",
+        "build": BUILD_ID,
+    }, 200 if db_ok else 503)
+
+
+# ---------------------------------------------------------------------------
+# Admin metrics
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/metrics", methods=["GET"])
+@require_admin_api
+def api_admin_metrics():
+    from services import get_platform_metrics
+    metrics, error = get_platform_metrics()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(metrics)
+
+
+# ---------------------------------------------------------------------------
 # Error handlers
 # ---------------------------------------------------------------------------
 
@@ -2529,7 +2696,15 @@ def forbidden(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    logger.error(f"500 error: {e}", exc_info=True)
+    log_request_error(e)
+    if request.path.startswith("/api/"):
+        return _json({"error": "Internal server error"}, 500)
+    return render_template("error.html", code=500, message="Something went wrong on our end. Try again in a moment."), 500
+
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    log_request_error(e, extra="unhandled")
     if request.path.startswith("/api/"):
         return _json({"error": "Internal server error"}, 500)
     return render_template("error.html", code=500, message="Something went wrong on our end. Try again in a moment."), 500

@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-LoanCentral is **ready for private beta**. All critical platform features are implemented, the test suite passes at 138/138, and security controls are in place. The items marked ⚠️ below are known, intentional deferrals — not blockers.
+LoanCentral is **ready for private beta**. All critical platform features are implemented, the Sprint 5 test suite passed at 138/138, and security controls are in place. Sprint 6 later expanded the suite to 180/180 and fixed the UTC datetime warning noted below.
 
 ---
 
@@ -116,7 +116,7 @@ LoanCentral is **ready for private beta**. All critical platform features are im
 | `test_sprint5.py` | 15 | ✅ |
 | **Total** | **138** | **✅ 138 passed, 1 warning** |
 
-The single warning is a `datetime.utcnow()` deprecation in the ICS calendar route — cosmetic, not a defect.
+Sprint 6 note: the previous `datetime.utcnow()` deprecation in the ICS calendar route has been fixed with timezone-aware timestamps.
 
 ---
 
@@ -125,7 +125,7 @@ The single warning is a `datetime.utcnow()` deprecation in the ICS calendar rout
 1. **Reddit OAuth** — intentionally deferred. Manual reddit username linking covers beta needs.
 2. **Lender API keys** — deferred per `project_auth_future.md`.
 3. **Borrower auth** — deferred per `project_auth_future.md`.
-4. **`datetime.utcnow()` in ICS route** — cosmetic deprecation warning; behavior correct.
+4. **Resolved in Sprint 6:** `datetime.utcnow()` in ICS route was replaced with timezone-aware timestamps.
 
 ---
 

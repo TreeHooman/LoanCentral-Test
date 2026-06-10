@@ -107,11 +107,11 @@ class NotificationTests(unittest.TestCase):
         from datetime import datetime
         fake_notif = (1, "borrower1", "due_soon", "Due soon", "msg", False, datetime(2026, 1, 1))
         conn, cur = _make_conn(rows=[fake_notif], count=1)
-        cur.fetchone.side_effect = [(1,)]
+        cur.fetchone.side_effect = [(1,), (1,)]
         cur.fetchall.return_value = [fake_notif]
         with patch("services._get_db", return_value=conn):
             from services import get_notifications
-            notifs, unread, err = get_notifications("borrower1")
+            notifs, unread, total, err = get_notifications("borrower1")
         self.assertIsNone(err)
         self.assertEqual(unread, 1)
 

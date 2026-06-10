@@ -2454,7 +2454,8 @@ def log_audit(actor_username: str, actor_role: str, action_type: str,
 def get_audit_log(username: str = None, action_type: str = None,
                   target_type: str = None, target_id: str = None,
                   date_from: str = None, date_to: str = None,
-                  limit: int = 50, offset: int = 0):
+                  limit: int = 50, offset: int = 0,
+                  target_username: str = None, loan_id: str = None):
     """Fetch audit log entries with optional filters. Returns (rows, total, error)."""
     conn = _get_db()
     if not conn:
@@ -2465,6 +2466,12 @@ def get_audit_log(username: str = None, action_type: str = None,
         if username:
             clauses.append("lower(actor_username) = lower(%s)")
             params.append(username)
+        if target_username:
+            clauses.append("(target_type = 'user' AND lower(target_id) = lower(%s))")
+            params.append(target_username)
+        if loan_id:
+            clauses.append("(target_type = 'loan' AND target_id = %s)")
+            params.append(str(loan_id))
         if action_type:
             clauses.append("action_type = %s")
             params.append(action_type)
@@ -2588,31 +2595,37 @@ def create_notification(username: str, notification_type: str,
         conn.close()
 
 
-def get_notifications(username: str, unread_only: bool = False, limit: int = 50):
-    """Fetch notifications. Returns (list, unread_count, error)."""
+def get_notifications(username: str, unread_only: bool = False,
+                      limit: int = 50, offset: int = 0):
+    """Fetch notifications with pagination. Returns (list, unread_count, total, error)."""
     conn = _get_db()
     if not conn:
-        return [], 0, "Database connection failed"
+        return [], 0, 0, "Database connection failed"
     try:
         cur = conn.cursor()
         cur.execute(
             "SELECT COUNT(*) FROM notifications WHERE lower(username)=lower(%s) AND read=FALSE",
             (username,))
         unread_count = cur.fetchone()[0]
-        extra = "AND read = FALSE" if unread_only else ""
+        read_clause = "AND read = FALSE" if unread_only else ""
+        cur.execute(f"""
+            SELECT COUNT(*) FROM notifications
+            WHERE lower(username)=lower(%s) {read_clause}
+        """, (username,))
+        total = cur.fetchone()[0]
         cur.execute(f"""
             SELECT id, username, notification_type, title, message, read, created_at
-            FROM notifications WHERE lower(username)=lower(%s) {extra}
-            ORDER BY created_at DESC LIMIT %s
-        """, (username, limit))
+            FROM notifications WHERE lower(username)=lower(%s) {read_clause}
+            ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, (username, limit, offset))
         cols = ["id", "username", "notification_type", "title", "message", "read", "created_at"]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         for r in rows:
             r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
-        return rows, unread_count, None
+        return rows, unread_count, total, None
     except Exception as e:
         logger.error(f"get_notifications error: {e}", exc_info=True)
-        return [], 0, str(e)
+        return [], 0, 0, str(e)
     finally:
         cur.close()
         conn.close()
@@ -2831,16 +2844,25 @@ def global_search(query: str, search_type: str = "all",
     try:
         cur = conn.cursor()
         q = (query or "").strip().lower()
-        results = {"loans": [], "users": []}
+        results = {"loans": [], "users": [], "verifications": []}
         total = 0
+
+        KNOWN_STATUSES = {"confirmed", "partially_repaid", "repaid", "unpaid",
+                          "refunded", "disputed"}
 
         if search_type in ("all", "loans"):
             clauses, params = [], []
-            if q:
+            if q in KNOWN_STATUSES and not status_filter:
+                # Query is a status keyword — return loans in that status
+                status_filter = q
+                q_loans = ""
+            else:
+                q_loans = q
+            if q_loans:
                 clauses.append(
                     "(lower(loan_id) LIKE %s OR lower(lender) LIKE %s"
                     " OR lower(borrower) LIKE %s OR lower(COALESCE(notes,'')) LIKE %s)")
-                like = f"%{q}%"
+                like = f"%{q_loans}%"
                 params += [like, like, like, like]
             if status_filter:
                 clauses.append("status = %s")
@@ -2885,10 +2907,371 @@ def global_search(query: str, search_type: str = "all",
             results["users"] = users
             total += len(users)
 
+        if search_type in ("all", "verifications"):
+            clauses, params = [], []
+            if q in ("pending", "approved", "denied", "more_info"):
+                clauses.append("va.status = %s")
+                params.append(q)
+            elif q:
+                clauses.append(
+                    "(lower(va.username) LIKE %s"
+                    " OR lower(COALESCE(ur.reddit_username,'')) LIKE %s)")
+                like = f"%{q}%"
+                params += [like, like]
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            # Public fields only — never expose private_note in search results
+            cur.execute(f"""
+                SELECT va.id, va.username, va.requested_role, va.status,
+                       va.reviewer, va.submitted_at, ur.reddit_username
+                FROM verification_applications va
+                LEFT JOIN user_roles ur ON lower(va.username) = lower(ur.username)
+                {where} ORDER BY va.submitted_at DESC LIMIT %s OFFSET %s
+            """, params + [min(limit, 25), offset])
+            cols = ["id", "username", "requested_role", "status", "reviewer",
+                    "submitted_at", "reddit_username"]
+            verifications = [dict(zip(cols, r)) for r in cur.fetchall()]
+            for r in verifications:
+                r["submitted_at"] = r["submitted_at"].isoformat() if r["submitted_at"] else None
+            results["verifications"] = verifications
+            total += len(verifications)
+
         return results, total, None
     except Exception as e:
         logger.error(f"global_search error: {e}", exc_info=True)
         return {}, 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# ADMIN: LENDER DIRECTORY + EXPANDED PROFILES (Sprint 6)
+# =============================================================================
+
+def list_lenders(verified_filter: str = None, has_reddit: bool = None,
+                 q: str = None, limit: int = 200, offset: int = 0):
+    """
+    Admin lender directory. Includes users with role 'lender', verified
+    lenders, verification applicants, and anyone who has funded a loan.
+    verified_filter: 'verified' | 'unverified' | 'revoked' | None
+    Returns (rows, total, error). Never exposes verification private notes.
+    """
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        clauses = ["""(
+            ur.role = 'lender'
+            OR ur.verified_lender = TRUE
+            OR ur.verified_lender_at IS NOT NULL
+            OR ls.lender IS NOT NULL
+            OR EXISTS (SELECT 1 FROM verification_applications va
+                       WHERE lower(va.username) = lower(ur.username))
+        )"""]
+        params = []
+        if verified_filter == "verified":
+            clauses.append("ur.verified_lender = TRUE")
+        elif verified_filter == "unverified":
+            clauses.append("(ur.verified_lender IS NOT TRUE AND ur.verified_lender_at IS NULL)")
+        elif verified_filter == "revoked":
+            clauses.append("(ur.verified_lender IS NOT TRUE AND ur.verified_lender_at IS NOT NULL)")
+        if has_reddit is True:
+            clauses.append("ur.reddit_username IS NOT NULL")
+        elif has_reddit is False:
+            clauses.append("ur.reddit_username IS NULL")
+        if q:
+            clauses.append("(lower(ur.username) LIKE %s OR lower(COALESCE(ur.reddit_username,'')) LIKE %s)")
+            like = f"%{q.strip().lower()}%"
+            params += [like, like]
+        where = "WHERE " + " AND ".join(clauses)
+        base = f"""
+            FROM user_roles ur
+            LEFT JOIN (
+                SELECT lower(lender) AS lender,
+                       COUNT(*) AS total_loans,
+                       COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
+                       COUNT(*) FILTER (WHERE status = 'repaid')   AS repaid_loans,
+                       COUNT(*) FILTER (WHERE status = 'unpaid')   AS unpaid_loans,
+                       COUNT(*) FILTER (WHERE status = 'disputed') AS disputed_loans,
+                       COALESCE(SUM(amount), 0) AS total_funded
+                FROM loans GROUP BY lower(lender)
+            ) ls ON lower(ur.username) = ls.lender
+            {where}
+        """
+        cur.execute(f"SELECT COUNT(*) {base}", params)
+        total = cur.fetchone()[0]
+        cur.execute(f"""
+            SELECT ur.username, ur.role, ur.reddit_username, ur.verified_lender,
+                   ur.verified_lender_at, ur.verified_lender_by, ur.last_login,
+                   COALESCE(ls.total_loans, 0), COALESCE(ls.active_loans, 0),
+                   COALESCE(ls.repaid_loans, 0), COALESCE(ls.unpaid_loans, 0),
+                   COALESCE(ls.disputed_loans, 0), COALESCE(ls.total_funded, 0)
+            {base}
+            ORDER BY ur.verified_lender DESC, COALESCE(ls.total_loans, 0) DESC, ur.username
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        cols = ["username", "role", "reddit_username", "verified_lender",
+                "verified_lender_at", "verified_lender_by", "last_login",
+                "total_loans", "active_loans", "repaid_loans", "unpaid_loans",
+                "disputed_loans", "total_funded"]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r["verified_lender"] = bool(r["verified_lender"])
+            r["verified_lender_at"] = r["verified_lender_at"].isoformat() if r["verified_lender_at"] else None
+            r["last_login"] = r["last_login"].isoformat() if r["last_login"] else None
+            r["total_funded"] = float(r["total_funded"]) if r["total_funded"] else 0.0
+        return rows, total, None
+    except Exception as e:
+        logger.error(f"list_lenders error: {e}", exc_info=True)
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_admin_user_profile(username: str):
+    """
+    Full operational profile for the admin panel. Includes identity fields,
+    loan counts by status (as lender and as borrower), amounts, recent loan
+    events, and recent audit logs. Admin/mod use only — callers must enforce
+    access control. Does NOT include verification private notes or contact info.
+    Returns (profile_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        uname = username.lower()
+
+        cur.execute("""
+            SELECT username, role, reddit_username, verified_lender,
+                   verified_lender_at, verified_lender_by,
+                   COALESCE(perm_version, 0), created_at, last_login
+            FROM user_roles WHERE lower(username) = lower(%s)
+        """, (uname,))
+        ident = cur.fetchone()
+
+        # Loan counts by status, both directions
+        profile = {
+            "username": uname,
+            "role": ident[1] if ident else None,
+            "reddit_username": ident[2] if ident else None,
+            "verified_lender": bool(ident[3]) if ident else False,
+            "verified_lender_at": ident[4].isoformat() if ident and ident[4] else None,
+            "verified_lender_by": ident[5] if ident else None,
+            "perm_version": ident[6] if ident else 0,
+            "created_at": ident[7].isoformat() if ident and ident[7] else None,
+            "last_login": ident[8].isoformat() if ident and ident[8] else None,
+        }
+
+        for direction, col in (("lender", "lender"), ("borrower", "borrower")):
+            cur.execute(f"""
+                SELECT status, COUNT(*), COALESCE(SUM(amount), 0)
+                FROM loans WHERE lower({col}) = lower(%s)
+                GROUP BY status
+            """, (uname,))
+            by_status = {}
+            total_amount = Decimal("0")
+            total_count = 0
+            for status, cnt, amt in cur.fetchall():
+                by_status[status] = cnt
+                total_count += cnt
+                total_amount += Decimal(str(amt))
+            profile[f"loans_as_{direction}_by_status"] = by_status
+            profile[f"loans_as_{direction}_total"] = total_count
+            key = "total_amount_funded" if direction == "lender" else "total_amount_borrowed"
+            profile[key] = float(total_amount)
+
+        # Outstanding (both directions, active/unpaid loans)
+        try:
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(COALESCE(repay_amount, amount) - amount_repaid)
+                        FILTER (WHERE lower(lender) = lower(%s)), 0),
+                    COALESCE(SUM(COALESCE(repay_amount, amount) - amount_repaid)
+                        FILTER (WHERE lower(borrower) = lower(%s)), 0)
+                FROM loans
+                WHERE status IN ('confirmed', 'partially_repaid', 'unpaid')
+                  AND (lower(lender) = lower(%s) OR lower(borrower) = lower(%s))
+            """, (uname, uname, uname, uname))
+            out_row = cur.fetchone()
+        except Exception as e:
+            if not _looks_like_missing_column(e):
+                raise
+            conn.rollback()
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(amount - amount_repaid)
+                        FILTER (WHERE lower(lender) = lower(%s)), 0),
+                    COALESCE(SUM(amount - amount_repaid)
+                        FILTER (WHERE lower(borrower) = lower(%s)), 0)
+                FROM loans
+                WHERE status IN ('confirmed', 'partially_repaid', 'unpaid')
+                  AND (lower(lender) = lower(%s) OR lower(borrower) = lower(%s))
+            """, (uname, uname, uname, uname))
+            out_row = cur.fetchone()
+        profile["outstanding_as_lender"] = float(out_row[0]) if out_row else 0.0
+        profile["outstanding_as_borrower"] = float(out_row[1]) if out_row else 0.0
+
+        # Recent loan events where user acted or on the user's loans
+        cur.execute("""
+            SELECT le.loan_id, le.event_type, le.actor_username, le.details, le.created_at
+            FROM loan_events le
+            WHERE lower(COALESCE(le.actor_username, '')) = lower(%s)
+               OR le.loan_id IN (
+                    SELECT loan_id FROM loans
+                    WHERE lower(lender) = lower(%s) OR lower(borrower) = lower(%s))
+            ORDER BY le.created_at DESC LIMIT 20
+        """, (uname, uname, uname))
+        profile["recent_loan_events"] = [
+            {"loan_id": r[0], "event_type": r[1], "actor_username": r[2],
+             "details": r[3],
+             "created_at": r[4].isoformat() if r[4] else None}
+            for r in cur.fetchall()]
+
+        # Recent audit logs where user is actor or target
+        cur.execute("""
+            SELECT id, actor_username, actor_role, action_type, target_type,
+                   target_id, created_at
+            FROM audit_logs
+            WHERE lower(actor_username) = lower(%s)
+               OR (target_type = 'user' AND lower(target_id) = lower(%s))
+            ORDER BY created_at DESC LIMIT 20
+        """, (uname, uname))
+        profile["recent_audit_logs"] = [
+            {"id": r[0], "actor_username": r[1], "actor_role": r[2],
+             "action_type": r[3], "target_type": r[4], "target_id": r[5],
+             "created_at": r[6].isoformat() if r[6] else None}
+            for r in cur.fetchall()]
+
+        # Verification applications (public fields only — no private_note)
+        cur.execute("""
+            SELECT id, requested_role, status, reviewer, submitted_at, reviewed_at
+            FROM verification_applications
+            WHERE lower(username) = lower(%s)
+            ORDER BY submitted_at DESC LIMIT 10
+        """, (uname,))
+        profile["verification_applications"] = [
+            {"id": r[0], "requested_role": r[1], "status": r[2], "reviewer": r[3],
+             "submitted_at": r[4].isoformat() if r[4] else None,
+             "reviewed_at": r[5].isoformat() if r[5] else None}
+            for r in cur.fetchall()]
+
+        return profile, None
+    except Exception as e:
+        logger.error(f"get_admin_user_profile error: {e}", exc_info=True)
+        return None, "Database error fetching admin profile."
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# PLATFORM METRICS (Sprint 7)
+# =============================================================================
+
+def get_platform_metrics():
+    """
+    Single-query platform summary for the admin metrics dashboard.
+    Returns (metrics_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*)                                                           AS total_loans,
+                COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
+                COUNT(*) FILTER (WHERE status = 'repaid')                          AS repaid_loans,
+                COUNT(*) FILTER (WHERE status = 'unpaid')                          AS unpaid_loans,
+                COUNT(*) FILTER (WHERE status = 'disputed')                        AS disputed_loans,
+                COUNT(*) FILTER (WHERE status = 'refunded')                        AS refunded_loans
+            FROM loans
+        """)
+        loan_row = cur.fetchone()
+
+        cur.execute("""
+            SELECT
+                COUNT(*)                                              AS total_users,
+                COUNT(*) FILTER (WHERE role = 'lender')              AS total_lenders,
+                COUNT(*) FILTER (WHERE role = 'borrower')            AS total_borrowers,
+                COUNT(*) FILTER (WHERE role = 'mod')                 AS total_mods,
+                COUNT(*) FILTER (WHERE verified_lender = TRUE)       AS verified_lenders
+            FROM user_roles
+        """)
+        user_row = cur.fetchone()
+
+        cur.execute("""
+            SELECT COUNT(*) FROM verification_applications WHERE status = 'pending'
+        """)
+        pending_verif = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM notifications WHERE read = FALSE
+        """)
+        unread_notifs = cur.fetchone()[0]
+
+        return {
+            "loans": {
+                "total":    loan_row[0],
+                "active":   loan_row[1],
+                "repaid":   loan_row[2],
+                "unpaid":   loan_row[3],
+                "disputed": loan_row[4],
+                "refunded": loan_row[5],
+            },
+            "users": {
+                "total":            user_row[0],
+                "lenders":          user_row[1],
+                "borrowers":        user_row[2],
+                "mods":             user_row[3],
+                "verified_lenders": user_row[4],
+            },
+            "verifications": {
+                "pending": pending_verif,
+            },
+            "notifications": {
+                "unread_system": unread_notifs,
+            },
+        }, None
+    except Exception as e:
+        logger.error(f"get_platform_metrics error: {e}", exc_info=True)
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# NOTIFICATION RETENTION (Sprint 7)
+# =============================================================================
+
+def purge_old_notifications(days: int = 90):
+    """
+    Delete read notifications older than `days` days.
+    Unread notifications are never purged automatically.
+    Returns (deleted_count, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM notifications
+            WHERE read = TRUE
+              AND created_at < NOW() - (%s || ' days')::INTERVAL
+        """, (str(days),))
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted, None
+    except Exception as e:
+        logger.error(f"purge_old_notifications error: {e}", exc_info=True)
+        return 0, str(e)
     finally:
         cur.close()
         conn.close()

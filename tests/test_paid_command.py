@@ -4,14 +4,14 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from tests.support.fakes import FakeComment, FakeDb, fake_utils_module, loan_record
+from tests.support.fakes import FakeComment, FakeDb, FakeSubreddit, fake_utils_module, loan_record
 
 
 class PaidCommandTests(unittest.TestCase):
-    def run_paid_command(self, fake_db, body, author_name="lender"):
+    def run_paid_command(self, fake_db, body, author_name="lender", flair_text="Verified Lender"):
         with patch.dict(sys.modules, {"utils": fake_utils_module(fake_db)}):
             paid_command = importlib.import_module("commands.paid_command")
-            comment = FakeComment(body=body, author_name=author_name)
+            comment = FakeComment(body=body, author_name=author_name, subreddit=FakeSubreddit(flair_text=flair_text))
             paid_command.process_paid_command(comment)
             return comment
 
@@ -43,19 +43,18 @@ class PaidCommandTests(unittest.TestCase):
         self.assertIn("Loan fully repaid", comment.replies[0])
 
     def test_wrong_lender_gets_clear_auth_error(self):
-        fake_db = FakeDb(loans=[loan_record(db_id=12, lender="real_lender")])
-
-        with self.assertLogs("LoanCentral", level="WARNING"):
-            comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", author_name="wrong_lender")
+        fake_db = FakeDb(
+            loans=[loan_record(db_id=12, lender="real_lender")],
+            verified_lenders=["wrong_lender"],
+        )
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", author_name="wrong_lender")
 
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("recorded under lender u/real_lender", comment.replies[0])
 
     def test_missing_loan_gets_clear_not_found_error(self):
         fake_db = FakeDb(loans=[])
-
-        with self.assertLogs("LoanCentral", level="WARNING"):
-            comment = self.run_paid_command(fake_db, "$paid_with_id 999 25 USD")
+        comment = self.run_paid_command(fake_db, "$paid_with_id 999 25 USD")
 
         self.assertIn("Could not find a loan with ID 999", comment.replies[0])
 
@@ -68,8 +67,6 @@ class PaidCommandTests(unittest.TestCase):
         self.assertIn("Currency mismatch", comment.replies[0])
 
     def test_lender_cannot_record_more_than_150_percent_of_loan(self):
-        # Loan: amount=100, repaid=90, remaining=10.
-        # Max allowed = 100*1.5 - 90 = 60. Paying $61 exceeds the cap → error.
         fake_db = FakeDb(
             loans=[loan_record(db_id=12, amount="100.00", amount_repaid="90.00")],
             users={"borrower": {"amount_repaid": Decimal("90")}},
@@ -128,6 +125,22 @@ class PaidCommandTests(unittest.TestCase):
 
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("has been refunded", comment.replies[0])
+
+    def test_verified_lender_without_flair_is_rejected(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=12)])
+
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", flair_text="")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_flair_without_db_verification_is_rejected(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=12)], verified_lenders=[])
+
+        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", flair_text="Verified Lender")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
+        self.assertIn("verification process", comment.replies[0])
 
 
 if __name__ == "__main__":

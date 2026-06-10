@@ -8,8 +8,16 @@
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
     <div style="display:flex;flex-direction:column;gap:4px">
-      <label style="font-size:12px;color:var(--muted)">Username</label>
-      <input id="f-username" class="search-input" placeholder="any" style="width:160px">
+      <label style="font-size:12px;color:var(--muted)">Actor</label>
+      <input id="f-username" class="search-input" placeholder="any" style="width:140px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Target user</label>
+      <input id="f-target-user" class="search-input" placeholder="any" style="width:140px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Loan ID</label>
+      <input id="f-loan" class="search-input" placeholder="any" style="width:120px">
     </div>
     <div style="display:flex;flex-direction:column;gap:4px">
       <label style="font-size:12px;color:var(--muted)">Action</label>
@@ -48,21 +56,35 @@ let _auditOffset = 0;
 const PAGE = 50;
 
 function clearFilters() {
-  document.getElementById('f-username').value = '';
-  document.getElementById('f-action').value   = '';
-  document.getElementById('f-from').value     = '';
-  document.getElementById('f-to').value       = '';
+  document.getElementById('f-username').value    = '';
+  document.getElementById('f-target-user').value = '';
+  document.getElementById('f-loan').value        = '';
+  document.getElementById('f-action').value      = '';
+  document.getElementById('f-from').value        = '';
+  document.getElementById('f-to').value          = '';
   loadAudit(0);
 }
+
+// Pre-fill filters from URL params (e.g. links from lender profile)
+(function initFromUrl() {
+  const sp = new URLSearchParams(location.search);
+  if (sp.get('username'))        document.getElementById('f-username').value    = sp.get('username');
+  if (sp.get('target_username')) document.getElementById('f-target-user').value = sp.get('target_username');
+  if (sp.get('loan_id'))         document.getElementById('f-loan').value        = sp.get('loan_id');
+})();
 
 async function loadAudit(offset) {
   _auditOffset = offset;
   const params = new URLSearchParams({limit: PAGE, offset});
   const u = document.getElementById('f-username').value.trim();
+  const tu = document.getElementById('f-target-user').value.trim();
+  const lid = document.getElementById('f-loan').value.trim();
   const a = document.getElementById('f-action').value;
   const from = document.getElementById('f-from').value;
   const to   = document.getElementById('f-to').value;
   if (u) params.set('username', u);
+  if (tu) params.set('target_username', tu);
+  if (lid) params.set('loan_id', lid);
   if (a) params.set('action_type', a);
   if (from) params.set('date_from', from);
   if (to)   params.set('date_to', to + 'T23:59:59');
@@ -98,9 +120,17 @@ function renderAudit(data) {
   </tr></thead><tbody>`;
   for (const r of rows) {
     const ts = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
-    const target = r.target_id
-      ? `<span style="color:var(--muted);font-size:12px">${r.target_type || ''} #${r.target_id}</span>`
-      : '<span style="color:var(--muted)">—</span>';
+    let target = '<span style="color:var(--muted)">—</span>';
+    if (r.target_id) {
+      if (r.target_type === 'user')
+        target = `<a href="/dashboard/users/${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px">u/${r.target_id}</a>`;
+      else if (r.target_type === 'loan')
+        target = `<a href="/dashboard/admin/search?q=${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px;font-family:monospace">loan ${r.target_id}</a>`;
+      else if (r.target_type === 'verification_application')
+        target = `<span style="color:var(--muted);font-size:12px">verification #${r.target_id}</span>`;
+      else
+        target = `<span style="color:var(--muted);font-size:12px">${r.target_type || ''} #${r.target_id}</span>`;
+    }
     const newVal = r.new_value_json
       ? `<pre style="font-size:11px;color:var(--muted);margin:0;max-width:200px;overflow:auto">${JSON.stringify(r.new_value_json,null,1)}</pre>`
       : '';

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Lender Directory — LoanCentral{% endblock %}
+{% block content %}
+<div class="section-header">
+  <div><h2 class="section-title">Lender Directory</h2></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Search</label>
+      <input id="f-q" class="search-input" placeholder="username or reddit username"
+             style="width:100%" onkeydown="if(event.key==='Enter')loadLenders(0)">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Verification</label>
+      <select id="f-verified" class="search-input" style="width:160px">
+        <option value="">All</option>
+        <option value="verified">Verified lenders</option>
+        <option value="unverified">Unverified</option>
+        <option value="revoked">Revoked</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="font-size:12px;color:var(--muted)">Reddit link</label>
+      <select id="f-reddit" class="search-input" style="width:140px">
+        <option value="">Any</option>
+        <option value="1">Linked</option>
+        <option value="0">Not linked</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="loadLenders(0)">Filter</button>
+    <button class="btn-secondary" onclick="clearLenderFilters()">Clear</button>
+  </div>
+</div>
+
+<div id="lenders-wrap">
+  <div class="table-placeholder"><div class="spinner"></div></div>
+</div>
+<div id="lenders-pagination" style="display:flex;gap:8px;margin-top:12px;align-items:center"></div>
+
+<script>
+let _lOffset = 0;
+const LPAGE = 100;
+
+function clearLenderFilters() {
+  document.getElementById('f-q').value = '';
+  document.getElementById('f-verified').value = '';
+  document.getElementById('f-reddit').value = '';
+  loadLenders(0);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function loadLenders(offset) {
+  _lOffset = offset;
+  const params = new URLSearchParams({limit: LPAGE, offset});
+  const q = document.getElementById('f-q').value.trim();
+  const v = document.getElementById('f-verified').value;
+  const r = document.getElementById('f-reddit').value;
+  if (q) params.set('q', q);
+  if (v) params.set('verified', v);
+  if (r) params.set('has_reddit', r);
+  const res  = await fetch('/api/admin/lenders?' + params);
+  const data = await res.json();
+  renderLenders(data);
+}
+
+function vlBadge(l) {
+  if (l.verified_lender)
+    return '<span style="color:var(--green);font-size:12px;font-weight:700">✓ Verified</span>';
+  if (l.verified_lender_at)
+    return '<span style="color:var(--orange);font-size:12px;font-weight:700">Revoked</span>';
+  return '<span style="color:var(--muted);font-size:12px">—</span>';
+}
+
+function renderLenders(data) {
+  const rows = data.lenders || [];
+  const total = data.total || 0;
+  const wrap = document.getElementById('lenders-wrap');
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="table-placeholder">No lenders found.</div>';
+    document.getElementById('lenders-pagination').innerHTML = '';
+    return;
+  }
+  let html = `<div class="table-wrap"><table class="data-table mobile-cards"><thead><tr>
+    <th>Username</th><th>Reddit</th><th>Status</th><th>Funded</th>
+    <th>Active</th><th>Repaid</th><th>Unpaid</th><th>Disputed</th>
+    <th>Total $</th><th>Last login</th><th></th>
+  </tr></thead><tbody>`;
+  for (const l of rows) {
+    const rn = l.reddit_username
+      ? `<a href="https://www.reddit.com/user/${encodeURIComponent(l.reddit_username)}" target="_blank" rel="noopener" style="color:var(--accent-h);font-size:12px">u/${esc(l.reddit_username)}</a>`
+      : '<span style="color:var(--muted);font-size:12px">—</span>';
+    const ll = l.last_login ? new Date(l.last_login).toLocaleDateString() : '—';
+    html += `<tr>
+      <td data-label="Username"><a href="/dashboard/admin/lenders/${encodeURIComponent(l.username)}" style="color:var(--accent-h);font-weight:600">u/${esc(l.username)}</a></td>
+      <td data-label="Reddit">${rn}</td>
+      <td data-label="Status">${vlBadge(l)}</td>
+      <td data-label="Funded">${l.total_loans}</td>
+      <td data-label="Active">${l.active_loans}</td>
+      <td data-label="Repaid">${l.repaid_loans}</td>
+      <td data-label="Unpaid">${l.unpaid_loans ? `<span style="color:var(--red);font-weight:700">${l.unpaid_loans}</span>` : '0'}</td>
+      <td data-label="Disputed">${l.disputed_loans ? `<span style="color:var(--orange);font-weight:700">${l.disputed_loans}</span>` : '0'}</td>
+      <td data-label="Total $">${l.total_funded.toFixed(2)}</td>
+      <td data-label="Last login" style="font-size:12px;color:var(--muted)">${ll}</td>
+      <td data-label=""><a class="btn-secondary" style="font-size:12px;padding:4px 10px" href="/dashboard/admin/lenders/${encodeURIComponent(l.username)}">View Profile</a></td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+
+  const pages = Math.ceil(total / LPAGE);
+  const cur   = Math.floor(_lOffset / LPAGE);
+  let phtml = `<span style="color:var(--muted);font-size:13px">${total} lenders</span>`;
+  if (cur > 0)
+    phtml += `<button class="btn-secondary" onclick="loadLenders(${(cur-1)*LPAGE})">← Prev</button>`;
+  if (pages > 1)
+    phtml += `<span style="font-size:13px">Page ${cur+1} / ${pages}</span>`;
+  if (cur < pages-1)
+    phtml += `<button class="btn-secondary" onclick="loadLenders(${(cur+1)*LPAGE})">Next →</button>`;
+  document.getElementById('lenders-pagination').innerHTML = phtml;
+}
+
+loadLenders(0);
+</script>
+{% endblock %}

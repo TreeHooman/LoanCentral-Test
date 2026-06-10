@@ -2,6 +2,7 @@ import logging
 import re
 
 from bot_messages import DASHBOARD_URL, with_dashboard_link
+from commands.lender_gate import require_verified_lender
 
 logger = logging.getLogger("LoanCentral")
 
@@ -16,7 +17,7 @@ def _parse_fund(text):
     Returns (request_id, repay_amount, currency, repay_date) or None.
     """
     match = re.search(
-        r'\$fund\s+(REQ-\d{4,})\s+(\d+(?:\.\d+)?)(?:\s+([A-Z]{3}))?\s+(\d{4}-\d{2}-\d{2})',
+        r"\$fund\s+(REQ-\d{4,})\s+(\d+(?:\.\d+)?)(?:\s+([A-Z]{3}))?\s+(\d{4}-\d{2}-\d{2})",
         text,
         re.IGNORECASE,
     )
@@ -30,25 +31,6 @@ def _parse_fund(text):
     )
 
 
-def _verified_lender_or_reply(comment):
-    """Check lender status against the database — never Reddit flair."""
-    try:
-        from services import get_verified_lender_status
-        lender = comment.author.name.lower()
-        is_verified, _, err = get_verified_lender_status(lender)
-        if is_verified:
-            return True
-        comment.reply(with_dashboard_link(
-            "Error: Your account has not completed the LoanCentral lender verification process. "
-            "Contact a moderator to begin the process."
-        ))
-        return False
-    except Exception as exc:
-        logger.error(f"Error checking verified lender status for {comment.author.name}: {exc}")
-        comment.reply(with_dashboard_link("Error: Unable to verify your lender status. Please contact the moderators."))
-        return False
-
-
 def process_fund_command(comment):
     """Fund an existing REQ code from Reddit and return the paid ID."""
     from services import fund_loan_request, get_loan_request, update_last_login
@@ -60,7 +42,7 @@ def process_fund_command(comment):
     request_id, repay_amount, currency, repay_date = parsed
     lender = comment.author.name.lower()
 
-    if not _verified_lender_or_reply(comment):
+    if not require_verified_lender(comment):
         return
 
     req, req_error = get_loan_request(request_id)

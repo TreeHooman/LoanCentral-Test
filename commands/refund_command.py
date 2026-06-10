@@ -1,7 +1,8 @@
-import re
 import logging
+import re
 
 from bot_messages import DASHBOARD_URL, with_dashboard_link
+from commands.lender_gate import require_verified_lender
 
 logger = logging.getLogger("LoanCentral")
 
@@ -15,12 +16,14 @@ def process_refund_command(comment):
     """
     from services import mark_refunded_by_id, update_last_login
 
-    match = re.search(r'\$refunded\s+(\w+)', comment.body, re.IGNORECASE)
+    match = re.search(r"\$refunded\s+(\w+)", comment.body, re.IGNORECASE)
     if not match:
         return
 
     loan_id = match.group(1)
     lender = comment.author.name.lower()
+    if not require_verified_lender(comment):
+        return
     update_last_login(lender)
 
     result, error = mark_refunded_by_id(loan_id, lender)
@@ -33,9 +36,9 @@ def process_refund_command(comment):
     amount = result["amount"]
     currency = result["currency"]
 
-    # Notify moderators
     try:
         from utils import reddit, reddit_limiter
+
         post_subreddit = comment.submission.subreddit.display_name
         reddit_limiter.wait()
         reddit.subreddit(post_subreddit).message(

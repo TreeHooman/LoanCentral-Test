@@ -6,8 +6,8 @@ from tests.support.fakes import FakeComment, FakeSubreddit
 
 
 class FundCommandTests(unittest.TestCase):
-    def run_fund_command(self, body, is_verified_lender=True):
-        comment = FakeComment(body=body, author_name="lender")
+    def run_fund_command(self, body, is_verified_lender=True, flair_text="Verified Lender"):
+        comment = FakeComment(body=body, author_name="lender", subreddit=FakeSubreddit(flair_text=flair_text))
         fund_command = importlib.import_module("commands.fund_command")
         vl_return = (True, None, None) if is_verified_lender else (False, None, None)
         with patch("services.get_loan_request") as get_req, \
@@ -37,6 +37,22 @@ class FundCommandTests(unittest.TestCase):
     def test_non_verified_lender_is_rejected(self):
         comment, _get_req, fund_req = self.run_fund_command(
             "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=False
+        )
+
+        fund_req.assert_not_called()
+        self.assertIn("verification process", comment.replies[0])
+
+    def test_verified_lender_without_flair_is_rejected(self):
+        comment, _get_req, fund_req = self.run_fund_command(
+            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
+        )
+
+        fund_req.assert_not_called()
+        self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_flair_without_db_verification_is_rejected(self):
+        comment, _get_req, fund_req = self.run_fund_command(
+            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=False, flair_text="Verified Lender"
         )
 
         fund_req.assert_not_called()

@@ -18,6 +18,7 @@
         <option value="all">All</option>
         <option value="loans">Loans</option>
         <option value="users">Users</option>
+        <option value="verifications">Verifications</option>
       </select>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px">
@@ -42,6 +43,16 @@
 <script>
 let _offset = 0;
 const PAGE = 50;
+const IS_ADMIN = {{ (role == 'admin')|tojson }};
+
+// Pre-fill query from URL (e.g. loan links from the audit log)
+(function initFromUrl() {
+  const sp = new URLSearchParams(location.search);
+  if (sp.get('q')) {
+    document.getElementById('q').value = sp.get('q');
+    setTimeout(() => runSearch(), 0);
+  }
+})();
 
 async function runSearch(offset) {
   _offset = offset || 0;
@@ -69,8 +80,9 @@ function renderResults(data, q) {
   const total   = data.total || 0;
   const loans   = results.loans || [];
   const users   = results.users || [];
+  const verifs  = results.verifications || [];
 
-  if (!loans.length && !users.length) {
+  if (!loans.length && !users.length && !verifs.length) {
     wrap.innerHTML = '<div class="table-placeholder">No results found.</div>';
     document.getElementById('search-pagination').innerHTML = '';
     return;
@@ -110,12 +122,39 @@ function renderResults(data, q) {
       const rn = u.reddit_username
         ? `<a href="https://www.reddit.com/user/${encodeURIComponent(u.reddit_username)}" target="_blank" style="color:var(--accent-h);font-size:12px">u/${u.reddit_username}</a>`
         : '<span style="color:var(--muted);font-size:12px">—</span>';
+      const profileHref = (IS_ADMIN && (u.role === 'lender' || u.verified_lender))
+        ? `/dashboard/admin/lenders/${encodeURIComponent(u.username)}`
+        : `/dashboard/users/${encodeURIComponent(u.username)}`;
       html += `<tr>
-        <td><a href="/dashboard/users/${encodeURIComponent(u.username)}" style="color:var(--accent-h)">u/${u.username}</a></td>
+        <td><a href="${profileHref}" style="color:var(--accent-h)">u/${u.username}</a></td>
         <td>${rn}</td>
         <td><span class="badge badge-${u.role}">${u.role}</span></td>
         <td>${vl}</td>
         <td style="font-size:12px;color:var(--muted)">${ll}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  if (verifs.length) {
+    html += `<h3 style="font-size:14px;font-weight:700;margin:20px 0 10px;color:var(--muted)">VERIFICATION APPLICATIONS (${verifs.length})</h3>
+    <table class="data-table"><thead><tr>
+      <th>ID</th><th>Username</th><th>Reddit</th><th>Status</th><th>Reviewer</th><th>Submitted</th>
+    </tr></thead><tbody>`;
+    for (const v of verifs) {
+      const rn = v.reddit_username
+        ? `<span style="color:var(--accent-h);font-size:12px">u/${v.reddit_username}</span>`
+        : '<span style="color:var(--muted);font-size:12px">—</span>';
+      const profileHref = IS_ADMIN
+        ? `/dashboard/admin/lenders/${encodeURIComponent(v.username)}`
+        : `/dashboard/users/${encodeURIComponent(v.username)}`;
+      html += `<tr>
+        <td style="font-family:monospace">#${v.id}</td>
+        <td><a href="${profileHref}" style="color:var(--accent-h)">u/${v.username}</a></td>
+        <td>${rn}</td>
+        <td><span class="badge">${v.status}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${v.reviewer || '—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${v.submitted_at ? new Date(v.submitted_at).toLocaleDateString() : '—'}</td>
       </tr>`;
     }
     html += '</tbody></table>';

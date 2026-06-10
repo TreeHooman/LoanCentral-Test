@@ -195,12 +195,12 @@ class NotificationTests(unittest.TestCase):
         from datetime import datetime
         fake_row = (1, "alice", "loan_confirmed", "Loan confirmed", "Confirmed!", False, datetime(2026, 6, 1))
         conn, cur = _make_conn(rows=[fake_row])
-        # fetchone called first for unread count, then fetchall for rows
-        cur.fetchone.return_value = (1,)
+        # fetchone called: (1) unread count, (2) total count
+        cur.fetchone.side_effect = [(1,), (1,)]
         cur.fetchall.return_value = [fake_row]
         with patch("services._get_db", return_value=conn):
             from services import get_notifications
-            notifs, unread_count, err = get_notifications("alice")
+            notifs, unread_count, total, err = get_notifications("alice")
         self.assertIsNone(err)
         self.assertEqual(len(notifs), 1)
         self.assertEqual(unread_count, 1)
@@ -208,7 +208,7 @@ class NotificationTests(unittest.TestCase):
     def test_get_notifications_no_db(self):
         with patch("services._get_db", return_value=None):
             from services import get_notifications
-            notifs, unread_count, err = get_notifications("alice")
+            notifs, unread_count, total, err = get_notifications("alice")
         self.assertIsNotNone(err)
         self.assertEqual(len(notifs), 0)
 

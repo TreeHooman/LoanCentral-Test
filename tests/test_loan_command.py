@@ -1,6 +1,6 @@
 """
 Tests for the lender-first $loan command.
-$loan [amount] [currency] u/[borrower] — creates loan immediately, no confirm needed.
+$loan [amount] [currency] u/[borrower] - creates loan immediately, no confirm needed.
 """
 import importlib
 import sys
@@ -51,12 +51,18 @@ class LoanCommandTests(unittest.TestCase):
         self.assertIn("$refunded", comment.replies[0])
 
     def test_non_verified_lender_is_rejected(self):
-        # verified_lenders=[] means "lender" has no DB verification — bot must reject.
         fake_db = FakeDb(verified_lenders=[])
         comment = run_loan_command(fake_db, "$loan 50 USD u/borrower")
 
         self.assertEqual(len(fake_db.loans), 0)
         self.assertIn("lender verification process", comment.replies[0])
+
+    def test_verified_lender_without_flair_is_rejected(self):
+        fake_db = FakeDb()
+        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower", flair_text="")
+
+        self.assertEqual(len(fake_db.loans), 0)
+        self.assertIn("Verified Lender flair", comment.replies[0])
 
     def test_lender_cannot_loan_to_themselves(self):
         fake_db = FakeDb()

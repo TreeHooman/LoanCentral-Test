@@ -366,7 +366,7 @@
           <div class="mobile-card-actions">
             ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : '<span></span>'}
             ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : '<span></span>'}
-            <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+            <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extend</button>
           </div>
           <div class="mobile-card-details">
             <div class="mobile-card-detail-grid">
@@ -401,7 +401,7 @@
         <td data-label="Notes">${noteHtml}</td>
         <td data-label="Actions"><div class="actions">
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
-          <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+          <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Edit Due</button>
           <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
           ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}

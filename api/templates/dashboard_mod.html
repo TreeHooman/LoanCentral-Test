@@ -14,6 +14,36 @@
   {% endif %}
 </div>
 
+{% if can_view_money %}
+<!-- Admin metrics panel -->
+<div id="admin-metrics" style="margin-bottom:16px"></div>
+<script>
+(async function loadAdminMetrics() {
+  const res = await fetch('/api/admin/metrics');
+  if (!res.ok) return;
+  const m = await res.json();
+  const l = m.loans || {};
+  const u = m.users || {};
+  const v = m.verifications || {};
+  const cards = [
+    ['Total Users',        u.total            ?? '—', ''],
+    ['Lenders',            u.lenders          ?? '—', ''],
+    ['Borrowers',          u.borrowers        ?? '—', ''],
+    ['Verified Lenders',   u.verified_lenders ?? '—', 'c-green'],
+    ['Pending Verif.',     v.pending          ?? '—', v.pending ? 'c-yellow' : ''],
+    ['Disputed',           l.disputed         ?? '—', l.disputed ? 'c-red' : ''],
+  ];
+  const wrap = document.getElementById('admin-metrics');
+  wrap.innerHTML = '<div class="stats-grid">' +
+    cards.map(([label, val, cls]) =>
+      `<div class="stat-card"><div class="stat-label">${label}</div>` +
+      `<div class="stat-value ${cls}">${val}</div></div>`
+    ).join('') +
+  '</div>';
+})();
+</script>
+{% endif %}
+
 <!-- Loans tab -->
 <div id="tab-loans">
   <div class="toolbar">
@@ -375,7 +405,7 @@
         <div class="mobile-card-actions">
           ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>` : '<span></span>'}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : '<span></span>'}
-          <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+          <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extend</button>
         </div>
         <div class="mobile-card-details">
           <div class="mobile-card-detail-grid">
@@ -408,7 +438,7 @@
       <td data-label="Actions"><div class="actions">
         ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${escapeHtml(loan.lender)}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : ''}
-        <button class="btn-action btn-extension" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Extension</button>
+        <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Edit Due</button>
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : ''}
       </div></td>
     </tr>`;
