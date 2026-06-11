@@ -1214,6 +1214,7 @@ def get_active_loans(username: str):
                 FROM loans
                 WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
                 ORDER BY date_created ASC
+                LIMIT 1000
             ''', (username.lower(),))
         except Exception as e:
             if not _looks_like_missing_column(e):
@@ -1227,9 +1228,12 @@ def get_active_loans(username: str):
                 FROM loans
                 WHERE borrower = %s AND status IN ('confirmed', 'partially_repaid')
                 ORDER BY date_created ASC
+                LIMIT 1000
             ''', (username.lower(),))
 
         rows = cur.fetchall()
+        if len(rows) >= 1000:
+            logger.warning("get_active_loans: LIMIT 1000 hit for user %s — reminder queue may be incomplete", username)
         loans = []
         for r in rows:
             if schema_mode == "base":
@@ -1360,17 +1364,24 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
                 expires_at = datetime.now() + timedelta(days=days)
         except ValueError:
             expires_at = datetime.now() + timedelta(days=7)
+        notes_parts = []
+        if parsed.get("currency") and parsed["currency"] != "USD":
+            notes_parts.append(f"currency:{parsed['currency']}")
+        if parsed.get("payment_method"):
+            notes_parts.append(f"method:{parsed['payment_method']}")
+        if expires_at:
+            notes_parts.append(f"expires:{expires_at.date().isoformat()}")
+        notes = "; ".join(notes_parts) or None
         cur.execute('''
             INSERT INTO loan_requests
-            (request_id, borrower, amount, currency, repay_amount, repay_date,
-             payment_method, expires_at, post_date, thread_link, reddit_post_id, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open')
+            (request_id, borrower_username, requested_amount,
+             requested_repayment_amount, requested_due_date,
+             thread_url, reddit_post_id, request_status, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s)
         ''', (
             request_id, borrower.lower(),
-            parsed["amount"], parsed["currency"],
-            parsed["repay_amount"], parsed["repay_date"],
-            parsed["payment_method"], expires_at, post_date,
-            thread_link, reddit_post_id
+            parsed["amount"], parsed["repay_amount"], parsed["repay_date"],
+            thread_link, reddit_post_id, notes
         ))
         conn.commit()
         logger.info(f"Loan request saved: {request_id} from u/{borrower} ({parsed['amount']} {parsed['currency']})")
@@ -1409,9 +1420,9 @@ def get_loan_request(request_id: str):
     try:
         cur = conn.cursor()
         cur.execute('''
-            SELECT request_id, borrower, amount, currency, repay_amount,
-                   repay_date, payment_method, post_date, thread_link, status,
-                   funded_by, funded_date, lender_note, expires_at
+            SELECT request_id, borrower_username, requested_amount,
+                   requested_repayment_amount, requested_due_date,
+                   thread_url, request_status, created_at, notes
             FROM loan_requests WHERE request_id = %s
         ''', (request_id.upper(),))
         row = cur.fetchone()
@@ -1421,17 +1432,17 @@ def get_loan_request(request_id: str):
             "request_id":     row[0],
             "borrower":       row[1],
             "amount":         row[2],
-            "currency":       row[3],
-            "repay_amount":   row[4],
-            "repay_date":     row[5].isoformat() if row[5] else None,
-            "payment_method": row[6],
+            "currency":       "USD",
+            "repay_amount":   row[3],
+            "repay_date":     row[4].isoformat() if row[4] else None,
+            "payment_method": None,
             "post_date":      row[7].isoformat() if row[7] else None,
-            "thread_link":    row[8],
-            "status":         row[9],
-            "funded_by":      row[10],
-            "funded_date":    row[11].isoformat() if row[11] else None,
-            "lender_note":    row[12],
-            "expires_at":     row[13].isoformat() if row[13] else None,
+            "thread_link":    row[5],
+            "status":         row[6],
+            "funded_by":      None,
+            "funded_date":    None,
+            "lender_note":    None,
+            "expires_at":     None,
         }, None
     except Exception as e:
         logger.error(f"get_loan_request error: {e}", exc_info=True)
@@ -1478,9 +1489,9 @@ def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_d
         cur = conn.cursor()
         cur.execute('''
             UPDATE loan_requests
-            SET status = 'funded', funded_by = %s, funded_date = %s, loan_id = %s
+            SET request_status = 'funded', updated_at = NOW()
             WHERE request_id = %s
-        ''', (lender.lower(), datetime.now(), loan_id, request_id.upper()))
+        ''', (request_id.upper(),))
         conn.commit()
         log_event(
             "request_funded",
@@ -1555,22 +1566,22 @@ def get_open_requests(limit: int = 100):
     try:
         cur = conn.cursor()
         cur.execute('''
-            SELECT request_id, borrower, amount, currency, repay_amount,
-                   repay_date, payment_method, post_date, thread_link, status,
-                   lender_note, expires_at
+            SELECT request_id, borrower_username, requested_amount,
+                   requested_repayment_amount, requested_due_date,
+                   thread_url, request_status, created_at, notes
             FROM loan_requests
-            WHERE status = 'open'
-            ORDER BY post_date DESC LIMIT %s
+            WHERE request_status = 'open'
+            ORDER BY created_at DESC LIMIT %s
         ''', (limit,))
         rows = cur.fetchall()
         return [
             {
                 "request_id":     r[0], "borrower":       r[1],
-                "amount":         r[2], "currency":        r[3],
-                "repay_amount":   r[4], "repay_date":      r[5].isoformat() if r[5] else None,
-                "payment_method": r[6], "post_date":       r[7].isoformat() if r[7] else None,
-                "thread_link":    r[8], "status":          r[9],
-                "lender_note":    r[10], "expires_at":      r[11].isoformat() if r[11] else None,
+                "amount":         r[2], "currency":        "USD",
+                "repay_amount":   r[3], "repay_date":      r[4].isoformat() if r[4] else None,
+                "payment_method": None, "post_date":       r[7].isoformat() if r[7] else None,
+                "thread_link":    r[5], "status":          r[6],
+                "lender_note":    None, "expires_at":      None,
             }
             for r in rows
         ], None
@@ -1601,10 +1612,10 @@ def find_duplicate_open_requests(borrower: str, exclude_reddit_post_id: str = No
             extra += " AND request_id <> %s"
             params.append(exclude_request_id.upper())
         cur.execute(f'''
-            SELECT request_id, amount, currency, post_date, thread_link
+            SELECT request_id, requested_amount, created_at, thread_url
             FROM loan_requests
-            WHERE borrower = %s AND status = 'open' {extra}
-            ORDER BY post_date DESC
+            WHERE lower(borrower_username) = %s AND request_status = 'open' {extra}
+            ORDER BY created_at DESC
             LIMIT 5
         ''', tuple(params))
         rows = cur.fetchall()
@@ -1612,9 +1623,9 @@ def find_duplicate_open_requests(borrower: str, exclude_reddit_post_id: str = No
             {
                 "request_id": r[0],
                 "amount": r[1],
-                "currency": r[2],
-                "post_date": r[3].isoformat() if r[3] else None,
-                "thread_link": r[4],
+                "currency": "USD",
+                "post_date": r[2].isoformat() if r[2] else None,
+                "thread_link": r[3],
             }
             for r in rows
         ], None
@@ -1641,13 +1652,10 @@ def expire_old_requests(days: int = None):
         cur = conn.cursor()
         cur.execute('''
             UPDATE loan_requests
-            SET status = 'expired'
-            WHERE status = 'open'
-              AND (
-                (expires_at IS NOT NULL AND expires_at < NOW())
-                OR (expires_at IS NULL AND post_date < %s)
-              )
-            RETURNING request_id, borrower
+            SET request_status = 'expired'
+            WHERE request_status = 'open'
+              AND created_at < %s
+            RETURNING request_id, borrower_username
         ''', (cutoff,))
         rows = cur.fetchall()
         conn.commit()
