@@ -4794,6 +4794,7 @@ import string as _lr_string
 _LR_STATUSES = {
     "open", "funded", "cancelled", "expired",
     "removed", "duplicate", "denied_by_mod",
+    "funded_backfill",
 }
 
 
@@ -5149,7 +5150,7 @@ def get_request_analytics():
                 COUNT(*)                                                     AS total,
                 COUNT(*) FILTER (WHERE request_status = 'open')             AS open,
                 COUNT(*) FILTER (WHERE request_status = 'funded')           AS funded,
-                COUNT(*) FILTER (WHERE request_status NOT IN ('funded','cancelled','removed','duplicate','denied_by_mod','expired'))
+                COUNT(*) FILTER (WHERE request_status NOT IN ('funded','cancelled','removed','duplicate','denied_by_mod','expired','funded_backfill'))
                                                                              AS unfunded_active,
                 COUNT(*) FILTER (WHERE request_status IN ('cancelled','removed','duplicate','denied_by_mod','expired'))
                                                                              AS closed_unfunded,
@@ -5160,16 +5161,23 @@ def get_request_analytics():
                 ROUND(
                   100.0 * COUNT(*) FILTER (WHERE request_status = 'funded')
                   / NULLIF(COUNT(*), 0), 1
-                )                                                            AS funding_rate_pct
+                )                                                            AS funding_rate_pct,
+                COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')  AS this_week,
+                COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') AS this_month,
+                COUNT(*) FILTER (WHERE request_status = 'expired')               AS expired_count,
+                COUNT(*) FILTER (WHERE request_status = 'duplicate')             AS duplicate_flags,
+                ROUND(
+                  AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400.0)
+                  FILTER (WHERE request_status = 'funded'), 1
+                )                                                                 AS avg_days_to_funded
             FROM loan_requests
         """)
         row = cur.fetchone()
         cols = ["total","open","funded","unfunded_active","closed_unfunded",
-                "avg_requested","avg_funded_amount","funding_rate_pct"]
+                "avg_requested","avg_funded_amount","funding_rate_pct",
+                "this_week","this_month","expired_count","duplicate_flags","avg_days_to_funded"]
         stats = dict(zip(cols, row))
         for k in stats:
-            if stats[k] is not None:
-                stats[k] = float(stats[k]) if isinstance(stats[k], __builtins__.__class__) else stats[k]
             if stats[k] is not None:
                 try: stats[k] = float(stats[k])
                 except (TypeError, ValueError): pass
@@ -5307,10 +5315,15 @@ _REQUEST_EVENT_TYPES = (
     "created",
     "status_changed",
     "linked_to_loan",
+    "unlinked_from_loan",
     "note_added",
     "expired",
     "detected_duplicate",
+    "duplicate_flagged",
     "edited",
+    "backfilled",
+    "manually_expired",
+    "missing_data_flagged",
 )
 
 
@@ -5445,6 +5458,329 @@ def find_duplicate_loan_requests(
         return rows, None
     except Exception as e:
         return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# =============================================================================
+# Request Intelligence Sprint — Helpers
+# =============================================================================
+
+def _log_request_event_with_cursor(cur, request_id: str, event_type: str,
+                                    actor: str = None, note: str = None):
+    """Insert a request event using an existing cursor (within a shared transaction)."""
+    cur.execute("""
+        INSERT INTO request_events (request_id, event_type, actor, note)
+        VALUES (%s, %s, %s, %s)
+    """, (request_id, event_type, actor, note))
+
+
+def _notify_all_mods(notification_type: str, title: str, message: str):
+    """Send an in-app notification to every user with role mod or admin. Best-effort."""
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT username FROM users WHERE role IN ('mod', 'admin') AND is_active = TRUE"
+        )
+        for (username,) in cur.fetchall():
+            create_notification(username, notification_type, title, message)
+    except Exception:
+        pass
+    finally:
+        try: cur.close()
+        except Exception: pass
+        conn.close()
+
+
+def flag_possible_duplicates(dry_run: bool = False):
+    """
+    Find open requests where the same borrower has another open request within 10 days,
+    then mark the earlier ones as 'duplicate'. Never deletes anything.
+    Returns (flagged_request_ids, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        _ensure_request_events_table(conn)
+        cur = conn.cursor()
+        # Find open requests where the same borrower has a newer open request within 10 days.
+        # We flag the older one (earliest created_at) as duplicate.
+        cur.execute("""
+            SELECT r1.request_id, r1.borrower_username
+            FROM loan_requests r1
+            WHERE r1.request_status = 'open'
+              AND EXISTS (
+                SELECT 1 FROM loan_requests r2
+                WHERE lower(r2.borrower_username) = lower(r1.borrower_username)
+                  AND r2.request_status = 'open'
+                  AND r2.request_id != r1.request_id
+                  AND r2.created_at BETWEEN r1.created_at - INTERVAL '10 days'
+                                        AND r1.created_at + INTERVAL '10 days'
+              )
+            ORDER BY r1.created_at ASC
+        """)
+        rows = cur.fetchall()
+        flagged_ids = [r[0] for r in rows]
+        if dry_run or not rows:
+            return flagged_ids, None
+        for req_id, borrower in rows:
+            cur.execute("""
+                UPDATE loan_requests
+                SET request_status = 'duplicate', updated_at = NOW()
+                WHERE request_id = %s AND request_status = 'open'
+            """, (req_id,))
+            if cur.rowcount:
+                _log_request_event_with_cursor(
+                    cur, req_id, "duplicate_flagged", actor="system",
+                    note="Auto-flagged: duplicate open request detected within 10 days"
+                )
+        conn.commit()
+        if flagged_ids:
+            _notify_all_mods(
+                "duplicate_request_flagged",
+                "Possible duplicate requests flagged",
+                f"{len(flagged_ids)} open request(s) flagged as duplicates by automation.",
+            )
+        return flagged_ids, None
+    except Exception as e:
+        conn.rollback()
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def flag_missing_thread_links(status_filter: str = "open"):
+    """
+    Return requests missing a thread_url. Surface only — no records modified.
+    Returns (requests_list, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        params = []
+        where = "WHERE (thread_url IS NULL OR trim(thread_url) = '')"
+        if status_filter:
+            where += " AND request_status = %s"
+            params.append(status_filter)
+        cur.execute(f"""
+            SELECT request_id, borrower_username, requested_amount, request_status, created_at
+            FROM loan_requests
+            {where}
+            ORDER BY created_at DESC
+        """, params)
+        cols = ["request_id", "borrower_username", "requested_amount",
+                "request_status", "created_at"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            if d["created_at"]:
+                d["created_at"] = str(d["created_at"])
+            if d["requested_amount"] is not None:
+                d["requested_amount"] = float(d["requested_amount"])
+            rows.append(d)
+        return rows, None
+    except Exception as e:
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def flag_unlinked_funded_requests():
+    """
+    Find requests with status='funded' but no funded_loan_id set.
+    Surface only — no records modified.
+    Returns (requests_list, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT request_id, borrower_username, requested_amount,
+                   request_status, funded_loan_id, created_at
+            FROM loan_requests
+            WHERE request_status = 'funded' AND funded_loan_id IS NULL
+            ORDER BY created_at DESC
+        """)
+        cols = ["request_id", "borrower_username", "requested_amount",
+                "request_status", "funded_loan_id", "created_at"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            if d["created_at"]:
+                d["created_at"] = str(d["created_at"])
+            if d["requested_amount"] is not None:
+                d["requested_amount"] = float(d["requested_amount"])
+            rows.append(d)
+        return rows, None
+    except Exception as e:
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def generate_request_quality_report():
+    """
+    Run data quality checks against loan_requests.
+    Safe read-only. Returns (report_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        checks = {}
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests
+            WHERE borrower_username IS NULL OR trim(borrower_username) = ''
+        """)
+        checks["missing_borrower_username"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests
+            WHERE request_status = 'open'
+              AND (thread_url IS NULL OR trim(thread_url) = '')
+        """)
+        checks["open_missing_thread_url"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests WHERE requested_amount IS NULL
+        """)
+        checks["missing_amount"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests
+            WHERE request_status = 'open'
+              AND created_at < NOW() - INTERVAL '10 days'
+        """)
+        checks["open_older_than_10_days"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests
+            WHERE request_status = 'funded' AND funded_loan_id IS NULL
+        """)
+        checks["funded_not_linked"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM loan_requests lr
+            WHERE lr.funded_loan_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM loans l WHERE l.id = lr.funded_loan_id
+              )
+        """)
+        checks["linked_to_missing_loan"] = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT request_status, COUNT(*) FROM loan_requests
+            GROUP BY request_status ORDER BY request_status
+        """)
+        checks["status_breakdown"] = {r[0]: r[1] for r in cur.fetchall()}
+        checks["total_requests"] = sum(checks["status_breakdown"].values()) if checks["status_breakdown"] else 0
+
+        return checks, None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def backfill_requests_from_loans(dry_run: bool = False):
+    """
+    For each loan not already linked to a loan_request, create a request record
+    with status='funded_backfill'. Links funded_loan_id. Never overwrites existing records.
+    Returns (created_count, skipped_count, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return 0, 0, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        _ensure_request_events_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.id, l.borrower, l.lender, l.amount, l.date_created, l.original_thread
+            FROM loans l
+            WHERE NOT EXISTS (
+                SELECT 1 FROM loan_requests lr WHERE lr.funded_loan_id = l.id
+            )
+            ORDER BY l.date_created ASC NULLS LAST
+        """)
+        loans = cur.fetchall()
+        created = 0
+        skipped = 0
+        if dry_run:
+            for loan_id, borrower, lender, amount, date_created, thread_url in loans:
+                if borrower and borrower.strip():
+                    created += 1
+                else:
+                    skipped += 1
+            return created, skipped, None
+
+        for loan_id, borrower, lender, amount, date_created, thread_url in loans:
+            if not borrower or not borrower.strip():
+                skipped += 1
+                continue
+            req_id = _generate_request_id()
+            for _ in range(5):
+                cur.execute("SELECT 1 FROM loan_requests WHERE request_id = %s", (req_id,))
+                if not cur.fetchone():
+                    break
+                req_id = _generate_request_id()
+            try:
+                ts = date_created if date_created else None
+                cur.execute("""
+                    INSERT INTO loan_requests
+                      (request_id, borrower_username, reddit_username, thread_url,
+                       requested_amount, request_status, funded_loan_id,
+                       created_at, updated_at)
+                    VALUES (%s, lower(%s), lower(%s), %s, %s, 'funded_backfill', %s,
+                            COALESCE(%s, NOW()), NOW())
+                """, (
+                    req_id,
+                    borrower.strip(),
+                    borrower.strip(),
+                    thread_url,
+                    float(amount) if amount is not None else None,
+                    loan_id,
+                    ts,
+                ))
+                _log_request_event_with_cursor(
+                    cur, req_id, "backfilled", actor="system",
+                    note=f"Backfilled from loan DB ID {loan_id}"
+                    + (f", lender u/{lender}" if lender else "")
+                )
+                created += 1
+            except Exception as inner_e:
+                logger.warning(f"backfill skip loan {loan_id}: {inner_e}")
+                conn.rollback()
+                cur = conn.cursor()
+                skipped += 1
+                continue
+        conn.commit()
+        if created:
+            log_event("loan_requests_backfilled", target_user="system", source="system",
+                      details={"created": created, "skipped": skipped})
+        return created, skipped, None
+    except Exception as e:
+        conn.rollback()
+        return 0, 0, str(e)
     finally:
         cur.close()
         conn.close()

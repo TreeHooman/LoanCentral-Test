@@ -3289,10 +3289,22 @@ def api_create_loan_request():
     )
     if error:
         return _json({"error": error}, 500)
-    from services import log_request_event, find_duplicate_loan_requests
+    from services import log_request_event, find_duplicate_loan_requests, create_notification
     log_request_event(request_id, "created", actor=session.get("username"),
                       note=f"Request created for u/{borrower}")
     dupes, _ = find_duplicate_loan_requests(borrower, days=10, exclude_request_id=request_id)
+    create_notification(
+        borrower, "request_recorded",
+        "Loan request recorded",
+        f"Your loan request {request_id} has been recorded."
+    )
+    if len(dupes) > 0:
+        from services import _notify_all_mods
+        _notify_all_mods(
+            "duplicate_request_flagged",
+            "Possible duplicate request",
+            f"Borrower u/{borrower} submitted request {request_id} — a possible duplicate exists.",
+        )
     return _json({"request_id": request_id, "possible_duplicate": len(dupes) > 0}, 201)
 
 
@@ -3361,9 +3373,30 @@ def api_update_request_status(request_id):
     log_audit(session["username"], session.get("role","mod"), "request_status_updated",
               target_type="loan_request", target_id=request_id,
               new_value={"status": new_status, "note": note})
-    from services import log_request_event
+    from services import log_request_event, get_loan_request, create_notification
     log_request_event(request_id, "status_changed", actor=session["username"],
                       note=f"Status → {new_status}" + (f": {note}" if note else ""))
+    req, _ = get_loan_request(request_id)
+    if req:
+        borrower = req.get("borrower_username", "")
+        if new_status == "funded":
+            create_notification(
+                borrower, "request_funded",
+                "Request marked as funded",
+                f"Your loan request {request_id} has been marked as funded."
+            )
+        elif new_status == "expired":
+            create_notification(
+                borrower, "request_expired",
+                "Request expired",
+                f"Your loan request {request_id} has expired."
+            )
+        elif new_status == "removed":
+            create_notification(
+                borrower, "request_removed",
+                "Request removed",
+                f"Your loan request {request_id} has been removed by a moderator."
+            )
     return _json({"ok": True, "request_id": request_id, "status": new_status})
 
 
@@ -3470,6 +3503,80 @@ def api_get_request_duplicates(request_id):
 def admin_request_analytics_page():
     return render_template("admin_request_analytics.html",
                            username=session["username"], role=session["role"])
+
+
+# ---- Request Review Dashboard -----------------------------------------------
+
+@app.route("/dashboard/mod/request-review")
+@role_required("mod", "admin")
+def mod_request_review_page():
+    return render_template("mod_request_review.html",
+                           username=session["username"], role=session["role"])
+
+
+# ---- Admin Automation Helpers -----------------------------------------------
+
+@app.route("/api/admin/requests/flag-duplicates", methods=["POST"])
+@require_admin_api
+def api_flag_duplicate_requests():
+    from services import flag_possible_duplicates, log_audit
+    data    = request.json or {}
+    dry_run = bool(data.get("dry_run", False))
+    flagged, error = flag_possible_duplicates(dry_run=dry_run)
+    if error:
+        return _json({"error": error}, 500)
+    if not dry_run and flagged:
+        log_audit(session["username"], session.get("role", "admin"),
+                  "requests_duplicate_flagged",
+                  new_value={"flagged_count": len(flagged), "request_ids": flagged})
+    return _json({"flagged": flagged, "count": len(flagged), "dry_run": dry_run})
+
+
+@app.route("/api/admin/requests/missing-threads", methods=["GET"])
+@require_admin_api
+def api_requests_missing_threads():
+    from services import flag_missing_thread_links
+    status = request.args.get("status", "open")
+    rows, error = flag_missing_thread_links(status_filter=status)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"requests": rows, "total": len(rows)})
+
+
+@app.route("/api/admin/requests/unlinked-funded", methods=["GET"])
+@require_admin_api
+def api_requests_unlinked_funded():
+    from services import flag_unlinked_funded_requests
+    rows, error = flag_unlinked_funded_requests()
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"requests": rows, "total": len(rows)})
+
+
+@app.route("/api/admin/requests/quality-report", methods=["GET"])
+@require_admin_api
+def api_request_quality_report():
+    from services import generate_request_quality_report
+    report, error = generate_request_quality_report()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(report)
+
+
+@app.route("/api/admin/requests/backfill", methods=["POST"])
+@require_admin_api
+def api_backfill_requests():
+    from services import backfill_requests_from_loans, log_audit
+    data    = request.json or {}
+    dry_run = bool(data.get("dry_run", False))
+    created, skipped, error = backfill_requests_from_loans(dry_run=dry_run)
+    if error:
+        return _json({"error": error}, 500)
+    if not dry_run and created:
+        log_audit(session["username"], session.get("role", "admin"),
+                  "requests_backfilled",
+                  new_value={"created": created, "skipped": skipped})
+    return _json({"created": created, "skipped": skipped, "dry_run": dry_run})
 
 
 # ---------------------------------------------------------------------------

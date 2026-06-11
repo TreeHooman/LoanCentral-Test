@@ -22,6 +22,7 @@
   <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="br-total">—</div></div>
   <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value c-yellow" id="br-open">—</div></div>
   <div class="stat-card"><div class="stat-label">Funded</div><div class="stat-value c-green" id="br-funded">—</div></div>
+  <div class="stat-card"><div class="stat-label">Closed</div><div class="stat-value c-red" id="br-closed">—</div></div>
 </div>
 
 <div class="table-wrap">
@@ -31,7 +32,7 @@
         <th>Request ID</th>
         <th>Amount</th>
         <th>Status</th>
-        <th>Date</th>
+        <th>Requested</th>
         <th>Thread</th>
         <th>Funded Loan</th>
       </tr>
@@ -45,23 +46,37 @@
 
 {% block scripts %}
 <script>
-const STATUS_STYLE = {
-  open:           'color:var(--yellow)',
-  funded:         'color:var(--green);font-weight:700',
-  cancelled:      'color:var(--muted)',
-  expired:        'color:var(--muted)',
-  removed:        'color:var(--red)',
-  duplicate:      'color:var(--muted)',
-  denied_by_mod:  'color:var(--red)',
+const STATUS_CHIP = {
+  open:           'background:rgba(255,200,0,.13);color:var(--yellow);border:1px solid rgba(255,200,0,.3)',
+  funded:         'background:rgba(0,200,100,.13);color:var(--green);border:1px solid rgba(0,200,100,.3)',
+  cancelled:      'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  expired:        'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  removed:        'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  duplicate:      'background:rgba(255,200,0,.08);color:var(--yellow);border:1px solid rgba(255,200,0,.2)',
+  denied_by_mod:  'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  funded_backfill:'background:rgba(0,200,100,.08);color:var(--green);border:1px solid rgba(0,200,100,.2)',
 };
+
+function statusChip(s) {
+  const style = STATUS_CHIP[s] || 'background:var(--surface);color:var(--muted);border:1px solid var(--border)';
+  return `<span style="${style};font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap">${escapeHtml(s)}</span>`;
+}
+
+function isExpiringSoon(created_at) {
+  if (!created_at) return false;
+  const days = (Date.now() - new Date(created_at)) / 86400000;
+  return days >= 7 && days < 10;
+}
 
 async function loadRequests() {
   const res  = await fetch('/api/loan-requests/mine', { credentials: 'same-origin' });
   const data = await res.json();
   const rows = data.requests || [];
+  const closed = rows.filter(r => ['expired','removed','cancelled','duplicate','denied_by_mod'].includes(r.request_status)).length;
   document.getElementById('br-total').textContent  = data.total ?? rows.length;
   document.getElementById('br-open').textContent   = rows.filter(r => r.request_status === 'open').length;
   document.getElementById('br-funded').textContent = rows.filter(r => r.request_status === 'funded').length;
+  document.getElementById('br-closed').textContent = closed;
   renderRequests(rows);
 }
 
@@ -75,35 +90,46 @@ function renderRequests(rows) {
     return;
   }
   tbody.innerHTML = rows.map(r => {
-    const sc      = STATUS_STYLE[r.request_status] || '';
-    const created = (r.created_at || '').slice(0,10);
-    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
-    const thread  = r.thread_url
-      ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h)">Reddit</a>`
+    const created   = (r.created_at || '').slice(0, 10);
+    const amt       = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const threadBtn = r.thread_url
+      ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener"
+           class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">Thread</a>`
+      : `<span style="color:var(--muted);font-size:11px">—</span>`;
+    const loanLink  = r.funded_loan_id
+      ? `<a href="/dashboard/loans/${r.funded_loan_id}"
+           style="color:var(--accent-h);font-size:12px">Loan #${r.funded_loan_id}</a>`
       : '—';
-    const loanLink = r.funded_loan_ref
-      ? `<a href="/dashboard/admin" style="color:var(--accent-h)">${escapeHtml(r.funded_loan_ref)}</a>`
-      : '—';
+    const expBadge  = (r.request_status === 'open' && isExpiringSoon(r.created_at))
+      ? `<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(220,50,50,.12);border:1px solid rgba(220,50,50,.3);border-radius:4px;padding:1px 5px;margin-left:4px">Expiring</span>`
+      : '';
     return `<tr>
       <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
         <div class="mobile-card-main">
           <div>
-            <div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+            <div class="mobile-card-title">
+              <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a>${expBadge}
+            </div>
             <div class="mobile-card-sub">${created}</div>
           </div>
           <div class="mobile-card-side">
             <div class="mobile-card-money">${amt}</div>
-            <span style="${sc};font-size:11px;margin-top:2px">${escapeHtml(r.request_status)}</span>
+            <div style="margin-top:3px">${statusChip(r.request_status)}</div>
           </div>
+        </div>
+        <div class="mobile-card-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <a href="/dashboard/requests/${escapeHtml(r.request_id)}" class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">View</a>
+          ${threadBtn}
+          ${r.funded_loan_id ? `<a href="/dashboard/loans/${r.funded_loan_id}" class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">Loan</a>` : ''}
         </div>
       </td>
       <td data-label="Request ID" style="font-family:monospace;font-size:12px">
-        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>
+        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>${expBadge}
       </td>
       <td data-label="Amount" class="amount">${amt}</td>
-      <td data-label="Status"><span style="${sc};font-size:12px">${escapeHtml(r.request_status)}</span></td>
-      <td data-label="Date" class="date-cell">${created}</td>
-      <td data-label="Thread">${thread}</td>
+      <td data-label="Status">${statusChip(r.request_status)}</td>
+      <td data-label="Requested" class="date-cell">${created}</td>
+      <td data-label="Thread">${threadBtn}</td>
       <td data-label="Funded Loan">${loanLink}</td>
     </tr>`;
   }).join('');

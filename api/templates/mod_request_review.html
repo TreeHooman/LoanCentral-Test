@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+{% block title %}Request Review — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Request Review Dashboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Triage open requests, flag duplicates, and link funded loans</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/dashboard/mod/requests" class="btn-secondary">Full Queue</a>
+    <a href="/admin/request-analytics" class="btn-secondary">Analytics</a>
+    <button class="btn-secondary" onclick="loadAll()">Refresh</button>
+  </div>
+</div>
+
+<!-- Summary bar -->
+<div class="stats-grid" style="margin-bottom:20px" id="summaryCards">
+  <div class="stat-card"><div class="stat-label">New Open</div><div class="stat-value c-yellow" id="cnt-open">—</div></div>
+  <div class="stat-card"><div class="stat-label">Possible Duplicates</div><div class="stat-value" style="color:var(--yellow)" id="cnt-dupes">—</div></div>
+  <div class="stat-card"><div class="stat-label">Expiring Soon</div><div class="stat-value c-red" id="cnt-expiring">—</div></div>
+  <div class="stat-card"><div class="stat-label">Recently Funded</div><div class="stat-value c-green" id="cnt-funded">—</div></div>
+  <div class="stat-card"><div class="stat-label">Removed / Flagged</div><div class="stat-value c-red" id="cnt-removed">—</div></div>
+</div>
+
+<!-- Section: New Open Requests -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">NEW OPEN REQUESTS</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="mobile-cards compact-command-table">
+    <thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Requested</th><th>Thread</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="bodyOpen"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Section: Possible Duplicates -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">POSSIBLE DUPLICATES</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="mobile-cards compact-command-table">
+    <thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Requested</th><th>Thread</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="bodyDupes"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Section: Expiring Soon -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">EXPIRING SOON (open, 7–10 days old)</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="mobile-cards compact-command-table">
+    <thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Requested</th><th>Thread</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="bodyExpiring"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Section: Recently Funded -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">RECENTLY FUNDED (last 7 days)</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="mobile-cards compact-command-table">
+    <thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Funded</th><th>Linked Loan</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="bodyFunded"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Section: Removed / Flagged -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">REMOVED / FLAGGED</div>
+<div class="table-wrap" style="margin-bottom:24px">
+  <table class="mobile-cards compact-command-table">
+    <thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Status</th><th>Date</th><th>Actions</th>
+    </tr></thead>
+    <tbody id="bodyRemoved"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+  </table>
+</div>
+
+<!-- Status-change modal -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <h3>Update Request Status</h3>
+    <div class="modal-error" id="statusError"></div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Request: <strong id="statusReqId"></strong></p>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">New status</label>
+    <select id="statusSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+      <option value="open">open</option>
+      <option value="funded">funded</option>
+      <option value="cancelled">cancelled</option>
+      <option value="expired">expired</option>
+      <option value="removed">removed</option>
+      <option value="duplicate">duplicate</option>
+      <option value="denied_by_mod">denied_by_mod</option>
+    </select>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Note (optional)</label>
+    <textarea id="statusNote" rows="2"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:14px"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitStatusChange()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Link-to-loan modal -->
+<div class="modal-overlay" id="linkModal">
+  <div class="modal">
+    <h3>Link to Funded Loan</h3>
+    <div class="modal-error" id="linkError"></div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Request: <strong id="linkReqId"></strong></p>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Loan DB ID</label>
+    <input id="linkLoanId" type="number" placeholder="e.g. 42"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" id="linkOverride"> Override if already linked
+    </label>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('linkModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitLink()">Link</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_CHIP = {
+  open:         'background:rgba(255,200,0,.13);color:var(--yellow);border:1px solid rgba(255,200,0,.3)',
+  funded:       'background:rgba(0,200,100,.13);color:var(--green);border:1px solid rgba(0,200,100,.3)',
+  cancelled:    'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  expired:      'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  removed:      'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  duplicate:    'background:rgba(255,200,0,.08);color:var(--yellow);border:1px solid rgba(255,200,0,.2)',
+  denied_by_mod:'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  funded_backfill:'background:rgba(0,200,100,.08);color:var(--green);border:1px solid rgba(0,200,100,.2)',
+};
+
+function statusChip(s) {
+  const style = STATUS_CHIP[s] || 'background:var(--surface);color:var(--muted);border:1px solid var(--border)';
+  return `<span style="${style};font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap">${escapeHtml(s)}</span>`;
+}
+
+function threadBtn(url) {
+  return url
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"
+         class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">Thread</a>`
+    : `<span style="color:var(--muted);font-size:11px">—</span>`;
+}
+
+function actionBtns(reqId, status) {
+  const quickDupe    = status === 'open' ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="quickStatus('${escapeHtml(reqId)}','duplicate','Flagged as duplicate')">Dupe</button>` : '';
+  const quickRemoved = status === 'open' ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="quickStatus('${escapeHtml(reqId)}','removed','Removed by mod')">Remove</button>` : '';
+  const quickExpired = status === 'open' ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="quickStatus('${escapeHtml(reqId)}','expired','Manually expired')">Expire</button>` : '';
+  return `<div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
+    <a href="/dashboard/requests/${escapeHtml(reqId)}" class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">View</a>
+    <button class="btn-action btn-extension" style="font-size:11px;padding:3px 8px" onclick="openStatusModal('${escapeHtml(reqId)}','${escapeHtml(status)}')">Status</button>
+    <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openLinkModal('${escapeHtml(reqId)}')">Link</button>
+    ${quickDupe}${quickRemoved}${quickExpired}
+  </div>`;
+}
+
+let _activeReqId = null;
+let _allData = { open: [], dupes: [], expiring: [], funded: [], removed: [] };
+
+async function loadSection(params) {
+  const res  = await fetch('/api/loan-requests?' + params, { credentials: 'same-origin' });
+  const data = await res.json();
+  return data.requests || [];
+}
+
+async function loadAll() {
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  const ago7  = new Date(today); ago7.setDate(ago7.getDate() - 7);
+  const ago10 = new Date(today); ago10.setDate(ago10.getDate() - 10);
+
+  const [openRows, dupeRows, expiringRows, fundedRows, removedRows] = await Promise.all([
+    loadSection(new URLSearchParams({ status: 'open', limit: 50 })),
+    loadSection(new URLSearchParams({ status: 'duplicate', limit: 50 })),
+    loadSection(new URLSearchParams({ status: 'open', date_from: fmt(ago10), date_to: fmt(ago7), limit: 50 })),
+    loadSection(new URLSearchParams({ status: 'funded', date_from: fmt(ago7), limit: 50 })),
+    loadSection(new URLSearchParams({ status: 'removed', limit: 50 })),
+  ]);
+
+  _allData = { open: openRows, dupes: dupeRows, expiring: expiringRows, funded: fundedRows, removed: removedRows };
+
+  document.getElementById('cnt-open').textContent     = openRows.length;
+  document.getElementById('cnt-dupes').textContent    = dupeRows.length;
+  document.getElementById('cnt-expiring').textContent = expiringRows.length;
+  document.getElementById('cnt-funded').textContent   = fundedRows.length;
+  document.getElementById('cnt-removed').textContent  = removedRows.length;
+
+  renderOpen(openRows);
+  renderDupes(dupeRows);
+  renderExpiring(expiringRows);
+  renderFunded(fundedRows);
+  renderRemoved(removedRows);
+}
+
+function renderOpen(rows) {
+  const tbody = document.getElementById('bodyOpen');
+  if (!rows.length) { tbody.innerHTML = emptyRow(6, 'No open requests.'); return; }
+  tbody.innerHTML = rows.map(r => {
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const created = (r.created_at || '').slice(0, 10);
+    const dupe    = r.possible_duplicate
+      ? `<span title="Possible duplicate" style="font-size:10px;font-weight:700;color:var(--yellow);background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.3);border-radius:4px;padding:1px 5px;margin-left:4px">DUPE?</span>`
+      : '';
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div><div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a>${dupe}</div>
+          <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div></div>
+          <div class="mobile-card-side"><div class="mobile-card-money">${amt}</div></div>
+        </div>
+        <div class="mobile-card-actions">${actionBtns(r.request_id, r.request_status)}</div>
+      </td>
+      <td><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h);font-family:monospace;font-size:12px">${escapeHtml(r.request_id)}</a>${dupe}</td>
+      <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a></td>
+      <td class="amount">${amt}</td>
+      <td class="date-cell">${created}</td>
+      <td>${threadBtn(r.thread_url)}</td>
+      <td>${actionBtns(r.request_id, r.request_status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderDupes(rows) {
+  const tbody = document.getElementById('bodyDupes');
+  if (!rows.length) { tbody.innerHTML = emptyRow(6, 'No duplicate-flagged requests.'); return; }
+  tbody.innerHTML = rows.map(r => {
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const created = (r.created_at || '').slice(0, 10);
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div><div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+          <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div></div>
+          <div class="mobile-card-side"><div class="mobile-card-money">${amt}</div>${statusChip(r.request_status)}</div>
+        </div>
+        <div class="mobile-card-actions">${actionBtns(r.request_id, r.request_status)}</div>
+      </td>
+      <td><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h);font-family:monospace;font-size:12px">${escapeHtml(r.request_id)}</a></td>
+      <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a></td>
+      <td class="amount">${amt}</td>
+      <td class="date-cell">${created}</td>
+      <td>${threadBtn(r.thread_url)}</td>
+      <td>${actionBtns(r.request_id, r.request_status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderExpiring(rows) {
+  const tbody = document.getElementById('bodyExpiring');
+  if (!rows.length) { tbody.innerHTML = emptyRow(6, 'No requests expiring soon.'); return; }
+  tbody.innerHTML = rows.map(r => {
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const created = (r.created_at || '').slice(0, 10);
+    const days    = Math.floor((Date.now() - new Date(r.created_at)) / 86400000);
+    const badge   = `<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(220,50,50,.12);border:1px solid rgba(220,50,50,.3);border-radius:4px;padding:1px 5px;margin-left:4px">${days}d old</span>`;
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div><div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a>${badge}</div>
+          <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div></div>
+          <div class="mobile-card-side"><div class="mobile-card-money">${amt}</div></div>
+        </div>
+        <div class="mobile-card-actions">${actionBtns(r.request_id, r.request_status)}</div>
+      </td>
+      <td><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h);font-family:monospace;font-size:12px">${escapeHtml(r.request_id)}</a>${badge}</td>
+      <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a></td>
+      <td class="amount">${amt}</td>
+      <td class="date-cell">${created}</td>
+      <td>${threadBtn(r.thread_url)}</td>
+      <td>${actionBtns(r.request_id, r.request_status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFunded(rows) {
+  const tbody = document.getElementById('bodyFunded');
+  if (!rows.length) { tbody.innerHTML = emptyRow(6, 'No recently funded requests.'); return; }
+  tbody.innerHTML = rows.map(r => {
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const created = (r.created_at || '').slice(0, 10);
+    const loan    = r.funded_loan_id
+      ? `<a href="/dashboard/loans/${r.funded_loan_id}" style="color:var(--accent-h);font-size:12px">#${r.funded_loan_id}</a>`
+      : `<span style="color:var(--muted);font-size:11px">Not linked</span>`;
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div><div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+          <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div></div>
+          <div class="mobile-card-side"><div class="mobile-card-money">${amt}</div>${statusChip(r.request_status)}</div>
+        </div>
+        <div class="mobile-card-actions">${actionBtns(r.request_id, r.request_status)}</div>
+      </td>
+      <td><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h);font-family:monospace;font-size:12px">${escapeHtml(r.request_id)}</a></td>
+      <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a></td>
+      <td class="amount">${amt}</td>
+      <td class="date-cell">${created}</td>
+      <td>${loan}</td>
+      <td>${actionBtns(r.request_id, r.request_status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRemoved(rows) {
+  const tbody = document.getElementById('bodyRemoved');
+  if (!rows.length) { tbody.innerHTML = emptyRow(6, 'No removed or flagged requests.'); return; }
+  tbody.innerHTML = rows.map(r => {
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const created = (r.created_at || '').slice(0, 10);
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div><div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+          <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div></div>
+          <div class="mobile-card-side"><div class="mobile-card-money">${amt}</div>${statusChip(r.request_status)}</div>
+        </div>
+        <div class="mobile-card-actions">${actionBtns(r.request_id, r.request_status)}</div>
+      </td>
+      <td><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h);font-family:monospace;font-size:12px">${escapeHtml(r.request_id)}</a></td>
+      <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a></td>
+      <td class="amount">${amt}</td>
+      <td>${statusChip(r.request_status)}</td>
+      <td class="date-cell">${created}</td>
+      <td>${actionBtns(r.request_id, r.request_status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function emptyRow(cols, msg) {
+  return `<tr><td colspan="${cols}"><div class="empty-state" style="padding:20px 0"><p style="font-size:13px;color:var(--muted)">${msg}</p></div></td></tr>`;
+}
+
+function openStatusModal(reqId, currentStatus) {
+  _activeReqId = reqId;
+  document.getElementById('statusReqId').textContent = reqId;
+  document.getElementById('statusSelect').value = currentStatus;
+  document.getElementById('statusNote').value = '';
+  document.getElementById('statusError').style.display = 'none';
+  document.getElementById('statusModal').classList.add('open');
+}
+
+function openLinkModal(reqId) {
+  _activeReqId = reqId;
+  document.getElementById('linkReqId').textContent = reqId;
+  document.getElementById('linkLoanId').value = '';
+  document.getElementById('linkOverride').checked = false;
+  document.getElementById('linkError').style.display = 'none';
+  document.getElementById('linkModal').classList.add('open');
+}
+
+async function quickStatus(reqId, newStatus, note) {
+  const res = await fetch(`/api/loan-requests/${reqId}/status`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: newStatus, note }),
+  });
+  const d = await res.json();
+  if (!res.ok) { toast(d.error || 'Error updating status.', 'error'); return; }
+  toast(`Marked as ${newStatus}.`, 'success');
+  loadAll();
+}
+
+async function submitStatusChange() {
+  const errEl = document.getElementById('statusError');
+  errEl.style.display = 'none';
+  const res = await fetch(`/api/loan-requests/${_activeReqId}/status`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: document.getElementById('statusSelect').value,
+      note:   document.getElementById('statusNote').value.trim(),
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+  closeModal('statusModal');
+  toast('Status updated.', 'success');
+  loadAll();
+}
+
+async function submitLink() {
+  const errEl = document.getElementById('linkError');
+  errEl.style.display = 'none';
+  const loanId = document.getElementById('linkLoanId').value;
+  if (!loanId) { errEl.textContent = 'Loan DB ID required'; errEl.style.display = 'block'; return; }
+  const res = await fetch(`/api/loan-requests/${_activeReqId}/link`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loan_db_id: parseInt(loanId),
+      override: document.getElementById('linkOverride').checked,
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+  closeModal('linkModal');
+  toast('Linked to loan.', 'success');
+  loadAll();
+}
+
+document.addEventListener('DOMContentLoaded', loadAll);
+</script>
+{% endblock %}

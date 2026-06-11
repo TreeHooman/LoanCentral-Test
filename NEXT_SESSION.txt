@@ -1,84 +1,82 @@
-NEXT SESSION CONTEXT - LoanCentral
-Last updated: 2026-06-09
+Request Intelligence Sprint — COMPLETE
+Date: 2026-06-10
+Tests: 554/554 passing
 
-## Status
-Sprint 7 COMPLETE. 225/225 tests passing, 1 deprecation warning (in third-party update_checker, not our code).
+== What was built ==
 
-LoanCentral is production-hardened and ready for beta launch after completing the 3 pending manual steps (H1, H2, H3 in LAUNCH_BLOCKERS.md).
+Task 1 — Request Review Dashboard
+  - mod_request_review.html: 5 sections (Open, Duplicates, Expiring Soon, Recently Funded, Removed)
+  - Quick actions: View, Status change, Link Loan, Dupe, Remove, Expire (one-click)
+  - Route: GET /dashboard/mod/request-review (mod/admin only)
 
-## Completed Sprints
-- Sprint 1: Core loan lifecycle (create, confirm, repay, dispute)
-- Sprint 2: Mod dashboard, audit logs, role management, verified lender flag
-- Sprint 3: Visual QA, notification center, global search, Reddit username linking, ICS calendar, private beta checklist
-- Sprint 4: Verified lender badge in UI, notification delivery for loan events, OTP rate limiting, borrower verification UI
-- Sprint 5: Verification queue improvements, profile verification badge metadata, global search reddit_username, beta readiness report
-- Sprint 6: Admin lender directory/profile, expanded admin search, audit log filters, permission audit, schema parity report, backup/restore docs, visual QA checklist, timezone-aware ICS timestamps
-- Sprint 7: DB index audit, query performance, error logging helper, /health endpoint, notification pagination/purge, session cookie hardening, security headers, admin metrics dashboard, backup validation, 38 new tests
+Task 2 — Automation Helpers (admin-run, never auto-delete)
+  - flag_possible_duplicates(dry_run) — marks older of duplicate-pair as 'duplicate'
+  - flag_missing_thread_links(status_filter) — surface only, no updates
+  - flag_unlinked_funded_requests() — surface only, no updates
+  - backfill_requests_from_loans(dry_run) — creates funded_backfill records from loans
+  - Routes: POST /api/admin/requests/flag-duplicates
+           GET  /api/admin/requests/missing-threads
+           GET  /api/admin/requests/unlinked-funded
+           GET  /api/admin/requests/quality-report
+           POST /api/admin/requests/backfill
 
-## Files Modified / Added (Sprint 7)
-- services.py - get_platform_metrics, purge_old_notifications, get_notifications pagination (offset/total)
-- api/app.py - log_request_error helper, /health endpoint, /api/admin/metrics, /api/admin/notifications/purge, session cookie hardening, security headers (@app.after_request), BUILD_ID, @app.errorhandler(Exception), /api/admin/roles pagination fix
-- api/templates/dashboard_mod.html - admin metrics widget panel (users, lenders, verifications, disputes)
-- schema.sql - Sprint 7 indexes are a superset of Sprint 6 (no new ones; parity confirmed)
-- tests/test_sprint7.py - new 38-test Sprint 7 suite
-- tests/test_sprint3.py - fixed 3→4 tuple unpack for get_notifications
-- tests/test_audit_log.py - fixed 3→4 tuple unpack for get_notifications
-- INDEX_AUDIT_REPORT.md - full index coverage analysis
-- QUERY_PERFORMANCE_REPORT.md - N+1 audit, unbounded query fixes
-- ERROR_LOGGING.md - log_request_error helper documentation
-- PRODUCTION_AUDIT.md - prod config findings (debug, cookies, headers, secrets, CSRF, CSP, rate limits)
-- BACKUP_VALIDATION_REPORT.md - backup strategy validation + checklist
-- LAUNCH_CHECKLIST.md (existing) - not modified
-- LAUNCH_BLOCKERS.md - new: categorized blocker list for beta launch
+Task 3 — Data Quality Report
+  - generate_request_quality_report() service (read-only)
+  - generate_request_dq.py script -> writes REQUEST_DATA_QUALITY.md
 
-## Test Count
-225 tests passing (was 187 before Sprint 7).
+Task 4 — Backfill Tool
+  - backfill_requests_from_loans(dry_run) in services.py
+  - backfill_loan_requests.py script (pass --commit to apply)
+  - Status: funded_backfill (added to _LR_STATUSES)
 
-Command:
-python -m pytest tests/ -q
+Task 5 — Permissions Review
+  - All new admin endpoints behind @require_admin_api (mod gets 403)
+  - Review dashboard page behind @role_required("mod","admin")
+  - Covered by 12 permission tests in test_request_intelligence.py
 
-## Security Constraints (MUST PRESERVE)
-- Do NOT trust Reddit flair for permissions. Database remains source of truth.
-- Do NOT implement Reddit OAuth yet.
-- Do NOT touch production credentials.
-- Do NOT make live Reddit API changes.
-- Do NOT add debt collection, loan brokering, payment processing, credit scoring, or guarantee language.
-- Keep verified lender checks database-driven and fresh where sensitive POST routes need it.
+Task 6 — UI Polish
+  - borrower_requests.html: status chips, thread button, loan button, expiring badge, closed stat card
+  - request_detail.html: status chip (large), expiring soon badge, View Thread button,
+    Loan #N button (correct URL /dashboard/loans/<id>), back link -> Request Review
+  - mod_request_review.html: status chips on all sections
 
-## Sprint 7 Highlights
-- /health endpoint returns db status; returns 503 if DB unreachable.
-- Admin metrics dashboard widget shows user counts, verified lenders, pending verifications, disputed loans.
-- Notification center now paginated (offset/total); old read notifications can be purged via admin API.
-- Session cookies: HTTPONLY=True, SameSite=Lax, Secure=True (prod only).
-- Security headers: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS (prod).
-- log_request_error() centralizes all request-context error logging with method/path/user/role/IP/traceback.
-- /api/admin/roles now paginated (default 500 cap, max 1000).
-- get_active_loans() has no row cap — flagged for M3 in LAUNCH_BLOCKERS.md.
+Task 7 — Analytics Polish
+  - get_request_analytics() now returns: this_week, this_month, expired_count,
+    duplicate_flags, avg_days_to_funded (in addition to prior fields)
+  - admin_request_analytics.html: 11 stat cards, flag-duplicates tool, backfill tool
 
-## Pre-launch Manual Steps (from LAUNCH_BLOCKERS.md)
-- H1: Enable Render automatic PostgreSQL snapshots (upgrade plan or add cron dump).
-- H2: Perform a full restore drill: restore prod backup to scratch DB, run table count queries, verify dashboard loads.
-- H3: Confirm API_KEY is set (not "changeme") in Render environment variables.
-- M5: Run `\d loans` in psql on prod to confirm all schema.sql indexes are present.
+Task 8 — Audit Integration
+  - log_request_event() already wired to: create, status_changed, linked_to_loan
+  - New event types: unlinked_from_loan, duplicate_flagged, backfilled,
+    manually_expired, missing_data_flagged
+  - _log_request_event_with_cursor() helper for in-transaction logging
 
-## Reports To Read First
-- LAUNCH_BLOCKERS.md          — blocker categories and pre-launch checklist
-- PRODUCTION_AUDIT.md         — security config findings and gaps
-- BACKUP_VALIDATION_REPORT.md — backup/restore validation
-- PERMISSION_AUDIT_REPORT.md  — route access matrix
-- SCHEMA_PARITY_REPORT.md     — index parity status
+Task 9 — Notification Hooks
+  - Borrower: request_recorded (on create)
+  - Borrower: request_funded (on status->funded)
+  - Borrower: request_expired (on status->expired)
+  - Borrower: request_removed (on status->removed)
+  - Mods (all): duplicate_request_flagged (on create with dupe / on flag_possible_duplicates)
+  - _notify_all_mods() helper queries users WHERE role IN ('mod','admin')
 
-## Known Issues / Residual Risk
-- Content-Security-Policy header not set (M1 in LAUNCH_BLOCKERS.md).
-- Rate limiting is in-process only; will not scale past 1 Render worker without Redis.
-- Full backup restore drill not yet performed (requires manual step on Render).
-- Per-lender API keys exist but are not enforced per-route; static API_KEY is still accepted.
-- Reddit OAuth/flair sync remains intentionally deferred.
+Task 10 — Tests
+  - tests/test_request_intelligence.py: 46 new tests
+  - Total suite: 554/554 passing
 
-## Recommended Next Sprint
-- Complete the 3 manual pre-launch steps (H1, H2, H3).
-- Add Content-Security-Policy header (M1).
-- Add `LIMIT 1000` to get_active_loans (M3).
-- Connect a Render log drain for extended log retention (M4).
-- After beta: evaluate per-lender scoped API key enforcement.
-- After beta: server-side loan timeline drill-down from admin lender profile.
+== Key file locations ==
+  services.py       -- flag_possible_duplicates, flag_missing_thread_links,
+                       flag_unlinked_funded_requests, generate_request_quality_report,
+                       backfill_requests_from_loans, _notify_all_mods,
+                       _log_request_event_with_cursor, updated get_request_analytics
+  api/app.py        -- 5 new admin routes + review dashboard route + notification hooks
+  templates/        -- mod_request_review.html (new)
+                       admin_request_analytics.html (updated)
+                       borrower_requests.html (updated)
+                       request_detail.html (updated)
+  backfill_loan_requests.py   -- run with --commit to apply
+  generate_request_dq.py      -- writes REQUEST_DATA_QUALITY.md
+
+== Pending / not yet done ==
+  - Pre-launch blockers H1/H2/H3 (Render snapshots, restore drill, API_KEY)
+  - Bot integration for create_loan_request (test-mode stub only)
+  - REQUEST_DATA_QUALITY.md not yet generated (run generate_request_dq.py against prod)

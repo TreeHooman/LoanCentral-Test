@@ -9,19 +9,28 @@
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <a href="/dashboard/mod/request-review" class="btn-secondary">Review Dashboard</a>
     <button class="btn-secondary" onclick="loadAnalytics()">Refresh</button>
   </div>
 </div>
 
-<!-- Stat cards -->
-<div class="stats-grid" style="margin-bottom:20px" id="statCards">
+<!-- Primary stat cards -->
+<div class="stats-grid" style="margin-bottom:16px" id="statCards">
   <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="ra-total">—</div></div>
   <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value c-yellow" id="ra-open">—</div></div>
   <div class="stat-card"><div class="stat-label">Funded</div><div class="stat-value c-green" id="ra-funded">—</div></div>
-  <div class="stat-card"><div class="stat-label">Expired / Closed</div><div class="stat-value c-red" id="ra-closed">—</div></div>
+  <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-value c-red" id="ra-expired">—</div></div>
+  <div class="stat-card"><div class="stat-label">Duplicate Flags</div><div class="stat-value" id="ra-dupes">—</div></div>
   <div class="stat-card"><div class="stat-label">Funding Rate</div><div class="stat-value c-blue" id="ra-rate">—</div></div>
+</div>
+
+<!-- Secondary stat cards -->
+<div class="stats-grid" style="margin-bottom:20px">
+  <div class="stat-card"><div class="stat-label">This Week</div><div class="stat-value" id="ra-week">—</div></div>
+  <div class="stat-card"><div class="stat-label">This Month</div><div class="stat-value" id="ra-month">—</div></div>
   <div class="stat-card"><div class="stat-label">Avg Requested</div><div class="stat-value" id="ra-avg-req">—</div></div>
   <div class="stat-card"><div class="stat-label">Avg Funded Amount</div><div class="stat-value" id="ra-avg-fund">—</div></div>
+  <div class="stat-card"><div class="stat-label">Avg Days to Funded</div><div class="stat-value" id="ra-days-funded">—</div></div>
 </div>
 
 <!-- Weekly breakdown -->
@@ -43,18 +52,47 @@
   </table>
 </div>
 
-<!-- Expire tool -->
-<div class="card" style="margin-bottom:0">
-  <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:10px">EXPIRATION TOOL</div>
-  <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-    <div>
-      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Expire after (days)</label>
-      <input id="expireDays" type="number" value="10" min="1" max="365"
-        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;width:80px">
+<!-- Admin tools -->
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:0">
+  <!-- Expire tool -->
+  <div class="card" style="flex:1;min-width:260px">
+    <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:10px">EXPIRATION TOOL</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Expire after (days)</label>
+        <input id="expireDays" type="number" value="10" min="1" max="365"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;width:80px">
+      </div>
+      <button class="btn-secondary" onclick="runExpire(true)">Dry Run</button>
+      <button class="btn-action btn-extension" onclick="runExpire(false)">Expire Now</button>
+      <span id="expireResult" style="font-size:13px;color:var(--muted)"></span>
     </div>
-    <button class="btn-secondary" onclick="runExpire(true)">Dry Run</button>
-    <button class="btn-action btn-extension" onclick="runExpire(false)">Expire Now</button>
-    <span id="expireResult" style="font-size:13px;color:var(--muted)"></span>
+  </div>
+
+  <!-- Flag duplicates tool -->
+  <div class="card" style="flex:1;min-width:260px">
+    <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:10px">DUPLICATE FLAGGING</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="runFlagDupes(true)">Dry Run</button>
+      <button class="btn-action btn-extension" onclick="runFlagDupes(false)">Flag Duplicates</button>
+      <span id="dupeFlagResult" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;margin-bottom:0">
+      Marks the earlier open request as duplicate when the same borrower has two open requests within 10 days.
+    </p>
+  </div>
+
+  <!-- Backfill tool -->
+  <div class="card" style="flex:1;min-width:260px">
+    <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:10px">BACKFILL FROM LOANS</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="runBackfill(true)">Dry Run</button>
+      <button class="btn-action btn-extension" onclick="runBackfill(false)">Backfill Now</button>
+      <span id="backfillResult" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;margin-bottom:0">
+      Creates funded_backfill request records for loans not yet linked to any request.
+    </p>
   </div>
 </div>
 {% endblock %}
@@ -64,23 +102,30 @@
 async function loadAnalytics() {
   const res  = await fetch('/api/admin/request-analytics', { credentials: 'same-origin' });
   const data = await res.json();
-  if (!res.ok) { document.getElementById('statCards').innerHTML = `<p style="color:var(--red)">${escapeHtml(data.error)}</p>`; return; }
+  if (!res.ok) {
+    document.getElementById('statCards').innerHTML = `<p style="color:var(--red)">${escapeHtml(data.error)}</p>`;
+    return;
+  }
   renderStats(data);
   renderWeekly(data.weekly || []);
 }
 
-function fmt(v) { return v != null ? parseFloat(v).toFixed(2) : '—'; }
-function fmtPct(v) { return v != null ? parseFloat(v).toFixed(1) + '%' : '—'; }
 function fmtMoney(v) { return v != null ? '$' + parseFloat(v).toFixed(2) : '—'; }
+function fmtPct(v)   { return v != null ? parseFloat(v).toFixed(1) + '%' : '—'; }
+function fmtDays(v)  { return v != null ? parseFloat(v).toFixed(1) + ' d' : '—'; }
 
 function renderStats(d) {
-  document.getElementById('ra-total').textContent    = d.total ?? '—';
-  document.getElementById('ra-open').textContent     = d.open  ?? '—';
-  document.getElementById('ra-funded').textContent   = d.funded ?? '—';
-  document.getElementById('ra-closed').textContent   = d.closed_unfunded ?? '—';
-  document.getElementById('ra-rate').textContent     = fmtPct(d.funding_rate_pct);
-  document.getElementById('ra-avg-req').textContent  = fmtMoney(d.avg_requested);
-  document.getElementById('ra-avg-fund').textContent = fmtMoney(d.avg_funded_amount);
+  document.getElementById('ra-total').textContent       = d.total ?? '—';
+  document.getElementById('ra-open').textContent        = d.open  ?? '—';
+  document.getElementById('ra-funded').textContent      = d.funded ?? '—';
+  document.getElementById('ra-expired').textContent     = d.expired_count ?? '—';
+  document.getElementById('ra-dupes').textContent       = d.duplicate_flags ?? '—';
+  document.getElementById('ra-rate').textContent        = fmtPct(d.funding_rate_pct);
+  document.getElementById('ra-week').textContent        = d.this_week ?? '—';
+  document.getElementById('ra-month').textContent       = d.this_month ?? '—';
+  document.getElementById('ra-avg-req').textContent     = fmtMoney(d.avg_requested);
+  document.getElementById('ra-avg-fund').textContent    = fmtMoney(d.avg_funded_amount);
+  document.getElementById('ra-days-funded').textContent = fmtDays(d.avg_days_to_funded);
 }
 
 function renderWeekly(rows) {
@@ -116,11 +161,43 @@ async function runExpire(dryRun) {
   });
   const d = await res.json();
   const el = document.getElementById('expireResult');
-  if (!res.ok) { el.style.color='var(--red)'; el.textContent = d.error; return; }
+  if (!res.ok) { el.style.color = 'var(--red)'; el.textContent = d.error; return; }
   el.style.color = 'var(--green)';
   el.textContent = dryRun
     ? `Dry run: ${d.expired} request(s) would be expired.`
     : `Expired ${d.expired} request(s).`;
+  if (!dryRun) loadAnalytics();
+}
+
+async function runFlagDupes(dryRun) {
+  const res = await fetch('/api/admin/requests/flag-duplicates', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  const d   = await res.json();
+  const el  = document.getElementById('dupeFlagResult');
+  if (!res.ok) { el.style.color = 'var(--red)'; el.textContent = d.error; return; }
+  el.style.color = 'var(--green)';
+  el.textContent = dryRun
+    ? `Dry run: ${d.count} request(s) would be flagged.`
+    : `Flagged ${d.count} request(s).`;
+  if (!dryRun) loadAnalytics();
+}
+
+async function runBackfill(dryRun) {
+  const res = await fetch('/api/admin/requests/backfill', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  const d   = await res.json();
+  const el  = document.getElementById('backfillResult');
+  if (!res.ok) { el.style.color = 'var(--red)'; el.textContent = d.error; return; }
+  el.style.color = 'var(--green)';
+  el.textContent = dryRun
+    ? `Dry run: ${d.created} would be created, ${d.skipped} skipped.`
+    : `Created ${d.created}, skipped ${d.skipped}.`;
   if (!dryRun) loadAnalytics();
 }
 

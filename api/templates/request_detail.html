@@ -30,15 +30,21 @@
 const REQUEST_ID  = {{ request_id | tojson }};
 const VIEWER_ROLE = {{ viewer_role | tojson }};
 
-const STATUS_STYLE = {
-  open:           'color:var(--yellow)',
-  funded:         'color:var(--green);font-weight:700',
-  cancelled:      'color:var(--muted)',
-  expired:        'color:var(--muted)',
-  removed:        'color:var(--red)',
-  duplicate:      'color:var(--muted)',
-  denied_by_mod:  'color:var(--red)',
+const STATUS_CHIP = {
+  open:           'background:rgba(255,200,0,.13);color:var(--yellow);border:1px solid rgba(255,200,0,.3)',
+  funded:         'background:rgba(0,200,100,.13);color:var(--green);border:1px solid rgba(0,200,100,.3)',
+  cancelled:      'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  expired:        'background:var(--surface);color:var(--muted);border:1px solid var(--border)',
+  removed:        'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  duplicate:      'background:rgba(255,200,0,.08);color:var(--yellow);border:1px solid rgba(255,200,0,.2)',
+  denied_by_mod:  'background:rgba(220,50,50,.13);color:var(--red);border:1px solid rgba(220,50,50,.3)',
+  funded_backfill:'background:rgba(0,200,100,.08);color:var(--green);border:1px solid rgba(0,200,100,.2)',
 };
+function statusChip(s, large) {
+  const style = STATUS_CHIP[s] || 'background:var(--surface);color:var(--muted);border:1px solid var(--border)';
+  const sz    = large ? 'font-size:16px;font-weight:700;padding:5px 14px' : 'font-size:11px;font-weight:600;padding:2px 7px';
+  return `<span style="${style};${sz};border-radius:6px;white-space:nowrap">${escapeHtml(s)}</span>`;
+}
 
 const EVENT_ICON = {
   created:            '📋',
@@ -71,44 +77,51 @@ function field(label, value, mono) {
 }
 
 function render(r) {
-  const sc      = STATUS_STYLE[r.request_status] || '';
-  const created = (r.created_at || '').slice(0,19).replace('T',' ');
-  const updated = (r.updated_at || '').slice(0,19).replace('T',' ');
-  const amt     = r.requested_amount     ? '$' + parseFloat(r.requested_amount).toFixed(2)     : null;
-  const repay   = r.requested_repayment_amount ? '$' + parseFloat(r.requested_repayment_amount).toFixed(2) : null;
-  const thread  = r.thread_url
-    ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h)">${escapeHtml(r.thread_url)}</a>`
+  const created  = (r.created_at || '').slice(0, 19).replace('T', ' ');
+  const updated  = (r.updated_at || '').slice(0, 19).replace('T', ' ');
+  const amt      = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : null;
+  const repay    = r.requested_repayment_amount ? '$' + parseFloat(r.requested_repayment_amount).toFixed(2) : null;
+  const threadBtn = r.thread_url
+    ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener"
+         class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">View Thread</a>`
     : null;
-  const loanLink = r.funded_loan_id
-    ? `<a href="/dashboard/admin" style="color:var(--accent-h)">Loan #${r.funded_loan_id}</a>`
+  const loanBtn  = r.funded_loan_id
+    ? `<a href="/dashboard/loans/${r.funded_loan_id}"
+         class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">Loan #${r.funded_loan_id}</a>`
     : null;
+  const daysOld  = r.created_at ? (Date.now() - new Date(r.created_at)) / 86400000 : 0;
+  const expBadge = (r.request_status === 'open' && daysOld >= 7 && daysOld < 10)
+    ? `<span style="font-size:11px;font-weight:700;color:var(--red);background:rgba(220,50,50,.12);border:1px solid rgba(220,50,50,.3);border-radius:4px;padding:2px 7px;margin-left:8px">Expiring Soon</span>`
+    : '';
 
-  if (['admin','mod'].includes(VIEWER_ROLE)) {
-    document.getElementById('backLink').href = '/dashboard/mod/requests';
-    document.getElementById('backLink').textContent = '← Request Queue';
+  if (['admin', 'mod'].includes(VIEWER_ROLE)) {
+    document.getElementById('backLink').href = '/dashboard/mod/request-review';
+    document.getElementById('backLink').textContent = '← Request Review';
   }
 
-  const isMod = ['admin','mod'].includes(VIEWER_ROLE);
+  const isMod = ['admin', 'mod'].includes(VIEWER_ROLE);
 
   document.getElementById('detailWrap').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px">
       <div class="stat-card" style="grid-column:1/3">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
-          <div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Status</div>
-            <div style="font-size:22px;font-weight:700;${sc}">${escapeHtml(r.request_status)}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            ${statusChip(r.request_status, true)}
+            ${expBadge}
           </div>
-          ${isMod ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn-action btn-extension" onclick="openStatusModal()">Change Status</button>
-            <button class="btn-secondary" onclick="openLinkModal()">Link to Loan</button>
-          </div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${r.thread_url ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">View Thread</a>` : ''}
+            ${r.funded_loan_id ? `<a href="/dashboard/loans/${r.funded_loan_id}" class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">Loan #${r.funded_loan_id}</a>` : ''}
+            ${isMod ? `<button class="btn-action btn-extension" style="font-size:12px" onclick="openStatusModal()">Change Status</button>
+            <button class="btn-secondary" style="font-size:12px" onclick="openLinkModal()">Link to Loan</button>` : ''}
+          </div>
         </div>
       </div>
 
       <div class="stat-card">
         ${field('Request ID', escapeHtml(r.request_id), true)}
         ${field('Borrower', r.borrower_username
-          ? `<a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>`
+          ? `<a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--accent-h);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>`
           : null)}
         ${field('Reddit Username', r.reddit_username ? `u/${escapeHtml(r.reddit_username)}` : null)}
       </div>
@@ -127,13 +140,13 @@ function render(r) {
       </div>
 
       <div class="stat-card">
-        ${field('Thread', thread)}
-        ${field('Funded Loan', loanLink)}
+        ${field('Thread', threadBtn)}
+        ${field('Linked Loan', loanBtn)}
       </div>
 
       ${r.notes ? `
       <div class="stat-card" style="grid-column:1/3">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Mod Notes</div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Notes</div>
         <div style="font-size:13px;white-space:pre-wrap">${escapeHtml(r.notes)}</div>
       </div>` : ''}
     </div>
