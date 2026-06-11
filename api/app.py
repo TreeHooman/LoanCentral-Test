@@ -3289,7 +3289,11 @@ def api_create_loan_request():
     )
     if error:
         return _json({"error": error}, 500)
-    return _json({"request_id": request_id}, 201)
+    from services import log_request_event, find_duplicate_loan_requests
+    log_request_event(request_id, "created", actor=session.get("username"),
+                      note=f"Request created for u/{borrower}")
+    dupes, _ = find_duplicate_loan_requests(borrower, days=10, exclude_request_id=request_id)
+    return _json({"request_id": request_id, "possible_duplicate": len(dupes) > 0}, 201)
 
 
 @app.route("/api/loan-requests", methods=["GET"])
@@ -3357,6 +3361,9 @@ def api_update_request_status(request_id):
     log_audit(session["username"], session.get("role","mod"), "request_status_updated",
               target_type="loan_request", target_id=request_id,
               new_value={"status": new_status, "note": note})
+    from services import log_request_event
+    log_request_event(request_id, "status_changed", actor=session["username"],
+                      note=f"Status → {new_status}" + (f": {note}" if note else ""))
     return _json({"ok": True, "request_id": request_id, "status": new_status})
 
 
@@ -3376,6 +3383,9 @@ def api_link_request_to_loan(request_id):
     log_audit(session["username"], session.get("role","mod"), "request_linked_to_loan",
               target_type="loan_request", target_id=request_id,
               new_value={"loan_db_id": loan_db_id, "override": override})
+    from services import log_request_event
+    log_request_event(request_id, "linked_to_loan", actor=session["username"],
+                      note=f"Linked to loan DB ID {loan_db_id}" + (" (override)" if override else ""))
     return _json({"ok": True, "request_id": request_id, "loan_db_id": loan_db_id})
 
 
@@ -3422,6 +3432,44 @@ def api_search_loan_requests():
     if error:
         return _json({"error": error}, 500)
     return _json({"results": results, "total": total})
+
+
+@app.route("/api/loan-requests/<request_id>/events", methods=["GET"])
+@require_auth
+def api_get_request_events(request_id):
+    from services import get_loan_request, get_request_events
+    # Ownership check for non-mods
+    if session.get("role") not in ("mod", "admin"):
+        req, err = get_loan_request(request_id)
+        if err or not req:
+            return _json({"error": "Not found"}, 404)
+        if req["borrower_username"].lower() != session.get("username", "").lower():
+            return _json({"error": "Forbidden"}, 403)
+    events, error = get_request_events(request_id)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"events": events, "request_id": request_id})
+
+
+@app.route("/api/loan-requests/<request_id>/duplicates", methods=["GET"])
+@require_mod_api
+def api_get_request_duplicates(request_id):
+    from services import get_loan_request, find_duplicate_loan_requests
+    req, err = get_loan_request(request_id)
+    if err or not req:
+        return _json({"error": "Not found"}, 404)
+    dupes, error = find_duplicate_loan_requests(
+        req["borrower_username"], days=10, exclude_request_id=request_id)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"duplicates": dupes, "borrower": req["borrower_username"]})
+
+
+@app.route("/admin/request-analytics")
+@role_required("admin")
+def admin_request_analytics_page():
+    return render_template("admin_request_analytics.html",
+                           username=session["username"], role=session["role"])
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@
         <option value="loans">Loans</option>
         <option value="users">Users</option>
         <option value="verifications">Verifications</option>
+        <option value="requests">Requests</option>
       </select>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px">
@@ -128,13 +129,21 @@ async function runSearch(offset) {
   const type   = document.getElementById('s-type').value;
   const status = document.getElementById('s-status').value;
   if (q) saveRecent(q, type, status);
-  const params = new URLSearchParams({q, type, limit: PAGE, offset: _offset});
-  if (status) params.set('status', status);
   const wrap = document.getElementById('search-results');
   wrap.innerHTML = '<div class="table-placeholder"><div class="spinner"></div></div>';
-  const res  = await fetch('/api/admin/search?' + params);
-  const data = await res.json();
-  renderResults(data, q);
+
+  const fetchMain = (type !== 'requests')
+    ? fetch('/api/admin/search?' + new URLSearchParams({q, type: type === 'all' ? 'all' : type, limit: PAGE, offset: _offset, ...(status ? {status} : {})}))
+        .then(r => r.json()).catch(() => ({}))
+    : Promise.resolve({});
+
+  const fetchReqs = (type === 'all' || type === 'requests')
+    ? fetch('/api/loan-requests/search?' + new URLSearchParams({q, limit: 50, offset: 0, ...(status ? {status} : {})}))
+        .then(r => r.json()).catch(() => ({}))
+    : Promise.resolve({});
+
+  const [main, reqs] = await Promise.all([fetchMain, fetchReqs]);
+  renderResults(main, reqs, q);
 }
 
 function statusBadge(s) {
@@ -143,15 +152,22 @@ function statusBadge(s) {
   return `<span class="badge badge-${cls}">${s}</span>`;
 }
 
-function renderResults(data, q) {
+const REQ_STATUS_STYLE = {
+  open:'color:var(--yellow)',funded:'color:var(--green);font-weight:700',
+  cancelled:'color:var(--muted)',expired:'color:var(--muted)',
+  removed:'color:var(--red)',duplicate:'color:var(--muted)',denied_by_mod:'color:var(--red)',
+};
+
+function renderResults(data, reqData, q) {
   const wrap    = document.getElementById('search-results');
   const results = data.results || {};
   const total   = data.total || 0;
   const loans   = results.loans || [];
   const users   = results.users || [];
   const verifs  = results.verifications || [];
+  const reqs    = reqData.results || [];
 
-  if (!loans.length && !users.length && !verifs.length) {
+  if (!loans.length && !users.length && !verifs.length && !reqs.length) {
     wrap.innerHTML = `<div class="empty-state"><h3>No results found</h3><p style="margin-top:6px;font-size:13px">Try a different loan ID, username, or REQ-ID. Searches are case-insensitive.</p></div>`;
     document.getElementById('search-pagination').innerHTML = '';
     return;
@@ -200,6 +216,32 @@ function renderResults(data, q) {
         <td><span class="badge badge-${u.role}">${u.role}</span></td>
         <td>${vl}</td>
         <td style="font-size:12px;color:var(--muted)">${ll}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  if (reqs.length) {
+    html += `<h3 style="font-size:14px;font-weight:700;margin-bottom:10px;color:var(--muted)">LOAN REQUESTS (${reqs.length})</h3>
+    <table class="data-table" style="margin-bottom:20px"><thead><tr>
+      <th>Request ID</th><th>Borrower</th><th>Amount</th><th>Status</th><th>Created</th><th>Thread</th>
+    </tr></thead><tbody>`;
+    for (const r of reqs) {
+      const sc  = REQ_STATUS_STYLE[r.request_status] || '';
+      const amt = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+      const dt  = (r.created_at || '').slice(0, 10);
+      const thr = r.thread_url
+        ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h);font-size:12px">Reddit</a>`
+        : '—';
+      html += `<tr>
+        <td style="font-family:monospace;font-size:12px">
+          <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>
+        </td>
+        <td><a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--accent-h)">u/${escapeHtml(r.borrower_username)}</a></td>
+        <td>${amt}</td>
+        <td><span style="${sc};font-size:12px">${escapeHtml(r.request_status)}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${dt}</td>
+        <td>${thr}</td>
       </tr>`;
     }
     html += '</tbody></table>';

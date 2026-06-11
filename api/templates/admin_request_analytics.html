@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Request Analytics — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Request Analytics</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Factual counts only — no scoring or ranking</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <button class="btn-secondary" onclick="loadAnalytics()">Refresh</button>
+  </div>
+</div>
+
+<!-- Stat cards -->
+<div class="stats-grid" style="margin-bottom:20px" id="statCards">
+  <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="ra-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value c-yellow" id="ra-open">—</div></div>
+  <div class="stat-card"><div class="stat-label">Funded</div><div class="stat-value c-green" id="ra-funded">—</div></div>
+  <div class="stat-card"><div class="stat-label">Expired / Closed</div><div class="stat-value c-red" id="ra-closed">—</div></div>
+  <div class="stat-card"><div class="stat-label">Funding Rate</div><div class="stat-value c-blue" id="ra-rate">—</div></div>
+  <div class="stat-card"><div class="stat-label">Avg Requested</div><div class="stat-value" id="ra-avg-req">—</div></div>
+  <div class="stat-card"><div class="stat-label">Avg Funded Amount</div><div class="stat-value" id="ra-avg-fund">—</div></div>
+</div>
+
+<!-- Weekly breakdown -->
+<div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:8px">WEEKLY BREAKDOWN — LAST 8 WEEKS</div>
+<div class="table-wrap" style="margin-bottom:20px">
+  <table class="compact-command-table">
+    <thead>
+      <tr>
+        <th>Week of</th>
+        <th>Requests</th>
+        <th>Funded</th>
+        <th>Funding Rate</th>
+        <th>Bar</th>
+      </tr>
+    </thead>
+    <tbody id="weeklyBody">
+      <tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Expire tool -->
+<div class="card" style="margin-bottom:0">
+  <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:10px">EXPIRATION TOOL</div>
+  <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Expire after (days)</label>
+      <input id="expireDays" type="number" value="10" min="1" max="365"
+        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;width:80px">
+    </div>
+    <button class="btn-secondary" onclick="runExpire(true)">Dry Run</button>
+    <button class="btn-action btn-extension" onclick="runExpire(false)">Expire Now</button>
+    <span id="expireResult" style="font-size:13px;color:var(--muted)"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadAnalytics() {
+  const res  = await fetch('/api/admin/request-analytics', { credentials: 'same-origin' });
+  const data = await res.json();
+  if (!res.ok) { document.getElementById('statCards').innerHTML = `<p style="color:var(--red)">${escapeHtml(data.error)}</p>`; return; }
+  renderStats(data);
+  renderWeekly(data.weekly || []);
+}
+
+function fmt(v) { return v != null ? parseFloat(v).toFixed(2) : '—'; }
+function fmtPct(v) { return v != null ? parseFloat(v).toFixed(1) + '%' : '—'; }
+function fmtMoney(v) { return v != null ? '$' + parseFloat(v).toFixed(2) : '—'; }
+
+function renderStats(d) {
+  document.getElementById('ra-total').textContent    = d.total ?? '—';
+  document.getElementById('ra-open').textContent     = d.open  ?? '—';
+  document.getElementById('ra-funded').textContent   = d.funded ?? '—';
+  document.getElementById('ra-closed').textContent   = d.closed_unfunded ?? '—';
+  document.getElementById('ra-rate').textContent     = fmtPct(d.funding_rate_pct);
+  document.getElementById('ra-avg-req').textContent  = fmtMoney(d.avg_requested);
+  document.getElementById('ra-avg-fund').textContent = fmtMoney(d.avg_funded_amount);
+}
+
+function renderWeekly(rows) {
+  const tbody = document.getElementById('weeklyBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><h3>No data yet</h3></div></td></tr>`;
+    return;
+  }
+  const maxReq = Math.max(...rows.map(r => r.requests || 0), 1);
+  tbody.innerHTML = rows.map(r => {
+    const rate = r.requests ? (100 * r.funded / r.requests).toFixed(1) + '%' : '—';
+    const pct  = Math.round(100 * (r.requests || 0) / maxReq);
+    return `<tr>
+      <td style="font-family:monospace;font-size:12px">${escapeHtml(r.week || '—')}</td>
+      <td>${r.requests}</td>
+      <td style="color:var(--green)">${r.funded}</td>
+      <td style="color:var(--muted);font-size:12px">${rate}</td>
+      <td style="min-width:100px">
+        <div style="background:var(--border);border-radius:3px;height:8px;width:100%">
+          <div style="background:var(--accent-h);border-radius:3px;height:8px;width:${pct}%"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function runExpire(dryRun) {
+  const days = parseInt(document.getElementById('expireDays').value) || 10;
+  const res  = await fetch('/api/admin/requests/expire', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days, dry_run: dryRun }),
+  });
+  const d = await res.json();
+  const el = document.getElementById('expireResult');
+  if (!res.ok) { el.style.color='var(--red)'; el.textContent = d.error; return; }
+  el.style.color = 'var(--green)';
+  el.textContent = dryRun
+    ? `Dry run: ${d.expired} request(s) would be expired.`
+    : `Expired ${d.expired} request(s).`;
+  if (!dryRun) loadAnalytics();
+}
+
+document.addEventListener('DOMContentLoaded', loadAnalytics);
+</script>
+{% endblock %}

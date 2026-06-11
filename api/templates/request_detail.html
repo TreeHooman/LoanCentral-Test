@@ -15,11 +15,19 @@
 <div id="detailWrap">
   <div class="table-placeholder" style="padding:40px 0"><div class="spinner"></div></div>
 </div>
+
+<!-- Timeline section — rendered after detail loads -->
+<div id="timelineSection" style="display:none;margin-top:24px">
+  <div style="font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.05em;margin-bottom:12px">REQUEST TIMELINE</div>
+  <div id="timelineWrap">
+    <div class="table-placeholder"><div class="spinner"></div></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const REQUEST_ID = {{ request_id | tojson }};
+const REQUEST_ID  = {{ request_id | tojson }};
 const VIEWER_ROLE = {{ viewer_role | tojson }};
 
 const STATUS_STYLE = {
@@ -32,18 +40,26 @@ const STATUS_STYLE = {
   denied_by_mod:  'color:var(--red)',
 };
 
+const EVENT_ICON = {
+  created:            '📋',
+  status_changed:     '🔄',
+  linked_to_loan:     '🔗',
+  note_added:         '📝',
+  expired:            '⏰',
+  detected_duplicate: '⚠️',
+  edited:             '✏️',
+};
+
 async function loadDetail() {
-  const url = ['admin','mod'].includes(VIEWER_ROLE)
-    ? `/api/loan-requests/${REQUEST_ID}`
-    : `/api/loan-requests/${REQUEST_ID}`;
-  const res  = await fetch(url, { credentials: 'same-origin' });
+  const res  = await fetch(`/api/loan-requests/${REQUEST_ID}`, { credentials: 'same-origin' });
   const data = await res.json();
   if (!res.ok) {
     document.getElementById('detailWrap').innerHTML =
       `<div class="empty-state"><h3>Not found</h3><p style="font-size:13px;margin-top:6px">${escapeHtml(data.error || 'Request not found or access denied.')}</p></div>`;
     return;
   }
-  render(data.request);
+  render(data);
+  loadTimeline();
 }
 
 function field(label, value, mono) {
@@ -67,7 +83,6 @@ function render(r) {
     ? `<a href="/dashboard/admin" style="color:var(--accent-h)">Loan #${r.funded_loan_id}</a>`
     : null;
 
-  // back link
   if (['admin','mod'].includes(VIEWER_ROLE)) {
     document.getElementById('backLink').href = '/dashboard/mod/requests';
     document.getElementById('backLink').textContent = '← Request Queue';
@@ -76,21 +91,25 @@ function render(r) {
   const isMod = ['admin','mod'].includes(VIEWER_ROLE);
 
   document.getElementById('detailWrap').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <!-- Left card -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px">
       <div class="stat-card" style="grid-column:1/3">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
           <div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Status</div>
             <div style="font-size:22px;font-weight:700;${sc}">${escapeHtml(r.request_status)}</div>
           </div>
-          ${isMod ? `<button class="btn-action btn-extension" onclick="openStatusModal()">Change Status</button>` : ''}
+          ${isMod ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-action btn-extension" onclick="openStatusModal()">Change Status</button>
+            <button class="btn-secondary" onclick="openLinkModal()">Link to Loan</button>
+          </div>` : ''}
         </div>
       </div>
 
       <div class="stat-card">
         ${field('Request ID', escapeHtml(r.request_id), true)}
-        ${field('Borrower', r.borrower_username ? `<a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>` : null)}
+        ${field('Borrower', r.borrower_username
+          ? `<a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>`
+          : null)}
         ${field('Reddit Username', r.reddit_username ? `u/${escapeHtml(r.reddit_username)}` : null)}
       </div>
 
@@ -110,7 +129,6 @@ function render(r) {
       <div class="stat-card">
         ${field('Thread', thread)}
         ${field('Funded Loan', loanLink)}
-        ${isMod ? `<div style="margin-top:8px"><button class="btn-secondary" style="font-size:12px" onclick="openLinkModal()">Link to Loan</button></div>` : ''}
       </div>
 
       ${r.notes ? `
@@ -121,11 +139,43 @@ function render(r) {
     </div>
   `;
 
-  // store for modals
   window._req = r;
 }
 
-// ── Status modal ─────────────────────────────────────────────────────────────
+async function loadTimeline() {
+  document.getElementById('timelineSection').style.display = '';
+  const res  = await fetch(`/api/loan-requests/${REQUEST_ID}/events`, { credentials: 'same-origin' });
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('timelineWrap').innerHTML = `<p style="color:var(--muted);font-size:13px">Could not load timeline.</p>`;
+    return;
+  }
+  renderTimeline(data.events || []);
+}
+
+function renderTimeline(events) {
+  const wrap = document.getElementById('timelineWrap');
+  if (!events.length) {
+    wrap.innerHTML = `<p style="color:var(--muted);font-size:13px">No events recorded yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = `<div style="position:relative;padding-left:28px">
+    <div style="position:absolute;left:9px;top:0;bottom:0;width:2px;background:var(--border)"></div>
+    ${events.map(e => {
+      const icon = EVENT_ICON[e.event_type] || '•';
+      const ts   = (e.created_at || '').slice(0,16).replace('T',' ');
+      const actor = e.actor ? `u/${escapeHtml(e.actor)}` : 'system';
+      return `<div style="position:relative;margin-bottom:14px">
+        <div style="position:absolute;left:-24px;top:2px;width:16px;height:16px;background:var(--surface2);border:2px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px">${icon}</div>
+        <div style="font-size:13px;font-weight:600">${escapeHtml(e.event_type.replace(/_/g,' '))}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${ts} · ${actor}</div>
+        ${e.note ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;white-space:pre-wrap">${escapeHtml(e.note)}</div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+// ── Status modal ──────────────────────────────────────────────────────────────
 function openStatusModal() {
   document.getElementById('statusReqId').textContent = window._req.request_id;
   document.getElementById('statusSelect').value = window._req.request_status;

@@ -20,6 +20,15 @@
   <div class="stat-card"><div class="stat-label">Expired / Removed</div><div class="stat-value c-red" id="rq-closed">—</div></div>
 </div>
 
+<!-- Quick filters -->
+<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+  <button class="btn-secondary" style="font-size:12px;padding:4px 10px" onclick="quickFilter('open')">Open Requests</button>
+  <button class="btn-secondary" style="font-size:12px;padding:4px 10px" onclick="quickFilter('needs_review')">Needs Review</button>
+  <button class="btn-secondary" style="font-size:12px;padding:4px 10px" onclick="quickFilter('recently_funded')">Recently Funded</button>
+  <button class="btn-secondary" style="font-size:12px;padding:4px 10px" onclick="quickFilter('expiring_soon')">Expiring Soon</button>
+  <button class="btn-secondary" style="font-size:12px;padding:4px 10px" onclick="clearFilters()">Clear</button>
+</div>
+
 <!-- Filters -->
 <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
   <input id="fBorrower" class="search-input" placeholder="Borrower username…"
@@ -173,11 +182,15 @@ function renderRows(rows, total) {
     const thread  = r.thread_url
       ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h);font-size:12px">Reddit</a>`
       : '—';
+    const dupeBadge = r.possible_duplicate
+      ? `<span title="Possible duplicate: this borrower has another open request within 10 days"
+               style="font-size:10px;font-weight:700;color:var(--yellow);background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.3);border-radius:4px;padding:1px 5px;margin-left:5px">⚠ DUPE?</span>`
+      : '';
     return `<tr>
       <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
         <div class="mobile-card-main">
           <div>
-            <div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+            <div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a>${dupeBadge}</div>
             <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div>
           </div>
           <div class="mobile-card-side">
@@ -192,7 +205,7 @@ function renderRows(rows, total) {
         </div>
       </td>
       <td data-label="Request ID" style="font-family:monospace;font-size:12px">
-        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>
+        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>${dupeBadge}
       </td>
       <td data-label="Borrower" class="username">
         <a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>
@@ -264,6 +277,42 @@ async function submitLink() {
   if (!res.ok) { errEl.textContent = d.error; errEl.style.display='block'; return; }
   closeModal('linkModal');
   toast('Linked to loan.', 'success');
+  applyFilters();
+}
+
+function clearFilters() {
+  document.getElementById('fBorrower').value = '';
+  document.getElementById('fStatus').value   = '';
+  document.getElementById('fDateFrom').value = '';
+  document.getElementById('fDateTo').value   = '';
+  document.getElementById('fAmtMin').value   = '';
+  document.getElementById('fAmtMax').value   = '';
+  loadRequests();
+}
+
+function quickFilter(preset) {
+  clearFilters();
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0,10);
+  if (preset === 'open') {
+    document.getElementById('fStatus').value = 'open';
+  } else if (preset === 'needs_review') {
+    // Open requests older than 5 days
+    document.getElementById('fStatus').value = 'open';
+    const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 5);
+    document.getElementById('fDateTo').value = fmt(cutoff);
+  } else if (preset === 'recently_funded') {
+    document.getElementById('fStatus').value = 'funded';
+    const from = new Date(today); from.setDate(from.getDate() - 7);
+    document.getElementById('fDateFrom').value = fmt(from);
+  } else if (preset === 'expiring_soon') {
+    // Open requests from 7-10 days ago (at risk of expiry)
+    document.getElementById('fStatus').value = 'open';
+    const from = new Date(today); from.setDate(from.getDate() - 10);
+    const to   = new Date(today); to.setDate(to.getDate() - 7);
+    document.getElementById('fDateFrom').value = fmt(from);
+    document.getElementById('fDateTo').value   = fmt(to);
+  }
   applyFilters();
 }
 
