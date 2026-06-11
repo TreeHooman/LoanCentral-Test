@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Feedback Dashboard — LoanCentral{% endblock %}
+{% block title %}Feedback Dashboard - LoanCentral{% endblock %}
 
 {% block content %}
 <div class="section-header" style="margin-bottom:20px">
@@ -9,7 +9,6 @@
   </div>
 </div>
 
-<!-- Filters -->
 <div class="toolbar" style="margin-bottom:16px">
   <div class="tabs" id="statusTabs">
     <button class="tab active" onclick="setFilter('status','')">All</button>
@@ -27,9 +26,8 @@
   </select>
 </div>
 
-<!-- Table -->
 <div class="table-wrap">
-  <table>
+  <table class="mobile-cards compact-command-table">
     <thead>
       <tr>
         <th>#</th>
@@ -46,16 +44,15 @@
     </tbody>
   </table>
 </div>
-<div id="fbPager" style="display:flex;gap:8px;margin-top:12px;align-items:center;font-size:13px;color:var(--muted)"></div>
+<div id="fbPager" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center;font-size:13px;color:var(--muted)"></div>
 
-<!-- Detail modal -->
 <div class="modal-overlay" id="detailModal">
   <div class="modal" style="width:500px">
     <h3>Feedback #<span id="dmId"></span></h3>
     <div style="margin-bottom:10px">
       <span id="dmCatBadge" class="badge"></span>
       <span id="dmStatusBadge" class="badge" style="margin-left:6px"></span>
-      <span style="font-size:12px;color:var(--muted);margin-left:8px">u/<span id="dmUser"></span> · <span id="dmDate"></span></span>
+      <span style="font-size:12px;color:var(--muted);margin-left:8px">u/<span id="dmUser"></span> - <span id="dmDate"></span></span>
     </div>
     <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px" id="dmTitle"></div>
     <div style="font-size:13px;color:var(--text2);line-height:1.5;white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:14px" id="dmDesc"></div>
@@ -67,7 +64,7 @@
       <option value="duplicate">Duplicate</option>
     </select>
     <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Reviewer Note <span style="opacity:.6">(optional)</span></label>
-    <textarea id="dmNote" rows="2" placeholder="Internal note visible to the submitter…"
+    <textarea id="dmNote" rows="2" placeholder="Internal note visible to the submitter..."
       style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit;margin-bottom:12px"></textarea>
     <div id="dmError" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
     <div class="modal-actions">
@@ -76,14 +73,13 @@
     </div>
   </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 let _filters = { status: '', category: '' };
-let _page    = 0;
-const PAGE   = 50;
+let _page = 0;
+const PAGE = 50;
 let _currentId = null;
 
 function setFilter(key, val) {
@@ -98,15 +94,15 @@ function setFilter(key, val) {
 
 async function loadFeedback() {
   const params = new URLSearchParams({ limit: PAGE, offset: _page * PAGE });
-  if (_filters.status)   params.set('status',   _filters.status);
+  if (_filters.status) params.set('status', _filters.status);
   if (_filters.category) params.set('category', _filters.category);
-  const res  = await fetch('/api/admin/feedback?' + params, { credentials: 'same-origin' });
+  const res = await fetch('/api/admin/feedback?' + params, { credentials: 'same-origin' });
   const data = await res.json();
   renderTable(data.feedback || [], data.total || 0);
 }
 
 const CAT_LABELS = { bug: 'Bug', suggestion: 'Suggestion', feature_request: 'Feature Request' };
-const ST_LABELS  = { open: 'Open', reviewed: 'Reviewed', completed: 'Completed', duplicate: 'Duplicate' };
+const ST_LABELS = { open: 'Open', reviewed: 'Reviewed', completed: 'Completed', duplicate: 'Duplicate' };
 
 function renderTable(rows, total) {
   const tbody = document.getElementById('fbBody');
@@ -118,25 +114,62 @@ function renderTable(rows, total) {
     document.getElementById('fbPager').innerHTML = '';
     return;
   }
+
   tbody.innerHTML = rows.map(f => `
     <tr>
-      <td style="font-size:12px;color:var(--muted)">${f.id}</td>
-      <td class="username"><a href="/audit/user/${escapeHtml(f.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(f.username)}</a></td>
-      <td><span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span></td>
-      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</td>
-      <td><span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span></td>
-      <td class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '—'}</td>
-      <td><button class="btn-action btn-extension" onclick='openDetail(${JSON.stringify(f)})'>Review</button></td>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">${escapeHtml(f.title)}</div>
+            <div class="mobile-card-sub">#${f.id} - u/${escapeHtml(f.username)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span>
+          </div>
+        </div>
+        <div class="mobile-card-meta">
+          <span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span>
+          <span class="mobile-chip">${f.created_at ? f.created_at.slice(0,10) : '-'}</span>
+        </div>
+        <div class="mobile-card-actions">
+          <button class="btn-action btn-extension" onclick='openDetail(${JSON.stringify(f)})'>Review</button>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="mobile-card-details">
+          <div class="mobile-card-detail-grid">
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">User</div>
+              <div class="mobile-card-detail-value">u/${escapeHtml(f.username)}</div>
+            </div>
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">Submitted</div>
+              <div class="mobile-card-detail-value">${f.created_at ? f.created_at.slice(0,10) : '-'}</div>
+            </div>
+            <div class="mobile-card-detail-item" style="grid-column:1 / -1">
+              <div class="mobile-card-detail-label">Description</div>
+              <div class="mobile-card-detail-value">${escapeHtml(f.description || '-')}</div>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td data-label="ID" style="font-size:12px;color:var(--muted)">${f.id}</td>
+      <td data-label="User" class="username"><a href="/audit/user/${escapeHtml(f.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(f.username)}</a></td>
+      <td data-label="Category"><span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span></td>
+      <td data-label="Title" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</td>
+      <td data-label="Status"><span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span></td>
+      <td data-label="Submitted" class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '-'}</td>
+      <td data-label="Actions"><button class="btn-action btn-extension" onclick='openDetail(${JSON.stringify(f)})'>Review</button></td>
     </tr>`).join('');
 
-  const shown  = _page * PAGE + rows.length;
-  const pager  = document.getElementById('fbPager');
+  const shown = _page * PAGE + rows.length;
+  const pager = document.getElementById('fbPager');
   pager.innerHTML = `Showing ${shown} of ${total}`;
   if (_page > 0) {
-    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="prevPage()">← Prev</button>`;
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="prevPage()">Prev</button>`;
   }
   if (shown < total) {
-    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="nextPage()">Next →</button>`;
+    pager.innerHTML += ` <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="nextPage()">Next</button>`;
   }
 }
 
@@ -145,13 +178,13 @@ function nextPage() { _page++; loadFeedback(); }
 
 function openDetail(f) {
   _currentId = f.id;
-  document.getElementById('dmId').textContent   = f.id;
+  document.getElementById('dmId').textContent = f.id;
   document.getElementById('dmUser').textContent = f.username;
-  document.getElementById('dmDate').textContent = f.created_at ? f.created_at.slice(0,10) : '—';
+  document.getElementById('dmDate').textContent = f.created_at ? f.created_at.slice(0,10) : '-';
   document.getElementById('dmTitle').textContent = f.title;
-  document.getElementById('dmDesc').textContent  = f.description;
-  document.getElementById('dmStatus').value      = f.status;
-  document.getElementById('dmNote').value        = f.reviewer_note || '';
+  document.getElementById('dmDesc').textContent = f.description;
+  document.getElementById('dmStatus').value = f.status;
+  document.getElementById('dmNote').value = f.reviewer_note || '';
   document.getElementById('dmError').style.display = 'none';
   const catBadge = document.getElementById('dmCatBadge');
   catBadge.className = `badge badge-fb-${f.category}`;
@@ -164,8 +197,8 @@ function openDetail(f) {
 
 async function saveStatus() {
   const status = document.getElementById('dmStatus').value;
-  const note   = document.getElementById('dmNote').value.trim();
-  const errEl  = document.getElementById('dmError');
+  const note = document.getElementById('dmNote').value.trim();
+  const errEl = document.getElementById('dmError');
   try {
     const res = await fetch(`/api/admin/feedback/${_currentId}`, {
       method: 'PATCH',
@@ -178,7 +211,7 @@ async function saveStatus() {
     closeModal('detailModal');
     toast('Feedback updated.', 'success');
     loadFeedback();
-  } catch(e) {
+  } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }

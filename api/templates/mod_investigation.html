@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}Investigation — {{ target_user }} — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Investigation — u/{{ target_user }}</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Unified view: loans, audit trail, verification history, and moderator notes</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/audit/user/{{ target_user }}" class="btn-secondary">Audit Trail</a>
+    <a href="/dashboard/users/{{ target_user }}" class="btn-secondary">Loan Record</a>
+    <a href="/dashboard/admin/lenders/{{ target_user }}" class="btn-secondary">Lender Profile</a>
+  </div>
+</div>
+
+<!-- User summary card -->
+<div id="invSummary" class="card" style="margin-bottom:16px;padding:16px 20px">
+  <div style="text-align:center;color:var(--muted);padding:12px"><div class="spinner"></div></div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs" style="margin-bottom:14px">
+  <button class="tab active" onclick="switchTab('timeline',this)">Timeline</button>
+  <button class="tab" onclick="switchTab('lender',this)">As Lender</button>
+  <button class="tab" onclick="switchTab('borrower',this)">As Borrower</button>
+  <button class="tab" onclick="switchTab('verifications',this)">Verifications</button>
+  <button class="tab" onclick="switchTab('notes',this)">Mod Notes <span id="notesCount" style="opacity:.7"></span></button>
+</div>
+
+<!-- Timeline tab -->
+<div id="tab-timeline">
+  <div class="table-wrap">
+    <table class="mobile-cards compact-command-table">
+      <thead><tr><th>Date</th><th>Source</th><th>Event</th><th>Actor</th><th>Ref</th><th>Detail</th></tr></thead>
+      <tbody id="timelineBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Lender loans tab -->
+<div id="tab-lender" style="display:none">
+  <div class="table-wrap">
+    <table class="mobile-cards compact-command-table">
+      <thead><tr><th>Loan ID</th><th>Borrower</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody id="lenderBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Borrower loans tab -->
+<div id="tab-borrower" style="display:none">
+  <div class="table-wrap">
+    <table class="mobile-cards compact-command-table">
+      <thead><tr><th>Loan ID</th><th>Lender</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody id="borrowerBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Verifications tab -->
+<div id="tab-verifications" style="display:none">
+  <div class="table-wrap">
+    <table class="mobile-cards compact-command-table">
+      <thead><tr><th>Status</th><th>Requested Role</th><th>Reviewer</th><th>Note</th><th>Date</th></tr></thead>
+      <tbody id="verifBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Mod Notes tab -->
+<div id="tab-notes" style="display:none">
+  <div class="card" style="padding:16px 20px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Add Note</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <select id="noteCategory" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;outline:none">
+        <option value="general">General</option>
+        <option value="verification">Verification</option>
+        <option value="dispute">Dispute</option>
+        <option value="investigation">Investigation</option>
+        <option value="warning">Warning</option>
+      </select>
+    </div>
+    <textarea id="noteContent" rows="3" placeholder="Internal note — visible to moderators only…"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit;margin-bottom:8px;box-sizing:border-box"></textarea>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-primary" style="font-size:13px" onclick="submitNote()">Save Note</button>
+      <span id="noteMsg" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+  </div>
+  <div id="notesList"></div>
+</div>
+
+<!-- Quick Actions panel -->
+<div class="card" style="margin-top:16px;padding:16px 20px">
+  <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">Quick Actions</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn-action btn-paid" style="font-size:12px" onclick="verifyLender(true)">Verify Lender</button>
+    <button class="btn-action btn-unpaid" style="font-size:12px" onclick="verifyLender(false)">Revoke Verification</button>
+    <button class="btn-secondary" style="font-size:12px" onclick="document.getElementById('tab-notes').style.display='';switchTab('notes',document.querySelectorAll('.tab')[4])">Add Note</button>
+    <a href="/dashboard/mod/disputes" class="btn-secondary" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">View Disputes</a>
+    <a href="/dashboard/admin/search?q={{ target_user }}" class="btn-secondary" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Search Loans</a>
+  </div>
+  <div id="qaMsg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TARGET = {{ target_user|tojson }};
+let _summaryData = null;
+
+async function loadAll() {
+  await Promise.all([loadSummary(), loadTimeline(), loadNotes()]);
+  loadLoans('lender');
+  loadLoans('borrower');
+}
+
+async function loadSummary() {
+  try {
+    const res  = await fetch(`/api/audit/user/${encodeURIComponent(TARGET)}/summary`, { credentials: 'same-origin' });
+    const data = await res.json();
+    _summaryData = data;
+    const el   = document.getElementById('invSummary');
+    if (!res.ok || !data) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No summary available.</div>'; return; }
+    const ur = data.user_record || {};
+    const ll = data.lender_loans  || [];
+    const bl = data.borrower_loans || [];
+    const vv = data.verifications || [];
+    const disputes   = [...ll, ...bl].filter(l => l.status === 'disputed').length;
+    const unpaid     = [...ll, ...bl].filter(l => l.status === 'unpaid').length;
+    const isVerified = ur.verified_lender;
+    el.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">u/${escapeHtml(TARGET)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+            Role: <span class="badge badge-${escapeHtml(ur.role||'borrower')}">${escapeHtml(ur.role||'borrower')}</span>
+            ${isVerified ? '<span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green);margin-left:4px">Verified Lender</span>' : ''}
+          </div>
+          ${ur.reddit_username ? `<div style="font-size:12px;color:var(--muted)">Reddit: u/${escapeHtml(ur.reddit_username)}</div>` : '<div style="font-size:12px;color:var(--muted)">No Reddit username linked</div>'}
+          ${ur.last_login ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Last login: ${ur.last_login.slice(0,10)}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          ${stat('Loans as Lender', ll.length, '')}
+          ${stat('Loans as Borrower', bl.length, '')}
+          ${stat('Disputes', disputes, disputes ? 'c-red' : '')}
+          ${stat('Unpaid', unpaid, unpaid ? 'c-red' : '')}
+          ${stat('Verif. Apps', vv.length, '')}
+        </div>
+      </div>`;
+  } catch(e) {
+    document.getElementById('invSummary').innerHTML = '<div style="color:var(--muted);font-size:13px">Could not load summary.</div>';
+  }
+}
+
+function stat(label, val, cls) {
+  return `<div style="text-align:center">
+    <div style="font-size:20px;font-weight:700;${cls?'color:var(--red)':''}">${val}</div>
+    <div style="font-size:11px;color:var(--muted)">${escapeHtml(label)}</div>
+  </div>`;
+}
+
+async function loadTimeline() {
+  const res  = await fetch(`/api/audit/user/${encodeURIComponent(TARGET)}/timeline?limit=100`, { credentials: 'same-origin' });
+  const data = await res.json();
+  const tbody = document.getElementById('timelineBody');
+  const events = data.events || [];
+  if (!events.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><h3>No activity found</h3><p style="font-size:13px;margin-top:4px">No recorded events for this user.</p></div></td></tr>';
+    return;
+  }
+  const srcBadge = s => s === 'audit' ? `<span class="badge" style="background:rgba(241,196,15,0.15);color:var(--yellow)">Audit</span>`
+    : s === 'loan_event' ? `<span class="badge badge-confirmed">Loan</span>`
+    : `<span class="badge" style="background:rgba(46,204,113,0.15);color:var(--green)">Verif</span>`;
+  tbody.innerHTML = events.map(ev => `
+    <tr>
+      <td class="date-cell">${ev.created_at ? ev.created_at.slice(0,10) : '—'}</td>
+      <td>${srcBadge(ev.source)}</td>
+      <td style="font-size:12px;font-weight:600">${escapeHtml((ev.event_type||'').replace(/_/g,' '))}</td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(ev.actor||'—')}</td>
+      <td style="font-family:monospace;font-size:12px;color:var(--accent-h)">${escapeHtml(ev.ref||'—')}</td>
+      <td style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(ev.detail||'')}</td>
+    </tr>`).join('');
+}
+
+async function loadLoans(role) {
+  const res  = await fetch(`/api/loans?${role}=${encodeURIComponent(TARGET)}&limit=100`, { credentials: 'same-origin' });
+  const data = await res.json();
+  const loans = Array.isArray(data) ? data : [];
+  const tbody = document.getElementById(`${role}Body`);
+  if (!loans.length) {
+    const cols = role === 'lender' ? 5 : 5;
+    tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty-state"><h3>No loans</h3></div></td></tr>`;
+    return;
+  }
+  const statusBadge = s => `<span class="badge badge-${s==='confirmed'?'active':s==='partially_repaid'?'partial':s}">${s.replace(/_/g,' ')}</span>`;
+  const other = role === 'lender' ? 'borrower' : 'lender';
+  tbody.innerHTML = loans.map(l => `
+    <tr>
+      <td style="font-family:monospace;font-size:12px">${escapeHtml(l.loan_id||String(l.db_id))}</td>
+      <td class="username">u/${escapeHtml(l[other]||'—')}</td>
+      <td>${l.amount != null ? parseFloat(l.amount).toFixed(2)+' '+(l.currency||'') : '—'}</td>
+      <td>${statusBadge(l.status||'')}</td>
+      <td class="date-cell">${l.repay_date ? l.repay_date.slice(0,10) : '—'}</td>
+    </tr>`).join('');
+}
+
+async function loadNotes() {
+  try {
+    const res  = await fetch(`/api/mod/notes/${encodeURIComponent(TARGET)}`, { credentials: 'same-origin' });
+    const data = await res.json();
+    const notes = data.notes || [];
+    document.getElementById('notesCount').textContent = notes.length ? `(${notes.length})` : '';
+    const container = document.getElementById('notesList');
+    if (!notes.length) {
+      container.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">No notes yet.</div>';
+      return;
+    }
+    const CAT_COLORS = {
+      verification: 'badge-confirmed', dispute: 'badge-disputed',
+      investigation: '', warning: 'badge-unpaid', general: ''
+    };
+    container.innerHTML = notes.map(n => `
+      <div class="card" style="padding:14px 16px;margin-bottom:8px" id="note-${n.id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="badge ${CAT_COLORS[n.category]||''}">${escapeHtml(n.category)}</span>
+            <span style="font-size:12px;color:var(--muted)">by u/${escapeHtml(n.author)} · ${n.created_at ? n.created_at.slice(0,10) : '—'}</span>
+          </div>
+          <button class="btn-secondary" style="font-size:11px;padding:3px 8px;flex-shrink:0;color:var(--red)"
+            onclick="archiveNote(${n.id})">Archive</button>
+        </div>
+        <div style="font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.5">${escapeHtml(n.content)}</div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function submitNote() {
+  const category = document.getElementById('noteCategory').value;
+  const content  = document.getElementById('noteContent').value.trim();
+  const msg      = document.getElementById('noteMsg');
+  if (!content) { msg.textContent = 'Content required.'; return; }
+  const res = await fetch(`/api/mod/notes/${encodeURIComponent(TARGET)}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, content }),
+  });
+  const data = await res.json();
+  if (!res.ok) { msg.textContent = data.error || 'Save failed.'; return; }
+  document.getElementById('noteContent').value = '';
+  msg.textContent = 'Note saved.';
+  setTimeout(() => msg.textContent = '', 2500);
+  loadNotes();
+}
+
+async function archiveNote(noteId) {
+  if (!confirm('Archive this note?')) return;
+  const res = await fetch(`/api/mod/notes/${noteId}`, {
+    method: 'DELETE', credentials: 'same-origin'
+  });
+  if (res.ok) loadNotes();
+  else toast('Archive failed.', 'error');
+}
+
+async function verifyLender(verified) {
+  const msg = document.getElementById('qaMsg');
+  const action = verified ? 'Verify' : 'Revoke verification for';
+  if (!confirm(`${action} u/${TARGET}?`)) return;
+  const res = await fetch(`/api/admin/verified-lender/${encodeURIComponent(TARGET)}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verified }),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    msg.textContent = verified ? 'Lender verified.' : 'Verification revoked.';
+    loadSummary();
+  } else {
+    msg.textContent = data.error || 'Action failed.';
+  }
+}
+
+function switchTab(name, btn) {
+  ['timeline','lender','borrower','verifications','notes'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+  });
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (name === 'verifications') loadVerifications();
+}
+
+async function loadVerifications() {
+  const tbody = document.getElementById('verifBody');
+  if (tbody.dataset.loaded) return;
+  tbody.dataset.loaded = '1';
+  const sum = _summaryData;
+  const vv  = sum ? (sum.verifications || []) : [];
+  if (!vv.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><h3>No verification applications</h3></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = vv.map(v => `
+    <tr>
+      <td><span class="badge">${escapeHtml(v.status||'—')}</span></td>
+      <td style="font-size:12px">${escapeHtml(v.requested_role||'—')}</td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(v.reviewer||'—')}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(v.review_note||'—')}</td>
+      <td class="date-cell">${v.submitted_at ? v.submitted_at.slice(0,10) : '—'}</td>
+    </tr>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadAll);
+</script>
+{% endblock %}

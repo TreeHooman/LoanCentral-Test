@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Dispute Center — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Dispute Center</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">All disputed loans requiring moderator review</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <button class="btn-secondary" onclick="loadDisputes()">Refresh</button>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px">
+  <div class="stat-card"><div class="stat-label">Active Disputes</div><div class="stat-value c-red" id="ds-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unique Lenders</div><div class="stat-value" id="ds-lenders">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unique Borrowers</div><div class="stat-value" id="ds-borrowers">—</div></div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+  <input id="dsFilter" class="search-input" placeholder="Filter by username or loan ID…"
+    oninput="filterDisputes()" style="flex:1;min-width:200px;max-width:320px">
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards compact-command-table">
+    <thead>
+      <tr>
+        <th>Loan ID</th>
+        <th>Lender</th>
+        <th>Borrower</th>
+        <th>Amount</th>
+        <th>Created</th>
+        <th>Thread</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="disputeBody">
+      <tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _allDisputes = [];
+
+async function loadDisputes() {
+  const res  = await fetch('/api/mod/disputes', { credentials: 'same-origin' });
+  const data = await res.json();
+  _allDisputes = data.disputes || [];
+  updateStats(_allDisputes);
+  renderDisputes(_allDisputes);
+}
+
+function updateStats(rows) {
+  document.getElementById('ds-total').textContent = rows.length;
+  document.getElementById('ds-lenders').textContent  = new Set(rows.map(r => r.lender)).size;
+  document.getElementById('ds-borrowers').textContent = new Set(rows.map(r => r.borrower)).size;
+}
+
+function filterDisputes() {
+  const q = document.getElementById('dsFilter').value.trim().toLowerCase();
+  const filtered = q
+    ? _allDisputes.filter(d =>
+        (d.lender||'').toLowerCase().includes(q) ||
+        (d.borrower||'').toLowerCase().includes(q) ||
+        (d.loan_id||'').toLowerCase().includes(q))
+    : _allDisputes;
+  renderDisputes(filtered);
+}
+
+function renderDisputes(rows) {
+  const tbody = document.getElementById('disputeBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <h3>No disputes</h3>
+      <p style="font-size:13px;margin-top:6px">No loans are currently in disputed status.</p>
+    </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(d => `
+    <tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">${escapeHtml(d.loan_id)}</div>
+            <div class="mobile-card-sub">u/${escapeHtml(d.borrower)} vs u/${escapeHtml(d.lender)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <div class="mobile-card-money">${parseFloat(d.amount||0).toFixed(2)} ${escapeHtml(d.currency||'')}</div>
+          </div>
+        </div>
+        <div class="mobile-card-meta">
+          <span class="badge badge-disputed">Disputed</span>
+          <span class="mobile-chip">${d.date_created ? d.date_created.slice(0,10) : '—'}</span>
+        </div>
+        <div class="mobile-card-actions">
+          <a href="/dashboard/mod/investigation/${encodeURIComponent(d.borrower)}" class="btn-action btn-extension" style="text-decoration:none;display:inline-flex;align-items:center">Investigate</a>
+          <a href="/dashboard/mod/investigation/${encodeURIComponent(d.lender)}" class="btn-secondary" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Lender</a>
+          <span></span>
+        </div>
+        <div class="mobile-card-details">
+          <div class="mobile-card-detail-grid">
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">Lender</div>
+              <div class="mobile-card-detail-value">u/${escapeHtml(d.lender)}</div>
+            </div>
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">Borrower</div>
+              <div class="mobile-card-detail-value">u/${escapeHtml(d.borrower)}</div>
+            </div>
+            ${d.notes ? `<div class="mobile-card-detail-item" style="grid-column:1/-1">
+              <div class="mobile-card-detail-label">Notes</div>
+              <div class="mobile-card-detail-value">${escapeHtml(d.notes)}</div>
+            </div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td data-label="Loan ID" style="font-family:monospace;font-size:12px">${escapeHtml(d.loan_id)}</td>
+      <td data-label="Lender" class="username">
+        <a href="/dashboard/mod/investigation/${encodeURIComponent(d.lender)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(d.lender)}</a>
+      </td>
+      <td data-label="Borrower" class="username">
+        <a href="/dashboard/mod/investigation/${encodeURIComponent(d.borrower)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(d.borrower)}</a>
+      </td>
+      <td data-label="Amount" class="amount">${parseFloat(d.amount||0).toFixed(2)} ${escapeHtml(d.currency||'')}</td>
+      <td data-label="Created" class="date-cell">${d.date_created ? d.date_created.slice(0,10) : '—'}</td>
+      <td data-label="Thread" style="font-size:12px;color:var(--muted)">
+        ${d.original_thread && d.original_thread !== 'dashboard'
+          ? `<a href="${escapeHtml(d.original_thread)}" target="_blank" rel="noopener" style="color:var(--accent-h)">Reddit</a>`
+          : '—'}
+      </td>
+      <td data-label="Actions">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <a href="/dashboard/mod/investigation/${encodeURIComponent(d.borrower)}" class="btn-action btn-extension" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Investigate</a>
+          <a href="/dashboard/mod/investigation/${encodeURIComponent(d.lender)}" class="btn-secondary" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Lender</a>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadDisputes);
+</script>
+{% endblock %}

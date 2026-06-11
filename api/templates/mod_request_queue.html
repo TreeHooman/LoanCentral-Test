@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Loan Request Queue — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Loan Request Queue</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Review, triage, and link loan requests to funded loans</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <button class="btn-secondary" onclick="loadRequests()">Refresh</button>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px">
+  <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="rq-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value c-yellow" id="rq-open">—</div></div>
+  <div class="stat-card"><div class="stat-label">Funded</div><div class="stat-value c-green" id="rq-funded">—</div></div>
+  <div class="stat-card"><div class="stat-label">Expired / Removed</div><div class="stat-value c-red" id="rq-closed">—</div></div>
+</div>
+
+<!-- Filters -->
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+  <input id="fBorrower" class="search-input" placeholder="Borrower username…"
+    style="flex:1;min-width:160px;max-width:220px" oninput="applyFilters()">
+  <select id="fStatus" onchange="applyFilters()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+    <option value="">All statuses</option>
+    <option value="open">Open</option>
+    <option value="funded">Funded</option>
+    <option value="cancelled">Cancelled</option>
+    <option value="expired">Expired</option>
+    <option value="removed">Removed</option>
+    <option value="duplicate">Duplicate</option>
+    <option value="denied_by_mod">Denied by mod</option>
+  </select>
+  <input id="fDateFrom" type="date" onchange="applyFilters()"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+  <input id="fDateTo" type="date" onchange="applyFilters()"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+  <input id="fAmtMin" type="number" placeholder="Min $" oninput="applyFilters()"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;width:90px">
+  <input id="fAmtMax" type="number" placeholder="Max $" oninput="applyFilters()"
+    style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;width:90px">
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards compact-command-table">
+    <thead>
+      <tr>
+        <th>Request ID</th>
+        <th>Borrower</th>
+        <th>Amount</th>
+        <th>Status</th>
+        <th>Requested</th>
+        <th>Thread</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="rqBody">
+      <tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+<div id="rqMeta" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:right"></div>
+
+<!-- Status-change modal -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <h3>Update Request Status</h3>
+    <div class="modal-error" id="statusError"></div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Request: <strong id="statusReqId"></strong></p>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">New status</label>
+    <select id="statusSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+      <option value="open">open</option>
+      <option value="funded">funded</option>
+      <option value="cancelled">cancelled</option>
+      <option value="expired">expired</option>
+      <option value="removed">removed</option>
+      <option value="duplicate">duplicate</option>
+      <option value="denied_by_mod">denied_by_mod</option>
+    </select>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Note (optional)</label>
+    <textarea id="statusNote" rows="2"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:14px"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitStatusChange()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Link-to-loan modal -->
+<div class="modal-overlay" id="linkModal">
+  <div class="modal">
+    <h3>Link to Funded Loan</h3>
+    <div class="modal-error" id="linkError"></div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Request: <strong id="linkReqId"></strong></p>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Loan DB ID (integer from loans table)</label>
+    <input id="linkLoanId" type="number" placeholder="e.g. 42"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" id="linkOverride"> Override if already linked
+    </label>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('linkModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitLink()">Link</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_STYLE = {
+  open:'color:var(--yellow)',funded:'color:var(--green);font-weight:700',
+  cancelled:'color:var(--muted)',expired:'color:var(--muted)',
+  removed:'color:var(--red)',duplicate:'color:var(--muted)',
+  denied_by_mod:'color:var(--red)',
+};
+
+let _activeReqId = null;
+
+function applyFilters() {
+  const params = new URLSearchParams({ limit: 300 });
+  const s = document.getElementById('fStatus').value;
+  const b = document.getElementById('fBorrower').value.trim();
+  const df = document.getElementById('fDateFrom').value;
+  const dt = document.getElementById('fDateTo').value;
+  const mn = document.getElementById('fAmtMin').value;
+  const mx = document.getElementById('fAmtMax').value;
+  if (s)  params.set('status', s);
+  if (b)  params.set('borrower', b);
+  if (df) params.set('date_from', df);
+  if (dt) params.set('date_to', dt);
+  if (mn) params.set('amount_min', mn);
+  if (mx) params.set('amount_max', mx);
+  loadRequests(params);
+}
+
+async function loadRequests(params = new URLSearchParams({ limit: 300 })) {
+  document.getElementById('rqBody').innerHTML =
+    `<tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>`;
+  const res  = await fetch('/api/loan-requests?' + params, { credentials: 'same-origin' });
+  const data = await res.json();
+  const rows = data.requests || [];
+  updateStats(rows, data.total || rows.length);
+  renderRows(rows, data.total || rows.length);
+}
+
+function updateStats(rows, total) {
+  document.getElementById('rq-total').textContent  = total;
+  document.getElementById('rq-open').textContent   = rows.filter(r => r.request_status === 'open').length;
+  document.getElementById('rq-funded').textContent = rows.filter(r => r.request_status === 'funded').length;
+  document.getElementById('rq-closed').textContent = rows.filter(r =>
+    ['expired','removed','duplicate','denied_by_mod','cancelled'].includes(r.request_status)).length;
+}
+
+function renderRows(rows, total) {
+  document.getElementById('rqMeta').textContent = `Showing ${rows.length} of ${total}`;
+  const tbody = document.getElementById('rqBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <h3>No requests found</h3>
+      <p style="font-size:13px;margin-top:6px">No loan requests match the current filters.</p>
+    </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sc      = STATUS_STYLE[r.request_status] || '';
+    const created = (r.created_at || '').slice(0,10);
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const thread  = r.thread_url
+      ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h);font-size:12px">Reddit</a>`
+      : '—';
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+            <div class="mobile-card-sub">u/${escapeHtml(r.borrower_username)} · ${created}</div>
+          </div>
+          <div class="mobile-card-side">
+            <div class="mobile-card-money">${amt}</div>
+            <span style="${sc};font-size:11px">${escapeHtml(r.request_status)}</span>
+          </div>
+        </div>
+        <div class="mobile-card-actions">
+          <button class="btn-action btn-extension" style="font-size:12px" onclick="openStatusModal('${escapeHtml(r.request_id)}','${escapeHtml(r.request_status)}')">Status</button>
+          <button class="btn-secondary" style="font-size:12px" onclick="openLinkModal('${escapeHtml(r.request_id)}')">Link Loan</button>
+          <a href="/dashboard/requests/${escapeHtml(r.request_id)}" class="btn-secondary" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Detail</a>
+        </div>
+      </td>
+      <td data-label="Request ID" style="font-family:monospace;font-size:12px">
+        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>
+      </td>
+      <td data-label="Borrower" class="username">
+        <a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>
+      </td>
+      <td data-label="Amount" class="amount">${amt}</td>
+      <td data-label="Status"><span style="${sc};font-size:12px">${escapeHtml(r.request_status)}</span></td>
+      <td data-label="Requested" class="date-cell">${created}</td>
+      <td data-label="Thread">${thread}</td>
+      <td data-label="Actions">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn-action btn-extension" style="font-size:12px" onclick="openStatusModal('${escapeHtml(r.request_id)}','${escapeHtml(r.request_status)}')">Status</button>
+          <button class="btn-secondary" style="font-size:12px" onclick="openLinkModal('${escapeHtml(r.request_id)}')">Link Loan</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openStatusModal(reqId, currentStatus) {
+  _activeReqId = reqId;
+  document.getElementById('statusReqId').textContent = reqId;
+  document.getElementById('statusSelect').value = currentStatus;
+  document.getElementById('statusNote').value = '';
+  document.getElementById('statusError').style.display = 'none';
+  document.getElementById('statusModal').classList.add('open');
+}
+
+function openLinkModal(reqId) {
+  _activeReqId = reqId;
+  document.getElementById('linkReqId').textContent = reqId;
+  document.getElementById('linkLoanId').value = '';
+  document.getElementById('linkOverride').checked = false;
+  document.getElementById('linkError').style.display = 'none';
+  document.getElementById('linkModal').classList.add('open');
+}
+
+async function submitStatusChange() {
+  const errEl = document.getElementById('statusError');
+  errEl.style.display = 'none';
+  const res = await fetch(`/api/loan-requests/${_activeReqId}/status`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: document.getElementById('statusSelect').value,
+      note:   document.getElementById('statusNote').value.trim(),
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display='block'; return; }
+  closeModal('statusModal');
+  toast('Status updated.', 'success');
+  applyFilters();
+}
+
+async function submitLink() {
+  const errEl = document.getElementById('linkError');
+  errEl.style.display = 'none';
+  const loanId = document.getElementById('linkLoanId').value;
+  if (!loanId) { errEl.textContent='Loan DB ID required'; errEl.style.display='block'; return; }
+  const res = await fetch(`/api/loan-requests/${_activeReqId}/link`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loan_db_id: parseInt(loanId),
+      override: document.getElementById('linkOverride').checked,
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display='block'; return; }
+  closeModal('linkModal');
+  toast('Linked to loan.', 'success');
+  applyFilters();
+}
+
+document.addEventListener('DOMContentLoaded', () => loadRequests());
+</script>
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Admin Hub — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:24px">
+  <div>
+    <div class="section-title">Admin Command Center</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">All administrative tools in one place</div>
+  </div>
+</div>
+
+<!-- Quick stats row -->
+<div class="stats-grid" id="hubStats" style="margin-bottom:24px">
+  <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="hs-loans">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="hs-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Disputes</div><div class="stat-value c-red" id="hs-disputes">—</div></div>
+  <div class="stat-card"><div class="stat-label">Pending Verif.</div><div class="stat-value c-yellow" id="hs-verif">—</div></div>
+  <div class="stat-card"><div class="stat-label">Open Feedback</div><div class="stat-value c-accent" id="hs-feedback">—</div></div>
+  <div class="stat-card"><div class="stat-label">Verified Lenders</div><div class="stat-value c-green" id="hs-vlenders">—</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+
+  <!-- Users -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(91,110,245,0.12);color:var(--accent-h)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Users &amp; Roles</div>
+      <div class="hub-card-desc">Manage roles, borrower contacts, and user access.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/admin/lenders/management" class="btn-secondary" style="font-size:12px">Lenders</a>
+      <a href="/admin/borrowers" class="btn-secondary" style="font-size:12px">Borrowers</a>
+    </div>
+  </div>
+
+  <!-- Verification -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(241,196,15,0.12);color:var(--yellow)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Verification Queue</div>
+      <div class="hub-card-desc">Review lender applications and approve or deny.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/mod/queue" class="btn-secondary" style="font-size:12px">Open Queue</a>
+      <a href="/dashboard/admin/lenders" class="btn-secondary" style="font-size:12px">Lender Profiles</a>
+    </div>
+  </div>
+
+  <!-- Disputes -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(231,76,60,0.12);color:var(--red)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Dispute Center</div>
+      <div class="hub-card-desc">View and manage all active and historical disputes.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/dashboard/mod/disputes" class="btn-secondary" style="font-size:12px">Open Disputes</a>
+    </div>
+  </div>
+
+  <!-- Audit Logs -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(52,152,219,0.12);color:#3498db">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Audit Logs</div>
+      <div class="hub-card-desc">Full audit trail of all platform actions and role changes.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/dashboard/admin/audit-log" class="btn-secondary" style="font-size:12px">View Log</a>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(46,204,113,0.12);color:var(--green)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Global Search</div>
+      <div class="hub-card-desc">Search across users, loans, REQ-IDs, and verifications.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/dashboard/admin/search" class="btn-secondary" style="font-size:12px">Search</a>
+    </div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(155,89,182,0.12);color:#9b59b6">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">System Metrics</div>
+      <div class="hub-card-desc">Platform health, activity trends, and operational data.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/admin/health" class="btn-secondary" style="font-size:12px">Health</a>
+      <a href="/dashboard/admin" class="btn-secondary" style="font-size:12px">Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(241,196,15,0.12);color:var(--yellow)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Notifications</div>
+      <div class="hub-card-desc">Manage system notifications and purge old records.</div>
+    </div>
+    <div class="hub-card-actions">
+      <button class="btn-secondary" style="font-size:12px" onclick="purgeNotifs()">Purge Old</button>
+    </div>
+  </div>
+
+  <!-- Feedback -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(91,110,245,0.12);color:var(--accent-h)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Feedback</div>
+      <div class="hub-card-desc">User-submitted bug reports, suggestions, and requests.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/admin/feedback" class="btn-secondary" style="font-size:12px">Review Feedback</a>
+    </div>
+  </div>
+
+  <!-- Risk Review -->
+  <div class="card hub-card">
+    <div class="hub-card-icon" style="background:rgba(231,76,60,0.08);color:var(--red)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <div class="hub-card-body">
+      <div class="hub-card-title">Risk Review</div>
+      <div class="hub-card-desc">Factual indicators: disputes, unpaid loans, high activity.</div>
+    </div>
+    <div class="hub-card-actions">
+      <a href="/dashboard/mod/risk" class="btn-secondary" style="font-size:12px">Risk Dashboard</a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+}
+.hub-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.hub-card-body { flex: 1; }
+.hub-card-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.hub-card-desc  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.hub-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+<script>
+async function loadStats() {
+  try {
+    const [statsRes, queueRes, feedbackRes] = await Promise.all([
+      fetch('/api/admin/metrics', { credentials: 'same-origin' }),
+      fetch('/api/mod/queue',     { credentials: 'same-origin' }),
+      fetch('/api/admin/feedback?status=open&limit=1', { credentials: 'same-origin' }),
+    ]);
+    if (statsRes.ok) {
+      const m = await statsRes.json();
+      const l = m.loans    || {};
+      const u = m.users    || {};
+      const v = m.verifications || {};
+      document.getElementById('hs-loans').textContent    = l.total      ?? '—';
+      document.getElementById('hs-unpaid').textContent   = l.unpaid     ?? '—';
+      document.getElementById('hs-disputes').textContent = l.disputed   ?? '—';
+      document.getElementById('hs-verif').textContent    = v.pending    ?? '—';
+      document.getElementById('hs-vlenders').textContent = u.verified_lenders ?? '—';
+    }
+    if (feedbackRes.ok) {
+      const f = await feedbackRes.json();
+      document.getElementById('hs-feedback').textContent = f.total ?? '—';
+    }
+  } catch(e) {}
+}
+
+async function purgeNotifs() {
+  if (!confirm('Purge notifications older than 90 days?')) return;
+  const res = await fetch('/api/admin/notifications/purge', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ days: 90 }),
+  });
+  const data = await res.json();
+  if (res.ok) toast(`Purged ${data.deleted} old notifications.`, 'success');
+  else toast(data.error || 'Purge failed.', 'error');
+}
+
+document.addEventListener('DOMContentLoaded', loadStats);
+</script>
+{% endblock %}

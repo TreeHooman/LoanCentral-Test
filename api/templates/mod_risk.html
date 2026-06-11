@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Risk Review — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Risk Review Dashboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Factual indicators only — disputes, unpaid loans, and high activity. No scores or predictions.</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <button class="btn-secondary" onclick="loadRisk()">Refresh</button>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px">
+  <div class="stat-card"><div class="stat-label">Users with Indicators</div><div class="stat-value c-red" id="ri-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Total Disputes</div><div class="stat-value c-red" id="ri-disputes">—</div></div>
+  <div class="stat-card"><div class="stat-label">Total Unpaid</div><div class="stat-value c-red" id="ri-unpaid">—</div></div>
+</div>
+
+<div style="margin-bottom:10px;font-size:12px;color:var(--muted);background:rgba(241,196,15,0.07);border:1px solid rgba(241,196,15,0.2);border-radius:6px;padding:8px 12px">
+  This dashboard surfaces factual loan records only. It does not calculate risk scores, predict outcomes, or make approval recommendations.
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+  <input id="riFilter" class="search-input" placeholder="Filter by username…"
+    oninput="filterRisk()" style="flex:1;min-width:180px;max-width:280px">
+  <select id="riSort" onchange="filterRisk()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+    <option value="disputes">Sort: Most Disputes</option>
+    <option value="unpaid">Sort: Most Unpaid</option>
+    <option value="total">Sort: Most Loans</option>
+  </select>
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards compact-command-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Disputes</th>
+        <th>Unpaid</th>
+        <th>Active</th>
+        <th>Total Loans</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="riskBody">
+      <tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _allRisk = [];
+
+async function loadRisk() {
+  const res  = await fetch('/api/mod/risk', { credentials: 'same-origin' });
+  const data = await res.json();
+  _allRisk = data.indicators || [];
+  updateStats(_allRisk);
+  filterRisk();
+}
+
+function updateStats(rows) {
+  document.getElementById('ri-total').textContent    = rows.length;
+  document.getElementById('ri-disputes').textContent = rows.reduce((s, r) => s + (r.disputes || 0), 0);
+  document.getElementById('ri-unpaid').textContent   = rows.reduce((s, r) => s + (r.unpaid || 0), 0);
+}
+
+function filterRisk() {
+  const q    = document.getElementById('riFilter').value.trim().toLowerCase();
+  const sort = document.getElementById('riSort').value;
+  let rows = q ? _allRisk.filter(r => (r.username||'').toLowerCase().includes(q)) : [..._allRisk];
+  rows.sort((a, b) => (b[sort === 'disputes' ? 'disputes' : sort === 'unpaid' ? 'unpaid' : 'total_loans'] || 0)
+                    - (a[sort === 'disputes' ? 'disputes' : sort === 'unpaid' ? 'unpaid' : 'total_loans'] || 0));
+  renderRisk(rows);
+}
+
+function renderRisk(rows) {
+  const tbody = document.getElementById('riskBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <h3>No indicators found</h3>
+      <p style="font-size:13px;margin-top:6px">No users with disputes or unpaid loans in the platform.</p>
+    </div></td></tr>`;
+    return;
+  }
+
+  const pill = (val, warnAbove) => {
+    const cls = val > warnAbove ? 'color:var(--red);font-weight:700' : 'color:var(--text)';
+    return `<span style="${cls}">${val}</span>`;
+  };
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">u/${escapeHtml(r.username)}</div>
+            <div class="mobile-card-sub">${r.total_loans} total loans</div>
+          </div>
+          <div class="mobile-card-side">
+            ${r.disputes > 0 ? `<span class="badge badge-disputed">${r.disputes} disputed</span>` : ''}
+            ${r.unpaid   > 0 ? `<span class="badge badge-unpaid" style="margin-top:2px">${r.unpaid} unpaid</span>` : ''}
+          </div>
+        </div>
+        <div class="mobile-card-actions">
+          <a href="/dashboard/mod/investigation/${encodeURIComponent(r.username)}" class="btn-action btn-extension" style="text-decoration:none;display:inline-flex;align-items:center">Investigate</a>
+          <span></span><span></span>
+        </div>
+      </td>
+      <td data-label="Username" class="username">
+        <a href="/dashboard/mod/investigation/${encodeURIComponent(r.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(r.username)}</a>
+      </td>
+      <td data-label="Disputes">${pill(r.disputes||0, 0)}</td>
+      <td data-label="Unpaid">${pill(r.unpaid||0, 0)}</td>
+      <td data-label="Active" style="color:var(--muted)">${r.active||0}</td>
+      <td data-label="Total Loans" style="color:var(--muted)">${r.total_loans||0}</td>
+      <td data-label="Actions">
+        <a href="/dashboard/mod/investigation/${encodeURIComponent(r.username)}" class="btn-action btn-extension" style="font-size:12px;text-decoration:none;display:inline-flex;align-items:center">Investigate</a>
+      </td>
+    </tr>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadRisk);
+</script>
+{% endblock %}

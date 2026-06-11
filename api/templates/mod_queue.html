@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Mod Queue — LoanCentral{% endblock %}
+{% block title %}Mod Queue - LoanCentral{% endblock %}
 
 {% block content %}
 <div class="section-header" style="margin-bottom:20px">
@@ -7,58 +7,52 @@
     <div class="section-title">Moderation Queue</div>
     <div style="color:var(--muted);font-size:13px;margin-top:2px">All items needing moderator attention in one place</div>
   </div>
-  <button class="btn-secondary" onclick="loadQueue()">↻ Refresh</button>
+  <button class="btn-secondary" onclick="loadQueue()">Refresh</button>
 </div>
 
-<!-- Summary badges -->
 <div class="stats-grid" id="queueStats" style="margin-bottom:20px">
-  <div class="stat-card"><div class="stat-label">Verifications</div><div class="stat-value c-yellow" id="qs-verif">—</div></div>
-  <div class="stat-card"><div class="stat-label">Disputes</div><div class="stat-value c-red" id="qs-disputes">—</div></div>
-  <div class="stat-card"><div class="stat-label">Open Feedback</div><div class="stat-value c-accent" id="qs-feedback">—</div></div>
-  <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="qs-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Verifications</div><div class="stat-value c-yellow" id="qs-verif">-</div></div>
+  <div class="stat-card"><div class="stat-label">Disputes</div><div class="stat-value c-red" id="qs-disputes">-</div></div>
+  <div class="stat-card"><div class="stat-label">Open Feedback</div><div class="stat-value c-accent" id="qs-feedback">-</div></div>
+  <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="qs-total">-</div></div>
 </div>
 
-<!-- Section tabs -->
 <div class="tabs" style="margin-bottom:16px">
   <button class="tab active" onclick="switchSection('verifications', this)">Verifications</button>
   <button class="tab" onclick="switchSection('disputes', this)">Disputes</button>
   <button class="tab" onclick="switchSection('feedback', this)">Feedback</button>
 </div>
 
-<!-- Verifications -->
 <div id="section-verifications">
   <div class="table-wrap">
-    <table>
+    <table class="mobile-cards compact-command-table">
       <thead><tr><th>Username</th><th>Role Requested</th><th>Note</th><th>Submitted</th><th>Actions</th></tr></thead>
       <tbody id="verifBody"><tr><td colspan="5" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
     </table>
   </div>
 </div>
 
-<!-- Disputes -->
 <div id="section-disputes" style="display:none">
   <div class="table-wrap">
-    <table>
+    <table class="mobile-cards compact-command-table">
       <thead><tr><th>Loan ID</th><th>Lender</th><th>Borrower</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody id="disputeBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
     </table>
   </div>
 </div>
 
-<!-- Feedback -->
 <div id="section-feedback" style="display:none">
   <div class="table-wrap">
-    <table>
+    <table class="mobile-cards compact-command-table">
       <thead><tr><th>ID</th><th>User</th><th>Category</th><th>Title</th><th>Submitted</th><th>Actions</th></tr></thead>
       <tbody id="feedbackBody"><tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr></tbody>
     </table>
   </div>
 </div>
 
-<!-- Verification quick-review modal (with templates) -->
 <div class="modal-overlay" id="verifModal">
   <div class="modal" style="width:520px">
-    <h3>Review Verification — u/<span id="vmUser"></span></h3>
+    <h3>Review Verification - u/<span id="vmUser"></span></h3>
     <input type="hidden" id="vmId" />
     <div style="margin-bottom:10px">
       <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Public Note from applicant</div>
@@ -73,8 +67,7 @@
     <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Review Note</label>
     <textarea id="vmReviewNote" rows="3"
       style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;outline:none;font-family:inherit;margin-bottom:8px"
-      placeholder="Reason for decision (visible to applicant)…"></textarea>
-    <!-- Quick templates -->
+      placeholder="Reason for decision (visible to applicant)..."></textarea>
     <div style="margin-bottom:12px">
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600">QUICK TEMPLATES</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px" id="verifTemplates"></div>
@@ -92,30 +85,30 @@
 <script>
 const VERIF_TEMPLATES = {
   approved: [
-    { label: "Standard Approval",   text: "Verification approved. Welcome to the verified lender program." },
-    { label: "With Note",           text: "Verification approved. Please review the lender guidelines if you haven't already." },
+    { label: 'Standard Approval', text: 'Verification approved. Welcome to the verified lender program.' },
+    { label: 'With Note', text: "Verification approved. Please review the lender guidelines if you haven't already." },
   ],
   denied: [
-    { label: "Insufficient History", text: "Verification denied: insufficient lending history on record. You may reapply after additional activity." },
-    { label: "Missing Evidence",     text: "Verification denied: required documentation not provided. Please reapply with supporting evidence." },
-    { label: "Policy",               text: "Verification denied at this time. Please review the verification requirements and reapply." },
+    { label: 'Insufficient History', text: 'Verification denied: insufficient lending history on record. You may reapply after additional activity.' },
+    { label: 'Missing Evidence', text: 'Verification denied: required documentation not provided. Please reapply with supporting evidence.' },
+    { label: 'Policy', text: 'Verification denied at this time. Please review the verification requirements and reapply.' },
   ],
   more_info: [
-    { label: "More Info Needed",     text: "Your application is under review. Could you provide additional information about your lending history?" },
+    { label: 'More Info Needed', text: 'Your application is under review. Could you provide additional information about your lending history?' },
   ],
 };
 
 let _queueData = null;
 
 async function loadQueue() {
-  const res  = await fetch('/api/mod/queue', { credentials: 'same-origin' });
+  const res = await fetch('/api/mod/queue', { credentials: 'same-origin' });
   const data = await res.json();
   _queueData = data;
 
-  document.getElementById('qs-verif').textContent    = data.totals?.verifications ?? 0;
-  document.getElementById('qs-disputes').textContent  = data.totals?.disputes     ?? 0;
-  document.getElementById('qs-feedback').textContent  = data.totals?.feedback     ?? 0;
-  document.getElementById('qs-total').textContent     = data.totals?.total        ?? 0;
+  document.getElementById('qs-verif').textContent = data.totals?.verifications ?? 0;
+  document.getElementById('qs-disputes').textContent = data.totals?.disputes ?? 0;
+  document.getElementById('qs-feedback').textContent = data.totals?.feedback ?? 0;
+  document.getElementById('qs-total').textContent = data.totals?.total ?? 0;
 
   renderVerifications(data.verifications || []);
   renderDisputes(data.disputes || []);
@@ -130,11 +123,43 @@ function renderVerifications(rows) {
   }
   tbody.innerHTML = rows.map(v => `
     <tr>
-      <td class="username"><a href="/audit/user/${escapeHtml(v.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(v.username)}</a></td>
-      <td style="font-size:12px">${escapeHtml(v.requested_role)}</td>
-      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.public_note || '—')}</td>
-      <td class="date-cell">${v.submitted_at ? v.submitted_at.slice(0,10) : '—'}</td>
-      <td><button class="btn-action btn-extension" onclick='openVerifModal(${JSON.stringify(v)})'>Review</button></td>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">u/${escapeHtml(v.username)}</div>
+            <div class="mobile-card-sub">${escapeHtml(v.requested_role)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <span class="mobile-chip">${v.submitted_at ? v.submitted_at.slice(0,10) : '-'}</span>
+          </div>
+        </div>
+        <div class="mobile-card-actions">
+          <button class="btn-action btn-extension" onclick='openVerifModal(${JSON.stringify(v)})'>Review</button>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="mobile-card-details">
+          <div class="mobile-card-detail-grid">
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">Role Requested</div>
+              <div class="mobile-card-detail-value">${escapeHtml(v.requested_role)}</div>
+            </div>
+            <div class="mobile-card-detail-item">
+              <div class="mobile-card-detail-label">Submitted</div>
+              <div class="mobile-card-detail-value">${v.submitted_at ? v.submitted_at.slice(0,10) : '-'}</div>
+            </div>
+            <div class="mobile-card-detail-item" style="grid-column:1 / -1">
+              <div class="mobile-card-detail-label">Applicant Note</div>
+              <div class="mobile-card-detail-value">${escapeHtml(v.public_note || '-')}</div>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td data-label="Username" class="username"><a href="/audit/user/${escapeHtml(v.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(v.username)}</a></td>
+      <td data-label="Role Requested" style="font-size:12px">${escapeHtml(v.requested_role)}</td>
+      <td data-label="Note" style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.public_note || '-')}</td>
+      <td data-label="Submitted" class="date-cell">${v.submitted_at ? v.submitted_at.slice(0,10) : '-'}</td>
+      <td data-label="Actions"><button class="btn-action btn-extension" onclick='openVerifModal(${JSON.stringify(v)})'>Review</button></td>
     </tr>`).join('');
 }
 
@@ -146,14 +171,32 @@ function renderDisputes(rows) {
   }
   tbody.innerHTML = rows.map(d => `
     <tr>
-      <td><span class="loan-id">${escapeHtml(d.loan_id)}</span></td>
-      <td class="username">u/${escapeHtml(d.lender)}</td>
-      <td class="username">u/${escapeHtml(d.borrower)}</td>
-      <td class="amount">${parseFloat(d.amount||0).toFixed(2)} ${escapeHtml(d.currency)}</td>
-      <td class="date-cell">${d.date_created ? d.date_created.slice(0,10) : '—'}</td>
-      <td>
-        <a class="btn-action btn-extension" href="/audit/user/${escapeHtml(d.borrower)}" style="text-decoration:none;display:inline-block">Investigate</a>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">${escapeHtml(d.loan_id)}</div>
+            <div class="mobile-card-sub">u/${escapeHtml(d.borrower)} vs u/${escapeHtml(d.lender)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <div class="mobile-card-money">${parseFloat(d.amount || 0).toFixed(2)} ${escapeHtml(d.currency)}</div>
+          </div>
+        </div>
+        <div class="mobile-card-meta">
+          <span class="badge badge-disputed">Disputed</span>
+          <span class="mobile-chip">${d.date_created ? d.date_created.slice(0,10) : '-'}</span>
+        </div>
+        <div class="mobile-card-actions">
+          <a class="btn-action btn-extension" href="/audit/user/${escapeHtml(d.borrower)}" style="text-decoration:none;display:inline-flex;justify-content:center;align-items:center">Review</a>
+          <span></span>
+          <span></span>
+        </div>
       </td>
+      <td data-label="Loan ID"><span class="loan-id">${escapeHtml(d.loan_id)}</span></td>
+      <td data-label="Lender" class="username">u/${escapeHtml(d.lender)}</td>
+      <td data-label="Borrower" class="username">u/${escapeHtml(d.borrower)}</td>
+      <td data-label="Amount" class="amount">${parseFloat(d.amount || 0).toFixed(2)} ${escapeHtml(d.currency)}</td>
+      <td data-label="Date" class="date-cell">${d.date_created ? d.date_created.slice(0,10) : '-'}</td>
+      <td data-label="Actions"><a class="btn-action btn-extension" href="/audit/user/${escapeHtml(d.borrower)}" style="text-decoration:none;display:inline-block">Investigate</a></td>
     </tr>`).join('');
 }
 
@@ -166,17 +209,33 @@ function renderFeedback(rows) {
   const CAT = { bug: 'Bug', suggestion: 'Suggestion', feature_request: 'Feature Request' };
   tbody.innerHTML = rows.map(f => `
     <tr>
-      <td style="font-size:12px;color:var(--muted)">${f.id}</td>
-      <td class="username">u/${escapeHtml(f.username)}</td>
-      <td><span class="badge badge-fb-${f.category}">${CAT[f.category]||f.category}</span></td>
-      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.title)}</td>
-      <td class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '—'}</td>
-      <td><a href="/admin/feedback" class="btn-action btn-extension" style="text-decoration:none;display:inline-block">Review</a></td>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">${escapeHtml(f.title)}</div>
+            <div class="mobile-card-sub">#${f.id} - u/${escapeHtml(f.username)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <span class="badge badge-fb-${f.category}">${CAT[f.category] || f.category}</span>
+          </div>
+        </div>
+        <div class="mobile-card-actions">
+          <a href="/admin/feedback" class="btn-action btn-extension" style="text-decoration:none;display:inline-flex;justify-content:center;align-items:center">Review</a>
+          <span></span>
+          <span></span>
+        </div>
+      </td>
+      <td data-label="ID" style="font-size:12px;color:var(--muted)">${f.id}</td>
+      <td data-label="User" class="username">u/${escapeHtml(f.username)}</td>
+      <td data-label="Category"><span class="badge badge-fb-${f.category}">${CAT[f.category] || f.category}</span></td>
+      <td data-label="Title" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.title)}</td>
+      <td data-label="Submitted" class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '-'}</td>
+      <td data-label="Actions"><a href="/admin/feedback" class="btn-action btn-extension" style="text-decoration:none;display:inline-block">Review</a></td>
     </tr>`).join('');
 }
 
 function switchSection(name, btn) {
-  ['verifications','disputes','feedback'].forEach(s => {
+  ['verifications', 'disputes', 'feedback'].forEach(s => {
     document.getElementById('section-' + s).style.display = s === name ? '' : 'none';
   });
   document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
@@ -184,11 +243,11 @@ function switchSection(name, btn) {
 }
 
 function openVerifModal(v) {
-  document.getElementById('vmId').value    = v.id;
+  document.getElementById('vmId').value = v.id;
   document.getElementById('vmUser').textContent = v.username;
   document.getElementById('vmNote').textContent = v.public_note || '(none)';
   document.getElementById('vmReviewNote').value = '';
-  document.getElementById('vmDecision').value   = '';
+  document.getElementById('vmDecision').value = '';
   document.getElementById('vmError').style.display = 'none';
   renderVerifTemplates('approved');
   document.getElementById('verifModal').classList.add('open');
@@ -200,7 +259,7 @@ function setVerifDecision(decision) {
   document.querySelectorAll('#verifModal [data-decision]').forEach(b => {
     const active = b.dataset.decision === decision;
     b.style.opacity = active ? '1' : '0.35';
-    b.style.outline  = active ? '2px solid currentColor' : 'none';
+    b.style.outline = active ? '2px solid currentColor' : 'none';
     b.style.outlineOffset = active ? '2px' : '0';
   });
 }
@@ -209,33 +268,33 @@ function renderVerifTemplates(decision) {
   const container = document.getElementById('verifTemplates');
   const templates = [...(VERIF_TEMPLATES[decision] || []), ...VERIF_TEMPLATES.more_info];
   container.innerHTML = templates.map(t =>
-    `<button class="btn-secondary" style="font-size:11px;padding:4px 10px"
-       onclick="document.getElementById('vmReviewNote').value=${JSON.stringify(t.text)}">${escapeHtml(t.label)}</button>`
+    `<button class="btn-secondary" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('vmReviewNote').value=${JSON.stringify(t.text)}">${escapeHtml(t.label)}</button>`
   ).join('');
 }
 
 async function submitVerifDecision() {
-  const id       = parseInt(document.getElementById('vmId').value);
+  const id = parseInt(document.getElementById('vmId').value);
   const decision = document.getElementById('vmDecision').value;
-  const note     = document.getElementById('vmReviewNote').value.trim();
-  const errEl    = document.getElementById('vmError');
-  if (!decision) { errEl.textContent = 'Choose Approve or Deny first.'; errEl.style.display = 'block'; return; }
+  const note = document.getElementById('vmReviewNote').value.trim();
+  const errEl = document.getElementById('vmError');
+  if (!decision) {
+    errEl.textContent = 'Choose Approve or Deny first.';
+    errEl.style.display = 'block';
+    return;
+  }
   try {
-    const endpoint = decision === 'approved'
-      ? `/api/verification/${id}/approve`
-      : `/api/verification/${id}/deny`;
-    const res = await fetch(endpoint, {
+    const res = await fetch(`/api/verification/${id}/decision`, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ review_note: note }),
+      body: JSON.stringify({ decision, review_note: note }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Action failed');
     closeModal('verifModal');
     toast(`Verification ${decision}.`, 'success');
     loadQueue();
-  } catch(e) {
+  } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }

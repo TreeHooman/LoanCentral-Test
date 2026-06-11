@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Request {{ request_id }} — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-family:monospace">{{ request_id }}</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Loan Request Detail</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a id="backLink" href="/dashboard/borrower/requests" class="btn-secondary">← Back</a>
+  </div>
+</div>
+
+<div id="detailWrap">
+  <div class="table-placeholder" style="padding:40px 0"><div class="spinner"></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const REQUEST_ID = {{ request_id | tojson }};
+const VIEWER_ROLE = {{ viewer_role | tojson }};
+
+const STATUS_STYLE = {
+  open:           'color:var(--yellow)',
+  funded:         'color:var(--green);font-weight:700',
+  cancelled:      'color:var(--muted)',
+  expired:        'color:var(--muted)',
+  removed:        'color:var(--red)',
+  duplicate:      'color:var(--muted)',
+  denied_by_mod:  'color:var(--red)',
+};
+
+async function loadDetail() {
+  const url = ['admin','mod'].includes(VIEWER_ROLE)
+    ? `/api/loan-requests/${REQUEST_ID}`
+    : `/api/loan-requests/${REQUEST_ID}`;
+  const res  = await fetch(url, { credentials: 'same-origin' });
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('detailWrap').innerHTML =
+      `<div class="empty-state"><h3>Not found</h3><p style="font-size:13px;margin-top:6px">${escapeHtml(data.error || 'Request not found or access denied.')}</p></div>`;
+    return;
+  }
+  render(data.request);
+}
+
+function field(label, value, mono) {
+  if (!value && value !== 0) value = '—';
+  return `<div style="margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${label}</div>
+    <div style="font-size:14px${mono ? ';font-family:monospace' : ''}">${value}</div>
+  </div>`;
+}
+
+function render(r) {
+  const sc      = STATUS_STYLE[r.request_status] || '';
+  const created = (r.created_at || '').slice(0,19).replace('T',' ');
+  const updated = (r.updated_at || '').slice(0,19).replace('T',' ');
+  const amt     = r.requested_amount     ? '$' + parseFloat(r.requested_amount).toFixed(2)     : null;
+  const repay   = r.requested_repayment_amount ? '$' + parseFloat(r.requested_repayment_amount).toFixed(2) : null;
+  const thread  = r.thread_url
+    ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h)">${escapeHtml(r.thread_url)}</a>`
+    : null;
+  const loanLink = r.funded_loan_id
+    ? `<a href="/dashboard/admin" style="color:var(--accent-h)">Loan #${r.funded_loan_id}</a>`
+    : null;
+
+  // back link
+  if (['admin','mod'].includes(VIEWER_ROLE)) {
+    document.getElementById('backLink').href = '/dashboard/mod/requests';
+    document.getElementById('backLink').textContent = '← Request Queue';
+  }
+
+  const isMod = ['admin','mod'].includes(VIEWER_ROLE);
+
+  document.getElementById('detailWrap').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <!-- Left card -->
+      <div class="stat-card" style="grid-column:1/3">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Status</div>
+            <div style="font-size:22px;font-weight:700;${sc}">${escapeHtml(r.request_status)}</div>
+          </div>
+          ${isMod ? `<button class="btn-action btn-extension" onclick="openStatusModal()">Change Status</button>` : ''}
+        </div>
+      </div>
+
+      <div class="stat-card">
+        ${field('Request ID', escapeHtml(r.request_id), true)}
+        ${field('Borrower', r.borrower_username ? `<a href="/dashboard/mod/investigation/${encodeURIComponent(r.borrower_username)}" style="color:var(--text);text-decoration:none">u/${escapeHtml(r.borrower_username)}</a>` : null)}
+        ${field('Reddit Username', r.reddit_username ? `u/${escapeHtml(r.reddit_username)}` : null)}
+      </div>
+
+      <div class="stat-card">
+        ${field('Requested Amount', amt)}
+        ${field('Repayment Amount', repay)}
+        ${field('Due Date', r.requested_due_date || null)}
+      </div>
+
+      <div class="stat-card">
+        ${field('Created', created)}
+        ${field('Updated', updated)}
+        ${field('Reddit Post ID', r.reddit_post_id || null, true)}
+        ${field('Reddit Comment ID', r.reddit_comment_id || null, true)}
+      </div>
+
+      <div class="stat-card">
+        ${field('Thread', thread)}
+        ${field('Funded Loan', loanLink)}
+        ${isMod ? `<div style="margin-top:8px"><button class="btn-secondary" style="font-size:12px" onclick="openLinkModal()">Link to Loan</button></div>` : ''}
+      </div>
+
+      ${r.notes ? `
+      <div class="stat-card" style="grid-column:1/3">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Mod Notes</div>
+        <div style="font-size:13px;white-space:pre-wrap">${escapeHtml(r.notes)}</div>
+      </div>` : ''}
+    </div>
+  `;
+
+  // store for modals
+  window._req = r;
+}
+
+// ── Status modal ─────────────────────────────────────────────────────────────
+function openStatusModal() {
+  document.getElementById('statusReqId').textContent = window._req.request_id;
+  document.getElementById('statusSelect').value = window._req.request_status;
+  document.getElementById('statusNote').value = '';
+  document.getElementById('statusError').style.display = 'none';
+  document.getElementById('statusModal').classList.add('open');
+}
+async function submitStatusChange() {
+  const errEl = document.getElementById('statusError');
+  errEl.style.display = 'none';
+  const res = await fetch(`/api/loan-requests/${REQUEST_ID}/status`, {
+    method: 'PATCH', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: document.getElementById('statusSelect').value,
+      note:   document.getElementById('statusNote').value.trim(),
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display='block'; return; }
+  closeModal('statusModal');
+  toast('Status updated.', 'success');
+  loadDetail();
+}
+
+// ── Link modal ────────────────────────────────────────────────────────────────
+function openLinkModal() {
+  document.getElementById('linkLoanId').value = '';
+  document.getElementById('linkOverride').checked = false;
+  document.getElementById('linkError').style.display = 'none';
+  document.getElementById('linkModal').classList.add('open');
+}
+async function submitLink() {
+  const errEl = document.getElementById('linkError');
+  errEl.style.display = 'none';
+  const loanId = document.getElementById('linkLoanId').value;
+  if (!loanId) { errEl.textContent='Loan DB ID required'; errEl.style.display='block'; return; }
+  const res = await fetch(`/api/loan-requests/${REQUEST_ID}/link`, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loan_db_id: parseInt(loanId),
+      override: document.getElementById('linkOverride').checked,
+    }),
+  });
+  const d = await res.json();
+  if (!res.ok) { errEl.textContent = d.error; errEl.style.display='block'; return; }
+  closeModal('linkModal');
+  toast('Linked to loan.', 'success');
+  loadDetail();
+}
+
+document.addEventListener('DOMContentLoaded', loadDetail);
+</script>
+
+<!-- Status modal -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal">
+    <h3>Update Request Status</h3>
+    <div class="modal-error" id="statusError"></div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Request: <strong id="statusReqId"></strong></p>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">New status</label>
+    <select id="statusSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+      <option value="open">open</option>
+      <option value="funded">funded</option>
+      <option value="cancelled">cancelled</option>
+      <option value="expired">expired</option>
+      <option value="removed">removed</option>
+      <option value="duplicate">duplicate</option>
+      <option value="denied_by_mod">denied_by_mod</option>
+    </select>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Note (optional)</label>
+    <textarea id="statusNote" rows="2"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;resize:vertical;margin-bottom:14px"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitStatusChange()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Link modal -->
+<div class="modal-overlay" id="linkModal">
+  <div class="modal">
+    <h3>Link to Funded Loan</h3>
+    <div class="modal-error" id="linkError"></div>
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Loan DB ID</label>
+    <input id="linkLoanId" type="number" placeholder="e.g. 42"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" id="linkOverride"> Override if already linked
+    </label>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeModal('linkModal')">Cancel</button>
+      <button class="btn-action btn-extension" onclick="submitLink()">Link</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

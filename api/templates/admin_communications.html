@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Communications — LoanCentral Admin{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Communications Dashboard</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">Outbound notification queue — email and SMS reminders</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="/admin" class="btn-secondary">← Admin Hub</a>
+    <button class="btn-secondary" onclick="loadStats()">Refresh Stats</button>
+    <button class="btn-secondary" onclick="triggerReminders(false)">Run Reminders</button>
+    <button class="btn-secondary" onclick="triggerReminders(true)" style="color:var(--muted)">Dry Run</button>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="stats-grid" style="margin-bottom:16px">
+  <div class="stat-card"><div class="stat-label">Total Queued</div><div class="stat-value" id="sq-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value c-yellow" id="sq-pending">—</div></div>
+  <div class="stat-card"><div class="stat-label">Sent</div><div class="stat-value c-green" id="sq-sent">—</div></div>
+  <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-value c-red" id="sq-failed">—</div></div>
+  <div class="stat-card"><div class="stat-label">Email / SMS</div><div class="stat-value" id="sq-channels">—</div></div>
+</div>
+
+<!-- Reminder run result -->
+<div id="runResult" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:6px;font-size:13px;border:1px solid var(--border);background:var(--surface)"></div>
+
+<!-- Filters -->
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+  <input id="qFilter" class="search-input" placeholder="Filter by recipient…"
+    oninput="applyFilters()" style="flex:1;min-width:180px;max-width:260px">
+  <select id="qStatus" onchange="applyFilters()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+    <option value="">All statuses</option>
+    <option value="pending">Pending</option>
+    <option value="sent">Sent</option>
+    <option value="failed">Failed</option>
+    <option value="retried">Retried</option>
+  </select>
+  <select id="qChannel" onchange="applyFilters()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
+    <option value="">All channels</option>
+    <option value="email">Email</option>
+    <option value="sms">SMS</option>
+  </select>
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards compact-command-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Recipient</th>
+        <th>Type</th>
+        <th>Channel</th>
+        <th>Status</th>
+        <th>Queued</th>
+        <th>Sent / Error</th>
+      </tr>
+    </thead>
+    <tbody id="queueBody">
+      <tr><td colspan="7" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+<div id="queueMeta" style="font-size:12px;color:var(--muted);margin-top:6px;text-align:right"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_COLORS = {
+  pending: 'var(--yellow)', sent: 'var(--green)',
+  failed: 'var(--red)', retried: 'var(--muted)'
+};
+
+async function loadStats() {
+  const r = await fetch('/api/admin/notifications/queue/stats', { credentials: 'same-origin' });
+  if (!r.ok) return;
+  const d = await r.json();
+  document.getElementById('sq-total').textContent    = d.total   ?? '—';
+  document.getElementById('sq-pending').textContent  = d.pending ?? '—';
+  document.getElementById('sq-sent').textContent     = d.sent    ?? '—';
+  document.getElementById('sq-failed').textContent   = d.failed  ?? '—';
+  document.getElementById('sq-channels').textContent = `${d.email_total ?? 0} / ${d.sms_total ?? 0}`;
+}
+
+async function loadQueue(status, channel, recipient) {
+  const params = new URLSearchParams({ limit: 200 });
+  if (status)    params.set('status', status);
+  if (channel)   params.set('channel', channel);
+  if (recipient) params.set('recipient', recipient);
+  const r    = await fetch(`/api/admin/notifications/queue?${params}`, { credentials: 'same-origin' });
+  const data = await r.json();
+  renderQueue(data.queue || [], data.total || 0);
+}
+
+function applyFilters() {
+  const recipient = document.getElementById('qFilter').value.trim();
+  const status    = document.getElementById('qStatus').value;
+  const channel   = document.getElementById('qChannel').value;
+  loadQueue(status, channel, recipient);
+}
+
+function renderQueue(rows, total) {
+  const tbody = document.getElementById('queueBody');
+  document.getElementById('queueMeta').textContent = `Showing ${rows.length} of ${total}`;
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <h3>Queue is empty</h3>
+      <p style="font-size:13px;margin-top:6px">No notifications match the current filters.</p>
+    </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(n => {
+    const sc = STATUS_COLORS[n.status] || 'var(--text)';
+    const created = n.created_at ? n.created_at.slice(0,16).replace('T',' ') : '—';
+    const sentOrError = n.status === 'sent'
+      ? (n.sent_at ? n.sent_at.slice(0,16).replace('T',' ') : '—')
+      : (n.last_error ? `<span style="color:var(--red);font-size:11px">${escapeHtml(n.last_error.slice(0,60))}</span>` : '—');
+    return `<tr>
+      <td data-label="ID" style="font-family:monospace;font-size:12px;color:var(--muted)">${n.id}</td>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title">u/${escapeHtml(n.recipient)}</div>
+            <div class="mobile-card-sub">${escapeHtml(n.notif_type)} · ${escapeHtml(n.channel)}</div>
+          </div>
+          <div class="mobile-card-side">
+            <span style="font-size:12px;font-weight:600;color:${sc}">${escapeHtml(n.status)}</span>
+          </div>
+        </div>
+      </td>
+      <td data-label="Recipient" class="username">u/${escapeHtml(n.recipient)}</td>
+      <td data-label="Type" style="font-size:12px">${escapeHtml(n.notif_type)}</td>
+      <td data-label="Channel" style="font-size:12px">${escapeHtml(n.channel)}</td>
+      <td data-label="Status"><span style="color:${sc};font-weight:600;font-size:12px">${escapeHtml(n.status)}</span></td>
+      <td data-label="Queued" class="date-cell" style="font-size:12px">${created}</td>
+      <td data-label="Sent / Error" style="font-size:12px">${sentOrError}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function triggerReminders(dry_run) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  try {
+    const r = await fetch('/api/admin/notifications/queue/reminders', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run }),
+    });
+    const d = await r.json();
+    const el = document.getElementById('runResult');
+    if (d.error) {
+      el.style.display = 'block';
+      el.style.borderColor = 'var(--red)';
+      el.textContent = `Error: ${d.error}`;
+    } else {
+      el.style.display = 'block';
+      el.style.borderColor = 'var(--green)';
+      el.textContent = `${dry_run ? '[Dry run] ' : ''}Queued: ${d.queued} · Skipped: ${d.skipped}`;
+      if (!dry_run) { loadStats(); applyFilters(); }
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = dry_run ? 'Dry Run' : 'Run Reminders';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadStats();
+  loadQueue('', '', '');
+});
+</script>
+{% endblock %}

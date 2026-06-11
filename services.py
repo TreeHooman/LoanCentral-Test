@@ -4188,3 +4188,1105 @@ def get_audit_investigation_summary(username: str):
     finally:
         cur.close()
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Moderator notes
+# ---------------------------------------------------------------------------
+
+_MOD_NOTE_CATEGORIES = {"verification", "dispute", "investigation", "warning", "general"}
+
+
+def _ensure_mod_notes_table(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mod_notes (
+                id          SERIAL PRIMARY KEY,
+                target_username VARCHAR(100) NOT NULL,
+                author      VARCHAR(100) NOT NULL,
+                category    VARCHAR(50)  NOT NULL DEFAULT 'general',
+                content     TEXT         NOT NULL,
+                is_archived BOOLEAN      NOT NULL DEFAULT FALSE,
+                created_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
+                updated_at  TIMESTAMP    NOT NULL DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mod_notes_target ON mod_notes (lower(target_username))")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+
+
+def create_mod_note(target_username: str, author: str, category: str, content: str):
+    """Create a moderator note. Returns (note_id, error)."""
+    category = (category or "general").strip().lower()
+    content  = (content or "").strip()
+    if not target_username or not author:
+        return None, "target_username and author are required"
+    if category not in _MOD_NOTE_CATEGORIES:
+        return None, f"Invalid category. Must be one of: {', '.join(sorted(_MOD_NOTE_CATEGORIES))}"
+    if not content:
+        return None, "Content is required"
+    if len(content) > 2000:
+        content = content[:2000]
+
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_mod_notes_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO mod_notes (target_username, author, category, content)
+            VALUES (lower(%s), lower(%s), %s, %s) RETURNING id
+        """, (target_username, author, category, content))
+        note_id = cur.fetchone()[0]
+        conn.commit()
+        log_event("mod_note_created", actor=author, target_user=target_username,
+                  source="dashboard", details={"note_id": note_id, "category": category})
+        return note_id, None
+    except Exception as e:
+        conn.rollback()
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_mod_notes(target_username: str, include_archived: bool = False):
+    """Return all notes for a user. Returns (notes, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed"
+    try:
+        _ensure_mod_notes_table(conn)
+        cur = conn.cursor()
+        where = "WHERE lower(target_username) = lower(%s)"
+        params = [target_username]
+        if not include_archived:
+            where += " AND is_archived = FALSE"
+        cur.execute(f"""
+            SELECT id, target_username, author, category, content,
+                   is_archived, created_at, updated_at
+            FROM mod_notes {where} ORDER BY created_at DESC
+        """, params)
+        rows = cur.fetchall()
+        cols = ["id", "target_username", "author", "category", "content",
+                "is_archived", "created_at", "updated_at"]
+        notes = []
+        for r in rows:
+            n = dict(zip(cols, r))
+            for k in ("created_at", "updated_at"):
+                if n[k]: n[k] = n[k].isoformat()
+            notes.append(n)
+        return notes, None
+    except Exception as e:
+        return [], str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_mod_note(note_id: int, content: str, editor: str):
+    """Edit note content. Returns (ok, error)."""
+    content = (content or "").strip()
+    if not content:
+        return False, "Content is required"
+    if len(content) > 2000:
+        content = content[:2000]
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        _ensure_mod_notes_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE mod_notes SET content = %s, updated_at = NOW()
+            WHERE id = %s AND is_archived = FALSE
+        """, (content, note_id))
+        if cur.rowcount == 0:
+            return False, "Note not found or already archived"
+        conn.commit()
+        log_event("mod_note_updated", actor=editor, source="dashboard",
+                  details={"note_id": note_id})
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def archive_mod_note(note_id: int, actor: str):
+    """Archive a note. Returns (ok, error)."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        _ensure_mod_notes_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE mod_notes SET is_archived = TRUE, updated_at = NOW()
+            WHERE id = %s AND is_archived = FALSE
+        """, (note_id,))
+        if cur.rowcount == 0:
+            return False, "Note not found or already archived"
+        conn.commit()
+        log_event("mod_note_archived", actor=actor, source="dashboard",
+                  details={"note_id": note_id})
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_disputed_loans(limit: int = 200):
+    """Return all loans in disputed status with basic details."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, loan_id, lender, borrower, amount, currency,
+                   date_created, original_thread, notes
+            FROM loans
+            WHERE status = 'disputed'
+            ORDER BY date_created DESC LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cols = ["db_id", "loan_id", "lender", "borrower", "amount", "currency",
+                "date_created", "original_thread", "notes"]
+        result = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            d["loan_id"] = d["loan_id"] or str(d["db_id"])
+            if d["date_created"]: d["date_created"] = d["date_created"].isoformat()
+            d["amount"] = float(d["amount"]) if d["amount"] else 0
+            result.append(d)
+        return result, None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_risk_indicators(limit: int = 100):
+    """Return users with factual risk indicators (disputes, unpaid loans, etc.)."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                borrower AS username,
+                COUNT(*) FILTER (WHERE status = 'disputed')  AS disputes,
+                COUNT(*) FILTER (WHERE status = 'unpaid')    AS unpaid,
+                COUNT(*) FILTER (WHERE status = 'confirmed') AS active,
+                COUNT(*)                                      AS total_loans
+            FROM loans
+            GROUP BY borrower
+            HAVING
+                COUNT(*) FILTER (WHERE status = 'disputed') > 0
+                OR COUNT(*) FILTER (WHERE status = 'unpaid') > 0
+            ORDER BY disputes DESC, unpaid DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cols = ["username", "disputes", "unpaid", "active", "total_loans"]
+        return [dict(zip(cols, r)) for r in rows], None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Communication Sprint — notification queue, templates, reminders
+# ---------------------------------------------------------------------------
+
+_NOTIF_QUEUE_CHANNELS = {"email", "sms"}
+_NOTIF_QUEUE_TYPES = {
+    "verification_approved", "verification_denied", "loan_created",
+    "loan_updated", "loan_due_soon", "dispute_opened",
+    "account_notification", "loan_reminder_7d", "loan_reminder_3d",
+    "loan_reminder_1d", "loan_reminder_due", "mod_new_verification",
+    "mod_new_dispute", "system_alert",
+}
+
+_EMAIL_SUBJECT = {
+    "verification_approved": "LoanCentral: Your lender verification has been approved",
+    "verification_denied":   "LoanCentral: Lender verification update",
+    "loan_created":          "LoanCentral: A new loan has been recorded",
+    "loan_updated":          "LoanCentral: Loan terms updated",
+    "loan_due_soon":         "LoanCentral: Loan payment reminder",
+    "loan_reminder_7d":      "LoanCentral: Loan due in 7 days",
+    "loan_reminder_3d":      "LoanCentral: Loan due in 3 days",
+    "loan_reminder_1d":      "LoanCentral: Loan due tomorrow",
+    "loan_reminder_due":     "LoanCentral: Loan due today",
+    "dispute_opened":        "LoanCentral: A dispute has been opened",
+    "account_notification":  "LoanCentral: Account notification",
+    "mod_new_verification":  "LoanCentral: New verification application",
+    "mod_new_dispute":       "LoanCentral: New dispute opened",
+    "system_alert":          "LoanCentral: System alert",
+}
+
+_EMAIL_BODY_TEMPLATE = {
+    "verification_approved": (
+        "Hi u/{username},\n\n"
+        "Your lender verification on LoanCentral has been approved.\n"
+        "You can now access the lender dashboard and record loans.\n\n"
+        "{note}\n\n-- LoanCentral"
+    ),
+    "verification_denied": (
+        "Hi u/{username},\n\n"
+        "Your lender verification application has been reviewed.\n"
+        "Status: Denied.\n\n{note}\n\n"
+        "If you have questions, contact the mod team.\n\n-- LoanCentral"
+    ),
+    "loan_created": (
+        "Hi u/{username},\n\n"
+        "A loan has been recorded in LoanCentral.\n\n"
+        "Loan ID:  {loan_id}\nLender:   u/{lender}\nBorrower: u/{borrower}\n"
+        "Amount:   {amount} {currency}\nDue date: {due_date}\n\n"
+        "This is a recordkeeping notification. LoanCentral does not collect payments.\n\n-- LoanCentral"
+    ),
+    "loan_reminder_7d": (
+        "Hi u/{username},\n\n"
+        "Reminder: A loan recorded in LoanCentral is due in 7 days.\n\n"
+        "Loan ID:  {loan_id}\nAmount:   {amount} {currency}\nDue date: {due_date}\n\n"
+        "This is an informational reminder only.\n\n-- LoanCentral"
+    ),
+    "loan_reminder_3d": (
+        "Hi u/{username},\n\n"
+        "Reminder: A loan recorded in LoanCentral is due in 3 days.\n\n"
+        "Loan ID:  {loan_id}\nAmount:   {amount} {currency}\nDue date: {due_date}\n\n"
+        "This is an informational reminder only.\n\n-- LoanCentral"
+    ),
+    "loan_reminder_1d": (
+        "Hi u/{username},\n\n"
+        "Reminder: A loan recorded in LoanCentral is due tomorrow.\n\n"
+        "Loan ID:  {loan_id}\nAmount:   {amount} {currency}\nDue date: {due_date}\n\n"
+        "This is an informational reminder only.\n\n-- LoanCentral"
+    ),
+    "loan_reminder_due": (
+        "Hi u/{username},\n\n"
+        "Reminder: A loan recorded in LoanCentral is due today.\n\n"
+        "Loan ID:  {loan_id}\nAmount:   {amount} {currency}\nDue date: {due_date}\n\n"
+        "This is an informational reminder only.\n\n-- LoanCentral"
+    ),
+    "dispute_opened": (
+        "Hi u/{username},\n\n"
+        "A dispute has been opened on a loan recorded in LoanCentral.\n\n"
+        "Loan ID:  {loan_id}\n\n"
+        "A moderator will review this dispute. No action is required from you at this time.\n\n-- LoanCentral"
+    ),
+    "account_notification": (
+        "Hi u/{username},\n\n{message}\n\n-- LoanCentral"
+    ),
+}
+
+_SMS_BODY_TEMPLATE = {
+    "loan_reminder_7d":      "LoanCentral: Loan {loan_id} ({amount} {currency}) due in 7 days on {due_date}. Informational only.",
+    "loan_reminder_3d":      "LoanCentral: Loan {loan_id} ({amount} {currency}) due in 3 days on {due_date}. Informational only.",
+    "loan_reminder_1d":      "LoanCentral: Loan {loan_id} ({amount} {currency}) due tomorrow ({due_date}). Informational only.",
+    "loan_reminder_due":     "LoanCentral: Loan {loan_id} ({amount} {currency}) is due today ({due_date}). Informational only.",
+    "verification_approved": "LoanCentral: Your lender verification has been approved.",
+    "verification_denied":   "LoanCentral: Your lender verification application was denied. Contact mods for details.",
+    "dispute_opened":        "LoanCentral: A dispute was opened on loan {loan_id}. A mod will review it.",
+    "account_notification":  "LoanCentral: {message}",
+}
+
+_SAFE_DEFAULTS = {
+    "note": "", "message": "", "loan_id": "", "lender": "",
+    "borrower": "", "amount": "", "currency": "", "due_date": "", "username": "",
+}
+
+
+def render_notification_body(notif_type: str, channel: str, context: dict) -> str:
+    """Render a notification body string for the given type/channel/context."""
+    templates = _SMS_BODY_TEMPLATE if channel == "sms" else _EMAIL_BODY_TEMPLATE
+    tmpl = templates.get(notif_type, _EMAIL_BODY_TEMPLATE.get("account_notification", "{message}"))
+    try:
+        return tmpl.format_map({**_SAFE_DEFAULTS, **context})
+    except (KeyError, ValueError):
+        return tmpl
+
+
+def get_notification_subject(notif_type: str) -> str:
+    return _EMAIL_SUBJECT.get(notif_type, "LoanCentral notification")
+
+
+def _ensure_notification_queue_table(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notification_queue (
+                id          SERIAL       PRIMARY KEY,
+                recipient   VARCHAR(100) NOT NULL,
+                channel     VARCHAR(10)  NOT NULL,
+                notif_type  VARCHAR(60)  NOT NULL,
+                subject     TEXT,
+                body        TEXT         NOT NULL,
+                status      VARCHAR(20)  NOT NULL DEFAULT 'pending',
+                retry_count SMALLINT     NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
+                sent_at     TIMESTAMP,
+                last_error  TEXT
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_nq_status    ON notification_queue (status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_nq_recipient ON notification_queue (lower(recipient))")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+
+
+def queue_notification(recipient: str, notif_type: str, channel: str,
+                       context: dict = None, subject: str = None):
+    """Add a notification to the outbound queue. Returns (queue_id, error)."""
+    channel = (channel or "email").lower()
+    if channel not in _NOTIF_QUEUE_CHANNELS:
+        return None, f"Invalid channel: {channel}"
+    if notif_type not in _NOTIF_QUEUE_TYPES:
+        return None, f"Unknown notification type: {notif_type}"
+    context = context or {}
+    body    = render_notification_body(notif_type, channel, context)
+    subject = subject or (get_notification_subject(notif_type) if channel == "email" else None)
+
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_notification_queue_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notification_queue (recipient, channel, notif_type, subject, body, status)
+            VALUES (lower(%s), %s, %s, %s, %s, 'pending') RETURNING id
+        """, (recipient, channel, notif_type, subject, body))
+        qid = cur.fetchone()[0]
+        conn.commit()
+        log_event("notification_queued", target_user=recipient, source="system",
+                  details={"channel": channel, "type": notif_type, "queue_id": qid})
+        return qid, None
+    except Exception as e:
+        conn.rollback()
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_notification_queue(status: str = None, channel: str = None,
+                           recipient: str = None, limit: int = 100, offset: int = 0):
+    """Return queued notifications with optional filters. Returns (rows, total, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        _ensure_notification_queue_table(conn)
+        cur = conn.cursor()
+        conditions, params = [], []
+        if status:
+            conditions.append("status = %s"); params.append(status)
+        if channel:
+            conditions.append("channel = %s"); params.append(channel)
+        if recipient:
+            conditions.append("lower(recipient) = lower(%s)"); params.append(recipient)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        cur.execute(f"SELECT COUNT(*) FROM notification_queue {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT id, recipient, channel, notif_type, subject, status,
+                   retry_count, created_at, sent_at, last_error
+            FROM notification_queue {where}
+            ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        cols = ["id", "recipient", "channel", "notif_type", "subject", "status",
+                "retry_count", "created_at", "sent_at", "last_error"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            for k in ("created_at", "sent_at"):
+                if d[k]: d[k] = d[k].isoformat()
+            rows.append(d)
+        return rows, total, None
+    except Exception as e:
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_notification_sent(queue_id: int):
+    """Mark a queued notification as sent."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE notification_queue SET status = 'sent', sent_at = NOW() WHERE id = %s",
+            (queue_id,))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def mark_notification_failed(queue_id: int, error: str):
+    """Mark a queued notification as failed with error detail."""
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE notification_queue
+            SET status = 'failed', last_error = %s, retry_count = retry_count + 1
+            WHERE id = %s
+        """, (str(error)[:500], queue_id))
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_queue_stats():
+    """Return counts by status and channel. Returns (stats, error)."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_notification_queue_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE status='pending') AS pending,
+                COUNT(*) FILTER (WHERE status='sent')    AS sent,
+                COUNT(*) FILTER (WHERE status='failed')  AS failed,
+                COUNT(*) FILTER (WHERE status='retried') AS retried,
+                COUNT(*) FILTER (WHERE channel='email')  AS email_total,
+                COUNT(*) FILTER (WHERE channel='sms')    AS sms_total,
+                COUNT(*)                                  AS total
+            FROM notification_queue
+        """)
+        r = cur.fetchone()
+        return {
+            "pending":     r[0], "sent":        r[1],
+            "failed":      r[2], "retried":      r[3],
+            "email_total": r[4], "sms_total":    r[5],
+            "total":       r[6],
+        }, None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def queue_due_reminders(dry_run: bool = False):
+    """
+    Scan open loans with due dates in the next 7 days and queue email/SMS
+    reminders for borrowers who have opted in. Returns (queued, skipped, error).
+    """
+    from datetime import date as _date
+    conn = _get_db()
+    if not conn:
+        return 0, 0, "Database connection failed"
+    try:
+        _ensure_notification_queue_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.id, l.loan_id, l.borrower, l.lender,
+                   l.repay_date, COALESCE(l.repay_amount, l.amount) AS amount, l.currency
+            FROM loans l
+            WHERE l.status IN ('confirmed', 'partially_repaid')
+              AND l.repay_date IS NOT NULL
+              AND l.repay_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+        """)
+        loans  = cur.fetchall()
+        cols   = ["db_id", "loan_id", "borrower", "lender", "repay_date", "amount", "currency"]
+        today  = _date.today()
+        queued = 0
+        skipped = 0
+
+        for row in loans:
+            loan = dict(zip(cols, row))
+            due  = loan["repay_date"]
+            if hasattr(due, "date"):
+                due = due.date()
+            days_until = (due - today).days
+            notif_type = {7: "loan_reminder_7d", 3: "loan_reminder_3d",
+                          1: "loan_reminder_1d", 0: "loan_reminder_due"}.get(days_until)
+            if not notif_type:
+                skipped += 1
+                continue
+
+            # Idempotency: skip if already queued today for this borrower+type
+            cur.execute("""
+                SELECT 1 FROM notification_queue
+                WHERE lower(recipient) = lower(%s)
+                  AND notif_type = %s
+                  AND created_at::date = CURRENT_DATE
+                LIMIT 1
+            """, (loan["borrower"], notif_type))
+            if cur.fetchone():
+                skipped += 1
+                continue
+
+            ctx = {
+                "username": loan["borrower"],
+                "loan_id":  loan["loan_id"] or str(loan["db_id"]),
+                "lender":   loan["lender"],
+                "amount":   f"{float(loan['amount']):.2f}",
+                "currency": loan["currency"] or "USD",
+                "due_date": str(due),
+            }
+            if not dry_run:
+                prefs, _ = get_notification_preferences(loan["borrower"])
+                contact_email, contact_phone = get_borrower_contact(loan["borrower"])
+                if prefs.get("due_date_reminders", True) and contact_email:
+                    queue_notification(loan["borrower"], notif_type, "email", ctx)
+                if contact_phone and prefs.get("sms_notifications", False):
+                    queue_notification(loan["borrower"], notif_type, "sms", ctx)
+            queued += 1
+
+        return queued, skipped, None
+    except Exception as e:
+        conn.rollback()
+        return 0, 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Loan Request Sprint — loan_requests table, CRUD, analytics, expiration
+# ---------------------------------------------------------------------------
+
+import re as _lr_re
+import random as _lr_random
+import string as _lr_string
+
+_LR_STATUSES = {
+    "open", "funded", "cancelled", "expired",
+    "removed", "duplicate", "denied_by_mod",
+}
+
+
+def _generate_request_id() -> str:
+    chars = _lr_string.ascii_uppercase + _lr_string.digits
+    return "REQ-" + "".join(_lr_random.choices(chars, k=8))
+
+
+def _ensure_loan_requests_table(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS loan_requests (
+                id                          SERIAL       PRIMARY KEY,
+                request_id                  VARCHAR(20)  NOT NULL UNIQUE,
+                borrower_username           VARCHAR(100) NOT NULL,
+                reddit_username             VARCHAR(100),
+                requested_amount            NUMERIC(12,2),
+                requested_repayment_amount  NUMERIC(12,2),
+                requested_due_date          DATE,
+                request_status              VARCHAR(30)  NOT NULL DEFAULT 'open',
+                thread_url                  TEXT,
+                reddit_post_id              VARCHAR(30),
+                reddit_comment_id           VARCHAR(30),
+                created_at                  TIMESTAMP    NOT NULL DEFAULT NOW(),
+                updated_at                  TIMESTAMP    NOT NULL DEFAULT NOW(),
+                funded_loan_id              INTEGER      REFERENCES loans(id) ON DELETE SET NULL,
+                notes                       TEXT
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_borrower ON loan_requests (lower(borrower_username))")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_status   ON loan_requests (request_status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_created  ON loan_requests (created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_reddit   ON loan_requests (reddit_post_id) WHERE reddit_post_id IS NOT NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+
+
+def create_loan_request(
+    borrower_username: str,
+    reddit_username: str = None,
+    thread_url: str = None,
+    reddit_post_id: str = None,
+    reddit_comment_id: str = None,
+    requested_amount=None,
+    requested_repayment_amount=None,
+    requested_due_date=None,
+    notes: str = None,
+):
+    """
+    Record a new loan request. Parsing failures are allowed — missing fields
+    are stored as NULL. Returns (request_id, error).
+    """
+    if not borrower_username:
+        return None, "borrower_username is required"
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        request_id = _generate_request_id()
+        # Ensure uniqueness
+        cur = conn.cursor()
+        for _ in range(5):
+            cur.execute("SELECT 1 FROM loan_requests WHERE request_id = %s", (request_id,))
+            if not cur.fetchone():
+                break
+            request_id = _generate_request_id()
+
+        cur.execute("""
+            INSERT INTO loan_requests
+              (request_id, borrower_username, reddit_username, thread_url,
+               reddit_post_id, reddit_comment_id, requested_amount,
+               requested_repayment_amount, requested_due_date, notes,
+               request_status)
+            VALUES (%s, lower(%s), %s, %s, %s, %s, %s, %s, %s, %s, 'open')
+            RETURNING id
+        """, (
+            request_id,
+            borrower_username,
+            reddit_username,
+            thread_url,
+            reddit_post_id,
+            reddit_comment_id,
+            requested_amount,
+            requested_repayment_amount,
+            requested_due_date,
+            notes,
+        ))
+        db_id = cur.fetchone()[0]
+        conn.commit()
+        log_event("loan_request_created", target_user=borrower_username.lower(),
+                  source="system",
+                  details={"request_id": request_id, "db_id": db_id,
+                           "amount": str(requested_amount) if requested_amount else None})
+        cur.close()
+        return request_id, None
+    except Exception as e:
+        conn.rollback()
+        return None, str(e)
+    finally:
+        conn.close()
+
+
+def get_loan_request(request_id: str):
+    """Fetch a single loan request by its REQ-... ID. Returns (request_dict, error)."""
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lr.id, lr.request_id, lr.borrower_username, lr.reddit_username,
+                   lr.requested_amount, lr.requested_repayment_amount,
+                   lr.requested_due_date, lr.request_status, lr.thread_url,
+                   lr.reddit_post_id, lr.reddit_comment_id,
+                   lr.created_at, lr.updated_at, lr.funded_loan_id, lr.notes,
+                   l.loan_id AS funded_loan_ref
+            FROM loan_requests lr
+            LEFT JOIN loans l ON l.id = lr.funded_loan_id
+            WHERE lr.request_id = %s
+        """, (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return None, "Request not found"
+        cols = ["id","request_id","borrower_username","reddit_username",
+                "requested_amount","requested_repayment_amount","requested_due_date",
+                "request_status","thread_url","reddit_post_id","reddit_comment_id",
+                "created_at","updated_at","funded_loan_id","notes","funded_loan_ref"]
+        d = dict(zip(cols, row))
+        for k in ("created_at","updated_at","requested_due_date"):
+            if d[k]: d[k] = str(d[k])
+        if d["requested_amount"]: d["requested_amount"] = float(d["requested_amount"])
+        if d["requested_repayment_amount"]: d["requested_repayment_amount"] = float(d["requested_repayment_amount"])
+        return d, None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_loan_requests_for_borrower(username: str, limit: int = 100, offset: int = 0):
+    """Return all loan requests for a specific borrower. Returns (requests, total, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM loan_requests WHERE lower(borrower_username) = lower(%s)",
+            (username,))
+        total = cur.fetchone()[0]
+        cur.execute("""
+            SELECT lr.id, lr.request_id, lr.requested_amount, lr.request_status,
+                   lr.thread_url, lr.created_at, lr.requested_due_date,
+                   l.loan_id AS funded_loan_ref
+            FROM loan_requests lr
+            LEFT JOIN loans l ON l.id = lr.funded_loan_id
+            WHERE lower(lr.borrower_username) = lower(%s)
+            ORDER BY lr.created_at DESC
+            LIMIT %s OFFSET %s
+        """, (username, limit, offset))
+        cols = ["id","request_id","requested_amount","request_status",
+                "thread_url","created_at","requested_due_date","funded_loan_ref"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            for k in ("created_at","requested_due_date"):
+                if d[k]: d[k] = str(d[k])
+            if d["requested_amount"]: d["requested_amount"] = float(d["requested_amount"])
+            rows.append(d)
+        return rows, total, None
+    except Exception as e:
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_loan_request_queue(
+    status: str = None,
+    borrower: str = None,
+    date_from: str = None,
+    date_to: str = None,
+    amount_min=None,
+    amount_max=None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    """Return loan requests with optional filters for the mod queue. Returns (rows, total, error)."""
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        conditions, params = [], []
+        if status:
+            conditions.append("lr.request_status = %s"); params.append(status)
+        if borrower:
+            conditions.append("lower(lr.borrower_username) LIKE lower(%s)")
+            params.append(f"%{borrower}%")
+        if date_from:
+            conditions.append("lr.created_at::date >= %s"); params.append(date_from)
+        if date_to:
+            conditions.append("lr.created_at::date <= %s"); params.append(date_to)
+        if amount_min is not None:
+            conditions.append("lr.requested_amount >= %s"); params.append(amount_min)
+        if amount_max is not None:
+            conditions.append("lr.requested_amount <= %s"); params.append(amount_max)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        cur.execute(f"SELECT COUNT(*) FROM loan_requests lr {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT lr.id, lr.request_id, lr.borrower_username, lr.reddit_username,
+                   lr.requested_amount, lr.request_status, lr.thread_url,
+                   lr.created_at, lr.requested_due_date,
+                   l.loan_id AS funded_loan_ref
+            FROM loan_requests lr
+            LEFT JOIN loans l ON l.id = lr.funded_loan_id
+            {where}
+            ORDER BY
+              CASE lr.request_status WHEN 'open' THEN 0 ELSE 1 END,
+              lr.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        cols = ["id","request_id","borrower_username","reddit_username",
+                "requested_amount","request_status","thread_url",
+                "created_at","requested_due_date","funded_loan_ref"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            for k in ("created_at","requested_due_date"):
+                if d[k]: d[k] = str(d[k])
+            if d["requested_amount"]: d["requested_amount"] = float(d["requested_amount"])
+            rows.append(d)
+        return rows, total, None
+    except Exception as e:
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_request_status(request_id: str, new_status: str, actor: str, note: str = None):
+    """
+    Update a loan request's status. Mod/admin only via API layer.
+    Returns (ok, error).
+    """
+    if new_status not in _LR_STATUSES:
+        return False, f"Invalid status: {new_status}"
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        update_note = f"Status changed to '{new_status}' by {actor}"
+        if note:
+            update_note += f": {note}"
+        cur.execute("""
+            UPDATE loan_requests
+            SET request_status = %s,
+                updated_at     = NOW(),
+                notes = CASE WHEN notes IS NULL THEN %s
+                             ELSE notes || E'\\n' || %s END
+            WHERE request_id = %s
+            RETURNING id
+        """, (new_status, update_note, update_note, request_id))
+        if not cur.fetchone():
+            conn.rollback()
+            return False, "Request not found"
+        conn.commit()
+        log_event("loan_request_status_updated", target_user=actor, source="system",
+                  details={"request_id": request_id, "new_status": new_status})
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def link_request_to_loan(request_id: str, loan_db_id: int, actor: str, override: bool = False):
+    """
+    Link a loan request to a funded loan and mark it funded.
+    Blocks if already linked unless override=True. Returns (ok, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, request_status, funded_loan_id FROM loan_requests WHERE request_id = %s",
+            (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return False, "Request not found"
+        _, current_status, existing_loan_id = row
+        if existing_loan_id and not override:
+            return False, f"Request already linked to loan ID {existing_loan_id}. Use override=True to re-link."
+        cur.execute("""
+            UPDATE loan_requests
+            SET funded_loan_id  = %s,
+                request_status  = 'funded',
+                updated_at      = NOW()
+            WHERE request_id = %s
+        """, (loan_db_id, request_id))
+        conn.commit()
+        log_event("loan_request_linked", target_user=actor, source="system",
+                  details={"request_id": request_id, "loan_db_id": loan_db_id,
+                           "override": override})
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_request_analytics():
+    """
+    Return aggregate analytics for loan requests.
+    Returns (stats_dict, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COUNT(*)                                                     AS total,
+                COUNT(*) FILTER (WHERE request_status = 'open')             AS open,
+                COUNT(*) FILTER (WHERE request_status = 'funded')           AS funded,
+                COUNT(*) FILTER (WHERE request_status NOT IN ('funded','cancelled','removed','duplicate','denied_by_mod','expired'))
+                                                                             AS unfunded_active,
+                COUNT(*) FILTER (WHERE request_status IN ('cancelled','removed','duplicate','denied_by_mod','expired'))
+                                                                             AS closed_unfunded,
+                ROUND(AVG(requested_amount) FILTER (WHERE requested_amount IS NOT NULL), 2)
+                                                                             AS avg_requested,
+                ROUND(AVG(requested_amount) FILTER (WHERE request_status = 'funded' AND requested_amount IS NOT NULL), 2)
+                                                                             AS avg_funded_amount,
+                ROUND(
+                  100.0 * COUNT(*) FILTER (WHERE request_status = 'funded')
+                  / NULLIF(COUNT(*), 0), 1
+                )                                                            AS funding_rate_pct
+            FROM loan_requests
+        """)
+        row = cur.fetchone()
+        cols = ["total","open","funded","unfunded_active","closed_unfunded",
+                "avg_requested","avg_funded_amount","funding_rate_pct"]
+        stats = dict(zip(cols, row))
+        for k in stats:
+            if stats[k] is not None:
+                stats[k] = float(stats[k]) if isinstance(stats[k], __builtins__.__class__) else stats[k]
+            if stats[k] is not None:
+                try: stats[k] = float(stats[k])
+                except (TypeError, ValueError): pass
+
+        # Weekly breakdown (last 8 weeks)
+        cur.execute("""
+            SELECT
+                date_trunc('week', created_at)::date AS week_start,
+                COUNT(*)                              AS requests,
+                COUNT(*) FILTER (WHERE request_status = 'funded') AS funded
+            FROM loan_requests
+            WHERE created_at >= NOW() - INTERVAL '8 weeks'
+            GROUP BY 1 ORDER BY 1 DESC
+        """)
+        weekly = [{"week": str(r[0]), "requests": r[1], "funded": r[2]}
+                  for r in cur.fetchall()]
+        stats["weekly"] = weekly
+        return stats, None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def expire_old_requests(days: int = 10, dry_run: bool = False):
+    """
+    Mark open requests older than `days` days as expired.
+    Never deletes. Returns (expired_count, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return 0, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        if dry_run:
+            cur.execute("""
+                SELECT COUNT(*) FROM loan_requests
+                WHERE request_status = 'open'
+                  AND created_at < NOW() - (%s || ' days')::INTERVAL
+            """, (str(days),))
+            count = cur.fetchone()[0]
+            return count, None
+
+        cur.execute("""
+            UPDATE loan_requests
+            SET request_status = 'expired', updated_at = NOW()
+            WHERE request_status = 'open'
+              AND created_at < NOW() - (%s || ' days')::INTERVAL
+        """, (str(days),))
+        count = cur.rowcount
+        conn.commit()
+        if count:
+            log_event("loan_requests_expired", target_user="system", source="system",
+                      details={"count": count, "days_threshold": days})
+        return count, None
+    except Exception as e:
+        conn.rollback()
+        return 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def search_loan_requests(
+    q: str = None,
+    status: str = None,
+    amount_min=None,
+    amount_max=None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Search loan requests by username, request_id, post ID, or amount.
+    Returns (results, total, error).
+    """
+    conn = _get_db()
+    if not conn:
+        return [], 0, "Database connection failed"
+    try:
+        _ensure_loan_requests_table(conn)
+        cur = conn.cursor()
+        conditions, params = [], []
+        if q:
+            conditions.append("""(
+                lower(lr.borrower_username) LIKE lower(%s)
+                OR lower(lr.reddit_username) LIKE lower(%s)
+                OR lower(lr.request_id) LIKE lower(%s)
+                OR lr.reddit_post_id = %s
+            )""")
+            like = f"%{q}%"
+            params += [like, like, like, q]
+        if status:
+            conditions.append("lr.request_status = %s"); params.append(status)
+        if amount_min is not None:
+            conditions.append("lr.requested_amount >= %s"); params.append(amount_min)
+        if amount_max is not None:
+            conditions.append("lr.requested_amount <= %s"); params.append(amount_max)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        cur.execute(f"SELECT COUNT(*) FROM loan_requests lr {where}", params)
+        total = cur.fetchone()[0]
+
+        cur.execute(f"""
+            SELECT lr.request_id, lr.borrower_username, lr.requested_amount,
+                   lr.request_status, lr.thread_url, lr.created_at
+            FROM loan_requests lr
+            {where}
+            ORDER BY lr.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit, offset])
+        cols = ["request_id","borrower_username","requested_amount","request_status",
+                "thread_url","created_at"]
+        rows = []
+        for r in cur.fetchall():
+            d = dict(zip(cols, r))
+            if d["created_at"]: d["created_at"] = str(d["created_at"])
+            if d["requested_amount"]: d["requested_amount"] = float(d["requested_amount"])
+            d["_type"] = "loan_request"
+            rows.append(d)
+        return rows, total, None
+    except Exception as e:
+        return [], 0, str(e)
+    finally:
+        cur.close()
+        conn.close()

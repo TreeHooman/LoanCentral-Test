@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Loan Request History — LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Loan Request History</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:2px">u/{{ username }}</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/dashboard/borrower" class="btn-secondary">← My Dashboard</a>
+    <button class="btn-secondary" onclick="loadRequests()">Refresh</button>
+  </div>
+</div>
+
+<div style="background:rgba(91,110,245,0.06);border:1px solid rgba(91,110,245,0.18);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:16px">
+  This page shows loan requests you have recorded on LoanCentral.
+  LoanCentral is a recordkeeping platform — it does not approve, broker, or fund loans.
+</div>
+
+<div class="stats-grid" style="margin-bottom:16px">
+  <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="br-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value c-yellow" id="br-open">—</div></div>
+  <div class="stat-card"><div class="stat-label">Funded</div><div class="stat-value c-green" id="br-funded">—</div></div>
+</div>
+
+<div class="table-wrap">
+  <table class="mobile-cards compact-command-table">
+    <thead>
+      <tr>
+        <th>Request ID</th>
+        <th>Amount</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th>Thread</th>
+        <th>Funded Loan</th>
+      </tr>
+    </thead>
+    <tbody id="brBody">
+      <tr><td colspan="6" class="table-placeholder"><div class="spinner"></div></td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_STYLE = {
+  open:           'color:var(--yellow)',
+  funded:         'color:var(--green);font-weight:700',
+  cancelled:      'color:var(--muted)',
+  expired:        'color:var(--muted)',
+  removed:        'color:var(--red)',
+  duplicate:      'color:var(--muted)',
+  denied_by_mod:  'color:var(--red)',
+};
+
+async function loadRequests() {
+  const res  = await fetch('/api/loan-requests/mine', { credentials: 'same-origin' });
+  const data = await res.json();
+  const rows = data.requests || [];
+  document.getElementById('br-total').textContent  = data.total ?? rows.length;
+  document.getElementById('br-open').textContent   = rows.filter(r => r.request_status === 'open').length;
+  document.getElementById('br-funded').textContent = rows.filter(r => r.request_status === 'funded').length;
+  renderRequests(rows);
+}
+
+function renderRequests(rows) {
+  const tbody = document.getElementById('brBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+      <h3>No requests recorded</h3>
+      <p style="font-size:13px;margin-top:6px">Loan requests recorded by the bot or manually will appear here.</p>
+    </div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sc      = STATUS_STYLE[r.request_status] || '';
+    const created = (r.created_at || '').slice(0,10);
+    const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
+    const thread  = r.thread_url
+      ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" style="color:var(--accent-h)">Reddit</a>`
+      : '—';
+    const loanLink = r.funded_loan_ref
+      ? `<a href="/dashboard/admin" style="color:var(--accent-h)">${escapeHtml(r.funded_loan_ref)}</a>`
+      : '—';
+    return `<tr>
+      <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
+        <div class="mobile-card-main">
+          <div>
+            <div class="mobile-card-title"><a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--text)">${escapeHtml(r.request_id)}</a></div>
+            <div class="mobile-card-sub">${created}</div>
+          </div>
+          <div class="mobile-card-side">
+            <div class="mobile-card-money">${amt}</div>
+            <span style="${sc};font-size:11px;margin-top:2px">${escapeHtml(r.request_status)}</span>
+          </div>
+        </div>
+      </td>
+      <td data-label="Request ID" style="font-family:monospace;font-size:12px">
+        <a href="/dashboard/requests/${escapeHtml(r.request_id)}" style="color:var(--accent-h)">${escapeHtml(r.request_id)}</a>
+      </td>
+      <td data-label="Amount" class="amount">${amt}</td>
+      <td data-label="Status"><span style="${sc};font-size:12px">${escapeHtml(r.request_status)}</span></td>
+      <td data-label="Date" class="date-cell">${created}</td>
+      <td data-label="Thread">${thread}</td>
+      <td data-label="Funded Loan">${loanLink}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadRequests);
+</script>
+{% endblock %}

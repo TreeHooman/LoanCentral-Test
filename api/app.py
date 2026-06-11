@@ -481,7 +481,9 @@ def verified_lender_required(f):
             if session.get("verified_lender"):
                 return f(*args, **kwargs)
         flash("Verified lender access required.", "error")
-        return redirect(url_for("home"))
+        # Redirect to borrower dashboard — NOT home(), which would loop back here
+        # for any session with role='lender'.
+        return redirect(url_for("dashboard_borrower"))
     return decorated
 
 
@@ -3030,6 +3032,396 @@ def api_audit_investigation_summary(username):
     if error:
         return _json({"error": error}, 500)
     return _json(summary)
+
+
+# ---------------------------------------------------------------------------
+# Admin Command Center
+# ---------------------------------------------------------------------------
+
+@app.route("/admin")
+@role_required("mod", "admin")
+def admin_hub():
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/admin")
+    return render_template("admin_hub.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
+# ---------------------------------------------------------------------------
+# Moderator Investigation Center
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/mod/investigation/<username>")
+@role_required("mod", "admin")
+def mod_investigation(username):
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view",
+                        page=f"/dashboard/mod/investigation/{username}")
+    return render_template("mod_investigation.html",
+                           username=session["username"],
+                           role=session["role"],
+                           target_user=username.lower())
+
+
+# ---------------------------------------------------------------------------
+# Moderator Disputes Center
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/mod/disputes")
+@role_required("mod", "admin")
+def mod_disputes_page():
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/dashboard/mod/disputes")
+    return render_template("mod_disputes.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
+@app.route("/api/mod/disputes", methods=["GET"])
+@require_mod_api
+def api_mod_disputes():
+    from services import get_disputed_loans
+    loans, error = get_disputed_loans(limit=200)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"disputes": loans, "total": len(loans)})
+
+
+# ---------------------------------------------------------------------------
+# Moderator Notes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/mod/notes/<username>", methods=["GET"])
+@require_mod_api
+def api_get_mod_notes(username):
+    from services import get_mod_notes
+    include_archived = request.args.get("archived") == "1"
+    notes, error = get_mod_notes(username, include_archived=include_archived)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"notes": notes, "total": len(notes)})
+
+
+@app.route("/api/mod/notes/<username>", methods=["POST"])
+@require_mod_api
+def api_create_mod_note(username):
+    from services import create_mod_note, log_audit
+    data     = request.get_json(silent=True) or {}
+    category = (data.get("category") or "general").strip()
+    content  = (data.get("content") or "").strip()
+    author   = session.get("username", "system")
+    note_id, error = create_mod_note(username, author, category, content)
+    if error:
+        return _json({"error": error}, 400)
+    log_audit(author, session.get("role", "mod"), "mod_note_created",
+              "user", username, new_value={"category": category, "note_id": note_id})
+    return _json({"id": note_id, "message": "Note saved"}, 201)
+
+
+@app.route("/api/mod/notes/<int:note_id>", methods=["PATCH"])
+@require_mod_api
+def api_update_mod_note(note_id):
+    from services import update_mod_note, log_audit
+    data    = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    editor  = session.get("username", "system")
+    ok, error = update_mod_note(note_id, content, editor)
+    if not ok:
+        return _json({"error": error}, 400)
+    log_audit(editor, session.get("role", "mod"), "mod_note_updated",
+              "note", str(note_id))
+    return _json({"message": "Note updated"})
+
+
+@app.route("/api/mod/notes/<int:note_id>", methods=["DELETE"])
+@require_mod_api
+def api_archive_mod_note(note_id):
+    from services import archive_mod_note, log_audit
+    actor = session.get("username", "system")
+    ok, error = archive_mod_note(note_id, actor)
+    if not ok:
+        return _json({"error": error}, 400)
+    log_audit(actor, session.get("role", "mod"), "mod_note_archived",
+              "note", str(note_id))
+    return _json({"message": "Note archived"})
+
+
+# ---------------------------------------------------------------------------
+# Risk Review Dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/mod/risk")
+@role_required("mod", "admin")
+def mod_risk_page():
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/dashboard/mod/risk")
+    return render_template("mod_risk.html",
+                           username=session["username"],
+                           role=session["role"])
+
+
+@app.route("/api/mod/risk", methods=["GET"])
+@require_mod_api
+def api_mod_risk():
+    from services import get_risk_indicators
+    indicators, error = get_risk_indicators(limit=100)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"indicators": indicators, "total": len(indicators)})
+
+
+# ---------------------------------------------------------------------------
+# Communication Sprint — notification queue admin routes
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/communications")
+@role_required("admin")
+def admin_communications_page():
+    from services import log_analytics_event
+    log_analytics_event(session["username"], "page_view", page="/admin/communications")
+    return render_template("admin_communications.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/api/admin/notifications/queue", methods=["GET"])
+@require_admin_api
+def api_notification_queue():
+    from services import get_notification_queue
+    status    = request.args.get("status")
+    channel   = request.args.get("channel")
+    recipient = request.args.get("recipient")
+    limit     = min(int(request.args.get("limit",  100)), 500)
+    offset    = int(request.args.get("offset", 0))
+    rows, total, error = get_notification_queue(
+        status=status, channel=channel, recipient=recipient,
+        limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"queue": rows, "total": total, "limit": limit, "offset": offset})
+
+
+@app.route("/api/admin/notifications/queue/stats", methods=["GET"])
+@require_admin_api
+def api_notification_queue_stats():
+    from services import get_queue_stats
+    stats, error = get_queue_stats()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(stats)
+
+
+@app.route("/api/admin/notifications/queue/reminders", methods=["POST"])
+@require_admin_api
+def api_trigger_due_reminders():
+    from services import queue_due_reminders, log_audit
+    dry_run = request.json.get("dry_run", False) if request.json else False
+    queued, skipped, error = queue_due_reminders(dry_run=dry_run)
+    if error:
+        return _json({"error": error}, 500)
+    log_audit(session["username"], session.get("role", "admin"), "trigger_due_reminders",
+              new_value={"dry_run": dry_run, "queued": queued, "skipped": skipped})
+    return _json({"queued": queued, "skipped": skipped, "dry_run": dry_run})
+
+
+# ---------------------------------------------------------------------------
+# Loan Request Sprint
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard/borrower/requests")
+@role_required("borrower", "lender", "mod", "admin")
+def borrower_requests_page():
+    return render_template("borrower_requests.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/dashboard/mod/requests")
+@role_required("mod", "admin")
+def mod_request_queue_page():
+    return render_template("mod_request_queue.html",
+                           username=session["username"], role=session["role"])
+
+
+@app.route("/dashboard/requests/<request_id>")
+@role_required("borrower", "lender", "mod", "admin")
+def request_detail_page(request_id):
+    from services import get_loan_request
+    req, error = get_loan_request(request_id)
+    if error or not req:
+        return render_template("error.html", code=404, message="Request not found."), 404
+    # Borrowers may only view their own requests
+    if session["role"] not in ("mod", "admin"):
+        if req["borrower_username"].lower() != session["username"].lower():
+            return render_template("error.html", code=403,
+                                   message="You can only view your own requests."), 403
+    return render_template("request_detail.html",
+                           req=req,
+                           request_id=request_id,
+                           viewer_role=session["role"],
+                           username=session["username"],
+                           role=session["role"])
+
+
+# ---- Loan Request API -------------------------------------------------------
+
+@app.route("/api/loan-requests", methods=["POST"])
+@require_auth
+def api_create_loan_request():
+    from services import create_loan_request
+    data = request.json or {}
+    borrower = (data.get("borrower_username") or session.get("username", "")).strip().lower()
+    if not borrower:
+        return _json({"error": "borrower_username required"}, 400)
+    # Non-mod/admin users can only create requests for themselves
+    if session.get("role") not in ("mod", "admin"):
+        if borrower != session.get("username", "").lower():
+            return _json({"error": "You may only create requests for yourself."}, 403)
+    request_id, error = create_loan_request(
+        borrower_username=borrower,
+        reddit_username=data.get("reddit_username"),
+        thread_url=data.get("thread_url"),
+        reddit_post_id=data.get("reddit_post_id"),
+        reddit_comment_id=data.get("reddit_comment_id"),
+        requested_amount=data.get("requested_amount"),
+        requested_repayment_amount=data.get("requested_repayment_amount"),
+        requested_due_date=data.get("requested_due_date"),
+        notes=data.get("notes"),
+    )
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"request_id": request_id}, 201)
+
+
+@app.route("/api/loan-requests", methods=["GET"])
+@require_mod_api
+def api_list_loan_requests():
+    from services import get_loan_request_queue
+    status    = request.args.get("status")
+    borrower  = request.args.get("borrower")
+    date_from = request.args.get("date_from")
+    date_to   = request.args.get("date_to")
+    amount_min = request.args.get("amount_min", type=float)
+    amount_max = request.args.get("amount_max", type=float)
+    limit  = min(int(request.args.get("limit",  200)), 500)
+    offset = int(request.args.get("offset", 0))
+    rows, total, error = get_loan_request_queue(
+        status=status, borrower=borrower,
+        date_from=date_from, date_to=date_to,
+        amount_min=amount_min, amount_max=amount_max,
+        limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"requests": rows, "total": total, "limit": limit, "offset": offset})
+
+
+@app.route("/api/loan-requests/mine", methods=["GET"])
+@require_auth
+def api_my_loan_requests():
+    from services import get_loan_requests_for_borrower
+    limit  = min(int(request.args.get("limit", 100)), 500)
+    offset = int(request.args.get("offset", 0))
+    rows, total, error = get_loan_requests_for_borrower(
+        session["username"], limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"requests": rows, "total": total})
+
+
+@app.route("/api/loan-requests/<request_id>", methods=["GET"])
+@require_auth
+def api_get_loan_request(request_id):
+    from services import get_loan_request
+    req, error = get_loan_request(request_id)
+    if error == "Request not found":
+        return _json({"error": "Not found"}, 404)
+    if error:
+        return _json({"error": error}, 500)
+    if session.get("role") not in ("mod", "admin"):
+        if req["borrower_username"].lower() != session.get("username", "").lower():
+            return _json({"error": "Forbidden"}, 403)
+    return _json(req)
+
+
+@app.route("/api/loan-requests/<request_id>/status", methods=["PATCH"])
+@require_mod_api
+def api_update_request_status(request_id):
+    from services import update_request_status, log_audit
+    data       = request.json or {}
+    new_status = (data.get("status") or "").strip()
+    note       = data.get("note", "")
+    if not new_status:
+        return _json({"error": "status required"}, 400)
+    ok, error = update_request_status(request_id, new_status, session["username"], note)
+    if not ok:
+        return _json({"error": error}, 400 if "Invalid" in error or "not found" in error.lower() else 500)
+    log_audit(session["username"], session.get("role","mod"), "request_status_updated",
+              target_type="loan_request", target_id=request_id,
+              new_value={"status": new_status, "note": note})
+    return _json({"ok": True, "request_id": request_id, "status": new_status})
+
+
+@app.route("/api/loan-requests/<request_id>/link", methods=["POST"])
+@require_mod_api
+def api_link_request_to_loan(request_id):
+    from services import link_request_to_loan, log_audit
+    data        = request.json or {}
+    loan_db_id  = data.get("loan_db_id")
+    override    = bool(data.get("override", False))
+    if not loan_db_id:
+        return _json({"error": "loan_db_id required"}, 400)
+    ok, error = link_request_to_loan(request_id, int(loan_db_id),
+                                     session["username"], override=override)
+    if not ok:
+        return _json({"error": error}, 409 if "already linked" in error else 400)
+    log_audit(session["username"], session.get("role","mod"), "request_linked_to_loan",
+              target_type="loan_request", target_id=request_id,
+              new_value={"loan_db_id": loan_db_id, "override": override})
+    return _json({"ok": True, "request_id": request_id, "loan_db_id": loan_db_id})
+
+
+@app.route("/api/admin/request-analytics", methods=["GET"])
+@require_admin_api
+def api_request_analytics():
+    from services import get_request_analytics
+    stats, error = get_request_analytics()
+    if error:
+        return _json({"error": error}, 500)
+    return _json(stats)
+
+
+@app.route("/api/admin/requests/expire", methods=["POST"])
+@require_admin_api
+def api_expire_requests():
+    from services import expire_old_requests, log_audit
+    data    = request.json or {}
+    days    = int(data.get("days", 10))
+    dry_run = bool(data.get("dry_run", False))
+    expired, error = expire_old_requests(days=days, dry_run=dry_run)
+    if error:
+        return _json({"error": error}, 500)
+    if not dry_run:
+        log_audit(session["username"], session.get("role","admin"), "requests_expired",
+                  new_value={"expired": expired, "days": days})
+    return _json({"expired": expired, "days": days, "dry_run": dry_run})
+
+
+@app.route("/api/loan-requests/search", methods=["GET"])
+@require_mod_api
+def api_search_loan_requests():
+    from services import search_loan_requests
+    q          = request.args.get("q", "").strip()
+    status     = request.args.get("status")
+    amount_min = request.args.get("amount_min", type=float)
+    amount_max = request.args.get("amount_max", type=float)
+    limit      = min(int(request.args.get("limit", 50)), 200)
+    offset     = int(request.args.get("offset", 0))
+    results, total, error = search_loan_requests(
+        q=q, status=status,
+        amount_min=amount_min, amount_max=amount_max,
+        limit=limit, offset=offset)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"results": results, "total": total})
 
 
 # ---------------------------------------------------------------------------
