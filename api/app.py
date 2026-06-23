@@ -7,12 +7,14 @@ LoanCentral API + Dashboard
 """
 
 import json
+import hmac
 import os
 import secrets
 import sys
 import csv
 import logging
 import time
+import uuid as _uuid_mod
 from io import StringIO
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -22,7 +24,7 @@ from functools import wraps
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-from flask import (Flask, flash, redirect, render_template,
+from flask import (Flask, flash, g, redirect, render_template,
                    request, session, url_for)
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
@@ -58,7 +60,66 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-logger = logging.getLogger("LoanCentral.api")
+logger     = logging.getLogger("LoanCentral.api")
+sec_logger = logging.getLogger("LoanCentral.security")  # structured security events
+
+# ---------------------------------------------------------------------------
+# Proxy-aware real client IP
+# ---------------------------------------------------------------------------
+# Render.com (and most PaaS providers) sit behind a reverse proxy.
+# request.remote_addr in production == the load-balancer IP, NOT the client.
+# Without this fix, every client shares the same rate-limit bucket.
+#
+# Set TRUSTED_PROXY_DEPTH=1 (the default) when there is exactly one hop
+# between the internet and gunicorn (Render's standard setup).
+# Set to 0 to disable X-Forwarded-For parsing (e.g., during local dev).
+_TRUSTED_PROXY_DEPTH = int(os.getenv("TRUSTED_PROXY_DEPTH", "1" if _is_prod else "0"))
+
+
+def _client_ip() -> str:
+    """Return the real client IP, accounting for the reverse proxy chain."""
+    if _TRUSTED_PROXY_DEPTH == 0:
+        return request.remote_addr or "unknown"
+    xff = request.headers.get("X-Forwarded-For", "").strip()
+    if not xff:
+        return request.remote_addr or "unknown"
+    # XFF format: "client, proxy1, proxy2". With N trusted proxies the real
+    # client is at index len(ips) - N (leftmost legitimate entry).
+    ips = [ip.strip() for ip in xff.split(",") if ip.strip()]
+    idx = max(0, len(ips) - _TRUSTED_PROXY_DEPTH)
+    return ips[idx] or request.remote_addr or "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Timing-safe API key validation
+# ---------------------------------------------------------------------------
+def _api_key_valid(provided: str | None) -> bool:
+    """Compare the provided key against API_KEY in constant time.
+    Plain `==` leaks timing info that can be used to brute-force the key."""
+    if not provided or not API_KEY:
+        return False
+    return hmac.compare_digest(provided.encode(), API_KEY.encode())
+
+
+# ---------------------------------------------------------------------------
+# Security event logger  (SIEM / audit-trail compatible)
+# ---------------------------------------------------------------------------
+def _sec_event(event: str, **ctx) -> None:
+    """Emit a structured security event.  Fields are key=value pairs so log
+    aggregators (Datadog, Splunk, Loki) can index them without a parser."""
+    parts = [f"sec_event={event}"]
+    # Always include standard context fields if available.
+    parts.append(f"ip={_client_ip()}")
+    parts.append(f"path={request.path}")
+    parts.append(f"method={request.method}")
+    user = session.get("username") or ctx.pop("user", "anonymous")
+    parts.append(f"user={user}")
+    rid = getattr(g, "request_id", "-")
+    parts.append(f"request_id={rid}")
+    parts.extend(f"{k}={v}" for k, v in ctx.items())
+    sec_logger.warning(" ".join(parts))
+
+
 API_RATE_LIMIT_PER_MINUTE = int(os.getenv("API_RATE_LIMIT_PER_MINUTE", "120"))
 _api_rate_hits = {}
 
@@ -78,6 +139,7 @@ def _otp_check_rate(ip: str) -> bool:
     hits = [t for t in _otp_attempts.get(ip, []) if t > window_start]
     if len(hits) >= OTP_RATE_MAX:
         _otp_attempts[ip] = hits
+        _sec_event("otp_rate_limit_blocked")
         return False
     hits.append(now)
     _otp_attempts[ip] = hits
@@ -129,8 +191,21 @@ def log_request_error(exc: Exception, *, extra: str = ""):
 # Helpers
 # ---------------------------------------------------------------------------
 
+@app.before_request
+def assign_request_id():
+    """Assign a unique request ID for distributed tracing.
+    Honours an inbound X-Request-ID header so upstream callers can correlate."""
+    incoming = request.headers.get("X-Request-ID", "").strip()
+    # Only trust alphanumeric + hyphen to prevent header injection.
+    if incoming and len(incoming) <= 64 and incoming.replace("-", "").isalnum():
+        g.request_id = incoming
+    else:
+        g.request_id = _uuid_mod.uuid4().hex
+
+
 @app.after_request
 def add_security_headers(response):
+    response.headers["X-Request-ID"] = getattr(g, "request_id", "")
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -280,13 +355,22 @@ def _redact_activity_money(events):
 @app.before_request
 def log_api_request():
     if request.path.startswith("/api/"):
-        key = session.get("username") or request.headers.get("X-API-Key") or request.remote_addr or "unknown"
+        # Use the real client IP (not the proxy IP) as the rate-limit key.
+        # Fall back to username so authenticated users share one bucket regardless of IP.
+        ip  = _client_ip()
+        key = session.get("username") or request.headers.get("X-API-Key") or ip
         now = time.time()
         window_start = now - 60
         hits = [ts for ts in _api_rate_hits.get(key, []) if ts >= window_start]
         if len(hits) >= API_RATE_LIMIT_PER_MINUTE:
             _api_rate_hits[key] = hits
-            return _json({"error": "Too many API requests. Please slow down."}, 429)
+            _sec_event("api_rate_limit_blocked", bucket=key)
+            resp = _json({"error": "Too many API requests. Please slow down."}, 429)
+            resp.headers["Retry-After"] = "60"
+            resp.headers["X-RateLimit-Limit"] = str(API_RATE_LIMIT_PER_MINUTE)
+            resp.headers["X-RateLimit-Remaining"] = "0"
+            resp.headers["X-RateLimit-Reset"] = str(int(min(hits)) + 60)
+            return resp
         hits.append(now)
         _api_rate_hits[key] = hits
         # Periodic cleanup: drop stale keys on a time-based schedule (not just size).
@@ -303,12 +387,13 @@ def log_api_request():
                 del _otp_attempts[ip]
             _last_rate_cleanup = now
         logger.info(
-            "api_request method=%s path=%s user=%s role=%s remote=%s",
+            "api_request method=%s path=%s user=%s role=%s ip=%s rid=%s",
             request.method,
             request.path,
             session.get("username", "api-key" if request.headers.get("X-API-Key") else "anonymous"),
             session.get("role", "-"),
-            request.remote_addr,
+            ip,
+            getattr(g, "request_id", "-"),
         )
 
 
@@ -437,10 +522,7 @@ def _resolve_api_key() -> str | None:
         return header_key
     url_key = request.args.get("api_key")
     if url_key:
-        logger.warning(
-            "api_key passed as URL parameter — use X-API-Key header instead "
-            "(path=%s remote=%s)", request.path, request.remote_addr
-        )
+        _sec_event("api_key_in_url", detail="use_X-API-Key_header_instead")
     return url_key
 
 
@@ -448,11 +530,11 @@ def require_auth(f):
     """API endpoints: accept X-API-Key header OR active session."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = _resolve_api_key()
-        if key == API_KEY:
+        if _api_key_valid(_resolve_api_key()):
             return f(*args, **kwargs)
         if session.get("username"):
             return f(*args, **kwargs)
+        _sec_event("auth_required_failed")
         return _json({"error": "Unauthorized. Provide X-API-Key header or log in."}, 401)
     return decorated
 
@@ -461,11 +543,11 @@ def require_mod_api(f):
     """API endpoints that mods/admins can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = _resolve_api_key()
-        if key == API_KEY:
+        if _api_key_valid(_resolve_api_key()):
             return f(*args, **kwargs)
         if _is_mod_or_admin():
             return f(*args, **kwargs)
+        _sec_event("mod_access_denied", role=session.get("role", "none"))
         return _json({"error": "Mod access required."}, 403)
     return decorated
 
@@ -474,11 +556,11 @@ def require_admin_api(f):
     """API endpoints that only owner/admin can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = _resolve_api_key()
-        if key == API_KEY:
+        if _api_key_valid(_resolve_api_key()):
             return f(*args, **kwargs)
         if _is_admin():
             return f(*args, **kwargs)
+        _sec_event("admin_access_denied", role=session.get("role", "none"))
         return _json({"error": "Admin access required."}, 403)
     return decorated
 
@@ -555,8 +637,7 @@ admin_required = role_required("admin")
 
 
 def _can_view_user_profile(target_username):
-    key = request.headers.get("X-API-Key") or request.args.get("api_key")
-    if key == API_KEY:
+    if _api_key_valid(_resolve_api_key()):
         return True
     viewer = session.get("username")
     if not viewer:
@@ -610,7 +691,8 @@ def auth_key():
     """Log in with a lender API key. GET /auth/key?k=<key>"""
     from api.auth import check_rate_limit
     from services import validate_lender_key, get_user_role, update_last_login
-    if not check_rate_limit(request.remote_addr):
+    if not check_rate_limit(_client_ip()):
+        _sec_event("key_auth_rate_limit_blocked")
         flash("Too many login attempts. Please wait 15 minutes.", "error")
         return redirect(url_for("login"))
     key = request.args.get("k", "").strip()
@@ -749,8 +831,10 @@ def borrower_login_page():
 @app.route("/api/auth/borrower/claim", methods=["POST"])
 def api_borrower_claim():
     """Step 1: verify username+loan_id, send OTP to chosen contact."""
-    if not _otp_check_rate(request.remote_addr):
-        return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
+    if not _otp_check_rate(_client_ip()):
+        resp = _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
+        resp.headers["Retry-After"] = str(OTP_RATE_WINDOW)
+        return resp
     from services import (verify_borrower_loan_claim, get_borrower_contact,
                           create_borrower_otp, set_borrower_contact)
     data = request.get_json(silent=True) or {}
@@ -804,8 +888,10 @@ def api_borrower_claim():
 @app.route("/api/auth/borrower/verify", methods=["POST"])
 def api_borrower_verify():
     """Step 2: verify OTP, set session."""
-    if not _otp_check_rate(request.remote_addr):
-        return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
+    if not _otp_check_rate(_client_ip()):
+        resp = _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
+        resp.headers["Retry-After"] = str(OTP_RATE_WINDOW)
+        return resp
     from services import verify_borrower_otp, get_user_role, update_last_login
     data     = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip().lower()
@@ -814,6 +900,7 @@ def api_borrower_verify():
         return _json({"error": "Username and code are required."}, 400)
     ok, err = verify_borrower_otp(username, code)
     if not ok:
+        _sec_event("otp_verify_failed", target_user=username)
         return _json({"error": err or "Invalid code."}, 400)
     role, _ = get_user_role(username)
     # Clear stale permission cache before establishing new session.
@@ -1042,7 +1129,8 @@ def auth_reddit():
     if not oauth_configured():
         flash("Reddit OAuth is not configured yet. Ask an admin.", "error")
         return redirect(url_for("login"))
-    if not check_rate_limit(request.remote_addr):
+    if not check_rate_limit(_client_ip()):
+        _sec_event("oauth_rate_limit_blocked")
         flash("Too many login attempts. Please wait 15 minutes.", "error")
         return redirect(url_for("login"))
     state = secrets.token_urlsafe(16)
@@ -1068,6 +1156,7 @@ def auth_callback():
 
     username, err = exchange_code(code)
     if err:
+        _sec_event("oauth_exchange_failed", detail=type(err).__name__)
         flash(f"Login failed: {err}", "error")
         return redirect(url_for("login"))
 

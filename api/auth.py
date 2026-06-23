@@ -23,10 +23,14 @@ REDDIT_REDIRECT_URI  = os.getenv("DASHBOARD_REDIRECT_URI", "http://localhost:500
 REDDIT_USER_AGENT    = "LoanCentral Dashboard/1.0"
 
 # ---- Rate limiting ----
-# Max 5 login attempts per IP per 15 minutes
+# Max 5 login attempts per IP per 15 minutes.
+# NOTE: this dict is shared by all login methods (OAuth, API key, OTP) so
+# an attacker cannot bypass per-method limits by alternating between them.
 _login_attempts: dict = defaultdict(list)
-_RATE_LIMIT  = 5
-_RATE_WINDOW = 900  # seconds
+_RATE_LIMIT        = 5
+_RATE_WINDOW       = 900       # seconds (15 min)
+_last_gc: float    = 0.0
+_GC_INTERVAL       = 600       # sweep the whole dict every 10 min
 
 
 def oauth_configured() -> bool:
@@ -97,12 +101,23 @@ def exchange_code(code: str) -> tuple:
 
 
 def check_rate_limit(ip: str) -> bool:
+    """Return True if this IP is allowed to attempt login, False if blocked.
+
+    Performs periodic full sweeps of the dict so IPs that never reach their
+    limit don't accumulate forever (the per-access prune only helps active IPs).
     """
-    Return True if this IP is allowed to attempt login.
-    Return False if they've exceeded the rate limit.
-    """
+    global _last_gc
     now = time.time()
-    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _RATE_WINDOW]
+    cutoff = now - _RATE_WINDOW
+
+    # Periodic full-dict sweep to evict cold entries.
+    if now - _last_gc > _GC_INTERVAL:
+        stale = [k for k, v in _login_attempts.items() if not v or max(v) < cutoff]
+        for k in stale:
+            del _login_attempts[k]
+        _last_gc = now
+
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if t > cutoff]
     if len(_login_attempts[ip]) >= _RATE_LIMIT:
         return False
     _login_attempts[ip].append(now)
