@@ -36,11 +36,23 @@ _is_prod = os.getenv("LOANCENTRAL_ENV", "prod") == "prod"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = _is_prod  # HTTPS only in prod
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload/request limit
 
 API_KEY = os.getenv("API_KEY", "changeme")
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(PROJECT_ROOT, "uploads"))
+
+# Input length limits
+MAX_SEARCH_LEN     = 200
+MAX_NOTE_LEN       = 5_000
+MAX_TEXT_FIELD_LEN = 2_000
+
+# Allowed MIME types for file uploads
+_ALLOWED_MIME_TYPES = frozenset({
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "application/pdf", "text/plain", "text/csv",
+})
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -54,6 +66,10 @@ _api_rate_hits = {}
 OTP_RATE_WINDOW = 15 * 60   # seconds
 OTP_RATE_MAX    = 5
 _otp_attempts: dict = {}    # {ip: [timestamp, ...]}
+
+# Periodic rate-limit dict cleanup (avoid unbounded growth between bursts)
+_last_rate_cleanup: float = 0.0
+_RATE_CLEANUP_INTERVAL    = 300  # seconds (5 min)
 
 def _otp_check_rate(ip: str) -> bool:
     """Return True if the IP is allowed, False if rate-limited. Cleans stale entries."""
@@ -118,9 +134,31 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["X-XSS-Protection"] = "0"  # modern browsers: rely on CSP not this
+    response.headers["X-XSS-Protection"] = "0"  # rely on CSP instead
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(), camera=(), microphone=(), payment=(), "
+        "usb=(), bluetooth=(), interest-cohort=()"
+    )
+    # Templates use inline styles/scripts only — no external CDN needed.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    # Prevent caching of API and auth responses — these contain sensitive financial data.
+    if request.path.startswith("/api/") or request.path.startswith("/auth/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
     if _is_prod:
-        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains; preload"
+        )
     return response
 
 
@@ -251,11 +289,19 @@ def log_api_request():
             return _json({"error": "Too many API requests. Please slow down."}, 429)
         hits.append(now)
         _api_rate_hits[key] = hits
-        # Periodic cleanup: drop keys with no recent hits to prevent unbounded growth
-        if len(_api_rate_hits) > 500:
+        # Periodic cleanup: drop stale keys on a time-based schedule (not just size).
+        # This bounds memory usage even during low-traffic periods with many unique IPs.
+        global _last_rate_cleanup
+        if now - _last_rate_cleanup > _RATE_CLEANUP_INTERVAL or len(_api_rate_hits) > 500:
             stale = [k for k, v in _api_rate_hits.items() if not v or max(v) < window_start]
             for k in stale:
                 del _api_rate_hits[k]
+            # Also prune OTP tracker so it doesn't grow without bound.
+            otp_cutoff = now - OTP_RATE_WINDOW
+            stale_ips = [ip for ip, ts in _otp_attempts.items() if not ts or max(ts) < otp_cutoff]
+            for ip in stale_ips:
+                del _otp_attempts[ip]
+            _last_rate_cleanup = now
         logger.info(
             "api_request method=%s path=%s user=%s role=%s remote=%s",
             request.method,
@@ -382,11 +428,27 @@ def role_required(*roles):
     return decorator
 
 
+def _resolve_api_key() -> str | None:
+    """Extract API key from X-API-Key header (preferred) or api_key query param (deprecated).
+    Logs a warning when the query-param form is used because the key ends up in server
+    access logs, browser history, and Referer headers."""
+    header_key = request.headers.get("X-API-Key")
+    if header_key:
+        return header_key
+    url_key = request.args.get("api_key")
+    if url_key:
+        logger.warning(
+            "api_key passed as URL parameter — use X-API-Key header instead "
+            "(path=%s remote=%s)", request.path, request.remote_addr
+        )
+    return url_key
+
+
 def require_auth(f):
     """API endpoints: accept X-API-Key header OR active session."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = _resolve_api_key()
         if key == API_KEY:
             return f(*args, **kwargs)
         if session.get("username"):
@@ -399,7 +461,7 @@ def require_mod_api(f):
     """API endpoints that mods/admins can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = _resolve_api_key()
         if key == API_KEY:
             return f(*args, **kwargs)
         if _is_mod_or_admin():
@@ -412,7 +474,7 @@ def require_admin_api(f):
     """API endpoints that only owner/admin can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = _resolve_api_key()
         if key == API_KEY:
             return f(*args, **kwargs)
         if _is_admin():
@@ -546,7 +608,11 @@ def home():
 @app.route("/auth/key")
 def auth_key():
     """Log in with a lender API key. GET /auth/key?k=<key>"""
-    from services import validate_lender_key, get_user_role
+    from api.auth import check_rate_limit
+    from services import validate_lender_key, get_user_role, update_last_login
+    if not check_rate_limit(request.remote_addr):
+        flash("Too many login attempts. Please wait 15 minutes.", "error")
+        return redirect(url_for("login"))
     key = request.args.get("k", "").strip()
     if not key:
         flash("No key provided.", "error")
@@ -556,9 +622,14 @@ def auth_key():
         flash("Invalid or revoked key. Contact your admin.", "error")
         return redirect(url_for("login"))
     role, _ = get_user_role(username)
+    update_last_login(username)
+    # Clear stale permission cache before establishing new session.
+    for stale_key in ("verified_lender", "perm_version"):
+        session.pop(stale_key, None)
     session["username"] = username
     session["role"] = role or "lender"
     session["auth_method"] = "key"
+    session["login_at"] = datetime.now().isoformat()
     return redirect(url_for("home"))
 
 
@@ -745,10 +816,14 @@ def api_borrower_verify():
     if not ok:
         return _json({"error": err or "Invalid code."}, 400)
     role, _ = get_user_role(username)
+    # Clear stale permission cache before establishing new session.
+    for stale_key in ("verified_lender", "perm_version"):
+        session.pop(stale_key, None)
     session.permanent = True
     session["username"]    = username
     session["role"]        = role or "borrower"
     session["auth_method"] = "otp"
+    session["login_at"]    = datetime.now().isoformat()
     update_last_login(username)
     return _json({"ok": True, "redirect": url_for("home")})
 
@@ -999,6 +1074,9 @@ def auth_callback():
     role, _ = get_user_role(username)
     update_last_login(username)
 
+    # Clear stale permission cache before establishing new session.
+    for stale_key in ("verified_lender", "perm_version"):
+        session.pop(stale_key, None)
     session.permanent = True
     session["username"] = username
     session["role"]     = role
@@ -1174,7 +1252,9 @@ def get_loans():
     borrower = request.args.get("borrower")
     status   = request.args.get("status")
     search   = request.args.get("search")
-    limit    = int(request.args.get("limit", 200))
+    limit    = min(int(request.args.get("limit", 200)), 1000)
+    if search and len(search) > MAX_SEARCH_LEN:
+        return _json({"error": f"Search query cannot exceed {MAX_SEARCH_LEN} characters."}, 400)
 
     # Non-mod/admins can only see their own data.
     if session.get("username") and not _is_mod_or_admin():
@@ -2064,6 +2144,8 @@ def save_note(loan_id):
     from services import _get_db, log_event
     data = request.get_json() or {}
     note = data.get("note", "").strip()
+    if len(note) > MAX_NOTE_LEN:
+        return _json({"error": f"Note cannot exceed {MAX_NOTE_LEN} characters."}, 400)
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
@@ -2137,6 +2219,10 @@ def upload_attachment(loan_id):
     ext = pathlib.Path(f.filename).suffix.lower()
     if ext not in allowed:
         return _json({"error": f"File type {ext} not allowed"}, 400)
+    # Validate the declared MIME type as a second layer of defence.
+    content_type = (f.content_type or "").split(";")[0].strip().lower()
+    if content_type and content_type not in _ALLOWED_MIME_TYPES:
+        return _json({"error": f"MIME type '{content_type}' not allowed"}, 400)
     upload_dir = UPLOAD_DIR
     os.makedirs(upload_dir, exist_ok=True)
     safe_name = f"{uuid.uuid4().hex}{ext}"
@@ -2522,6 +2608,8 @@ def api_global_search():
     status_filter = request.args.get("status")
     limit         = min(int(request.args.get("limit", 50)), 100)
     offset        = int(request.args.get("offset", 0))
+    if len(query) > MAX_SEARCH_LEN:
+        return _json({"error": f"Search query cannot exceed {MAX_SEARCH_LEN} characters."}, 400)
     results, total, error = global_search(
         query, search_type=search_type,
         status_filter=status_filter, limit=limit, offset=offset)
@@ -2713,6 +2801,10 @@ def api_submit_feedback():
     category    = data.get("category", "").strip()
     title       = data.get("title", "").strip()
     description = data.get("description", "").strip()
+    if len(title) > MAX_TEXT_FIELD_LEN:
+        return _json({"error": f"Title cannot exceed {MAX_TEXT_FIELD_LEN} characters."}, 400)
+    if len(description) > MAX_NOTE_LEN:
+        return _json({"error": f"Description cannot exceed {MAX_NOTE_LEN} characters."}, 400)
     fid, error = create_feedback(username, category, title, description)
     if error:
         return _json({"error": error}, 400)
@@ -3003,6 +3095,12 @@ def api_create_announcement():
     pinned  = bool(data.get("pinned", False))
     expires = data.get("expires_at") or None
     author  = session.get("username", "system")
+    if not title:
+        return _json({"error": "title is required"}, 400)
+    if len(title) > MAX_TEXT_FIELD_LEN:
+        return _json({"error": f"Title cannot exceed {MAX_TEXT_FIELD_LEN} characters."}, 400)
+    if len(body) > MAX_NOTE_LEN:
+        return _json({"error": f"Body cannot exceed {MAX_NOTE_LEN} characters."}, 400)
     aid, error = create_announcement(title, body, author, pinned, expires)
     if error:
         return _json({"error": error}, 400)
@@ -3111,6 +3209,8 @@ def api_create_mod_note(username):
     category = (data.get("category") or "general").strip()
     content  = (data.get("content") or "").strip()
     author   = session.get("username", "system")
+    if len(content) > MAX_NOTE_LEN:
+        return _json({"error": f"Note content cannot exceed {MAX_NOTE_LEN} characters."}, 400)
     note_id, error = create_mod_note(username, author, category, content)
     if error:
         return _json({"error": error}, 400)
@@ -3582,6 +3682,14 @@ def api_backfill_requests():
 # ---------------------------------------------------------------------------
 # Error handlers
 # ---------------------------------------------------------------------------
+
+@app.errorhandler(413)
+def request_too_large(e):
+    if request.path.startswith("/api/"):
+        return _json({"error": "Request body too large. Maximum size is 16 MB."}, 413)
+    return render_template("error.html", code=413,
+                           message="The uploaded file is too large. Maximum size is 16 MB."), 413
+
 
 @app.errorhandler(404)
 def not_found(e):
