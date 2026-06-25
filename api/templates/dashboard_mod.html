@@ -466,6 +466,7 @@
     const canPay = ['confirmed','partially_repaid','unpaid','disputed'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid','disputed'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
+    const canBan = loan.status === 'unpaid';  // loan-related ban: only for confirmed defaults
     const due = dueLabel(loan.repay_date);
     return `<tr>
       <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
@@ -498,8 +499,8 @@
           </div>
           <div class="mobile-card-extra-actions">
             ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : '<span></span>'}
+            ${canBan ? `<button class="btn-action btn-ban" title="Queue a Reddit ban for this defaulted borrower" onclick="confirmBan('${escapeHtml(loan.borrower)}','${id}')">Ban</button>` : '<span></span>'}
             ${thread !== '-' ? thread : '<span></span>'}
-            <span></span>
           </div>
         </div>
       </td>
@@ -518,6 +519,7 @@
         ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${escapeHtml(loan.lender)}')">Unpaid</button>` : ''}
         <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Edit Due</button>
         ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${escapeHtml(loan.lender)}')">Refund</button>` : ''}
+        ${canBan ? `<button class="btn-action btn-ban" title="Queue a Reddit ban for this defaulted borrower" onclick="confirmBan('${escapeHtml(loan.borrower)}','${id}')">Ban</button>` : ''}
       </div></td>
     </tr>`;
   }
