@@ -395,7 +395,7 @@ def require_auth(f):
     """API endpoints: accept X-API-Key header OR active session."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = request.headers.get("X-API-Key")
         if key == API_KEY:
             return f(*args, **kwargs)
         if session.get("username"):
@@ -408,7 +408,7 @@ def require_mod_api(f):
     """API endpoints that mods/admins can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = request.headers.get("X-API-Key")
         if key == API_KEY:
             return f(*args, **kwargs)
         if _is_mod_or_admin():
@@ -421,7 +421,7 @@ def require_admin_api(f):
     """API endpoints that only owner/admin can call."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        key = request.headers.get("X-API-Key")
         if key == API_KEY:
             return f(*args, **kwargs)
         if _is_admin():
@@ -502,7 +502,7 @@ admin_required = role_required("admin")
 
 
 def _can_view_user_profile(target_username):
-    key = request.headers.get("X-API-Key") or request.args.get("api_key")
+    key = request.headers.get("X-API-Key")
     if key == API_KEY:
         return True
     viewer = session.get("username")
@@ -1193,6 +1193,9 @@ def get_loans():
         if borrower and borrower.lower() != me:
             return _json({"error": "You can only view your own loans."}, 403)
 
+    # Only mods/admins (or the trusted API key) may pull the whole loan book.
+    privileged = _is_mod_or_admin() or (request.headers.get("X-API-Key") == API_KEY)
+
     if lender:
         loans, error = get_loan_history(lender, role="lender", limit=limit)
         if not error and status:
@@ -1201,8 +1204,15 @@ def get_loans():
         loans, error = get_loan_history(borrower, role="borrower", limit=limit)
         if not error and status:
             loans = [l for l in loans if l["status"] == status]
-    else:
+    elif privileged:
         loans, error = _get_all_loans_from_db(status=status, search=search, limit=limit)
+    else:
+        # A regular user with no explicit filter only ever sees their own loans
+        # (as lender or borrower) — never the whole platform.
+        me = session.get("username", "")
+        loans, error = get_loan_history(me, role="both", limit=limit)
+        if not error and status:
+            loans = [l for l in loans if l["status"] == status]
 
     if error:
         return _json({"error": error}, 500)
@@ -2746,10 +2756,8 @@ def api_my_feedback():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin/feedback")
-@login_required
+@role_required("mod", "admin")
 def admin_feedback_page():
-    if session.get("role") not in ("mod", "admin"):
-        return redirect(url_for("dashboard_lender"))
     from services import get_feedback_list, log_analytics_event
     username = session["username"]
     role     = session["role"]
@@ -2868,10 +2876,8 @@ def api_admin_analytics():
 # ---------------------------------------------------------------------------
 
 @app.route("/mod/queue")
-@login_required
+@role_required("mod", "admin")
 def mod_queue_page():
-    if session.get("role") not in ("mod", "admin"):
-        return redirect(url_for("dashboard_lender"))
     from services import log_analytics_event
     log_analytics_event(session["username"], "page_view", page="/mod/queue")
     return render_template("mod_queue.html",
@@ -2893,10 +2899,8 @@ def api_mod_queue():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin/health")
-@login_required
+@role_required("mod", "admin")
 def community_health_page():
-    if session.get("role") not in ("mod", "admin"):
-        return redirect(url_for("dashboard_lender"))
     from services import log_analytics_event
     log_analytics_event(session["username"], "page_view", page="/admin/health")
     return render_template("community_health.html",
@@ -2923,10 +2927,8 @@ def api_community_health():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin/lenders/management")
-@login_required
+@role_required("mod", "admin")
 def lender_management_page():
-    if session.get("role") not in ("mod", "admin"):
-        return redirect(url_for("dashboard_lender"))
     from services import log_analytics_event
     log_analytics_event(session["username"], "page_view", page="/admin/lenders/management")
     return render_template("lender_management.html",
@@ -2953,10 +2955,8 @@ def api_lender_management():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin/borrowers")
-@login_required
+@role_required("mod", "admin")
 def borrower_activity_page():
-    if session.get("role") not in ("mod", "admin"):
-        return redirect(url_for("dashboard_lender"))
     from services import log_analytics_event
     log_analytics_event(session["username"], "page_view", page="/admin/borrowers")
     return render_template("admin_borrowers.html",
