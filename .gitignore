@@ -26,6 +26,10 @@ uploads/
 data/
 tools/
 
+# Local DB backups (may contain prod data dumps) and harness scratch
+backups/
+.claude/worktrees/
+
 # Local database files
 *.sqlite
 *.sqlite3

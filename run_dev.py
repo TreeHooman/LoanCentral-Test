@@ -11,6 +11,7 @@ load_dotenv(".env.test", override=True)
 # Force dev mode so dev login and debug features are enabled
 os.environ["LOANCENTRAL_ENV"] = "dev"
 os.environ["DB_NAME"] = "loancentral_dev"  # use local dev DB, not test or prod
+os.environ["DB_BACKEND"] = "sqlite"        # SAFETY: force local SQLite — never touch prod Postgres in dev
 
 # Must import app AFTER env vars are set
 from api.app import app
