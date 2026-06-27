@@ -48,6 +48,11 @@ $unpaid [paid_id]
 $refunded [paid_id]
 ```
 
+**View lender stats**
+```
+$logi u/[lender]
+```
+
 ---
 
 ## Borrower Commands
