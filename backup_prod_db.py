@@ -6,7 +6,7 @@ Usage:
   python backup_prod_db.py            # uses .env creds
   python backup_prod_db.py --verify   # restore-test into a temp local DB (requires local PG)
 
-Scheduled automatically by Windows Task Scheduler — see BACKUP_RESTORE.md.
+Scheduled automatically by Windows Task Scheduler — see docs/BACKUP_RESTORE.md.
 """
 
 import os
