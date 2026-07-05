@@ -38,6 +38,13 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = _is_prod  # HTTPS only in prod
 
 API_KEY = os.getenv("API_KEY", "changeme")
+# Master-key auth is disabled when API_KEY is unset or left at the insecure
+# default — otherwise a missing env var would let anyone in with "changeme".
+API_KEY_AUTH_ENABLED = bool(API_KEY) and API_KEY != "changeme"
+
+
+def _api_key_ok(key):
+    return API_KEY_AUTH_ENABLED and key == API_KEY
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(PROJECT_ROOT, "uploads"))
@@ -396,7 +403,7 @@ def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key")
-        if key == API_KEY:
+        if _api_key_ok(key):
             return f(*args, **kwargs)
         if session.get("username"):
             return f(*args, **kwargs)
@@ -409,7 +416,7 @@ def require_mod_api(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key")
-        if key == API_KEY:
+        if _api_key_ok(key):
             return f(*args, **kwargs)
         if _is_mod_or_admin():
             return f(*args, **kwargs)
@@ -422,7 +429,7 @@ def require_admin_api(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         key = request.headers.get("X-API-Key")
-        if key == API_KEY:
+        if _api_key_ok(key):
             return f(*args, **kwargs)
         if _is_admin():
             return f(*args, **kwargs)
@@ -503,7 +510,7 @@ admin_required = role_required("admin")
 
 def _can_view_user_profile(target_username):
     key = request.headers.get("X-API-Key")
-    if key == API_KEY:
+    if _api_key_ok(key):
         return True
     viewer = session.get("username")
     if not viewer:
@@ -763,7 +770,7 @@ def api_borrower_verify():
 
 
 @app.route("/api/admin/borrower-contact/<username>", methods=["POST"])
-@role_required("mod")
+@role_required("mod", "admin")
 def api_set_borrower_contact(username):
     from services import set_borrower_contact
     data  = request.get_json(silent=True) or {}
@@ -780,7 +787,7 @@ def api_set_borrower_contact(username):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/admin/send-magic-link/<username>", methods=["POST"])
-@role_required("mod")
+@role_required("mod", "admin")
 def api_send_magic_link(username):
     from services import create_magic_link, get_borrower_contact
     email, _ = get_borrower_contact(username)
@@ -1194,7 +1201,7 @@ def get_loans():
             return _json({"error": "You can only view your own loans."}, 403)
 
     # Only mods/admins (or the trusted API key) may pull the whole loan book.
-    privileged = _is_mod_or_admin() or (request.headers.get("X-API-Key") == API_KEY)
+    privileged = _is_mod_or_admin() or _api_key_ok(request.headers.get("X-API-Key"))
 
     if lender:
         loans, error = get_loan_history(lender, role="lender", limit=limit)
