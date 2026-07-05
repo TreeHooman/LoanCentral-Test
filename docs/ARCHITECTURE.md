@@ -19,8 +19,13 @@ Browser / API ────────┘
 
 ## Bot (`main.py`)
 
-- Loads `.env`, builds the PRAW client from `utils.py` (shared `reddit` instance
-  + `reddit_limiter` rate limiter), streams comments from `SUBREDDITS`.
+- Loads `.env`, builds the PRAW client from `utils.py` (shared `reddit`
+  instance), streams comments from `SUBREDDITS`.
+- **Reddit free-tier budget**: every outgoing HTTP request PRAW makes (stream
+  polls, flair reads, replies, DMs, token refreshes) is gated through
+  `reddit_limiter` by `_ThrottledRequestor` in `utils.py` — a hard 80/min cap
+  under Reddit's 100 requests/min free tier. No call site can bypass it, so new
+  commands need no rate-limit code. Guarded by `tests/test_reddit_rate_limit.py`.
 - **Command auto-discovery**: every `commands/*_command.py` module exposing a
   `COMMAND_TRIGGER` and a `process_*` function is loaded automatically — adding
   a bot command means adding one file, no `main.py` edits.

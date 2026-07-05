@@ -5,6 +5,7 @@ import os
 import time
 import threading
 from dotenv import load_dotenv
+from prawcore.requestor import Requestor
 
 # Load environment variables
 load_dotenv()
@@ -13,9 +14,14 @@ logger = logging.getLogger("LoanCentral")
 
 # ---------------------------------------------------------------------------
 # Reddit API rate limiter
-# Reddit allows ~100 OAuth requests/min. We cap at 80 to stay safely under.
-# Call reddit_limiter.wait() before any outgoing Reddit API write (reply, send).
-# PRAW stream reads are throttled automatically by PRAW itself.
+# Reddit's free tier allows 100 OAuth requests/min (averaged over a 10-min
+# window). We hard-cap at 80/min to stay safely under.
+#
+# Enforcement is at the transport level: _ThrottledRequestor gates EVERY
+# outgoing HTTP request PRAW makes (stream polls, lazy loads, replies, DMs,
+# flair reads, token refreshes), so no call site can bypass the cap.
+# Explicit reddit_limiter.wait() calls sprinkled in bot code are now
+# redundant but harmless (each one just consumes a slot).
 # ---------------------------------------------------------------------------
 
 class _RedditRateLimiter:
@@ -40,13 +46,27 @@ class _RedditRateLimiter:
 
 reddit_limiter = _RedditRateLimiter()
 
+
+class _ThrottledRequestor(Requestor):
+    """Gates every outgoing Reddit HTTP request through reddit_limiter."""
+
+    def request(self, *args, **kwargs):
+        reddit_limiter.wait()
+        return super().request(*args, **kwargs)
+
+
 # Reddit API credentials
 reddit = praw.Reddit(
     client_id=os.getenv("REDDIT_CLIENT_ID"),
     client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
     username=os.getenv("REDDIT_USERNAME"),
     password=os.getenv("REDDIT_PASSWORD"),
-    user_agent=os.getenv("REDDIT_USER_AGENT")
+    user_agent=os.getenv("REDDIT_USER_AGENT"),
+    requestor_class=_ThrottledRequestor,
+    # When Reddit answers a write with "doing that too much, try again in N
+    # minutes", sleep up to 5 min and retry instead of raising and losing the
+    # reply (default is only 5 seconds).
+    ratelimit_seconds=300,
 )
 
 # PostgreSQL connection
