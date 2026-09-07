@@ -1,3 +1,14 @@
+Latest local dev DB refresh - 2026-06-24
+
+- Active local dashboard URL: http://127.0.0.1:5000
+- Dev login page: /auth/dev-login; quick lender login: /auth/dev-login-as/logistix1
+- run_dev.py loads .env.test, forces LOANCENTRAL_ENV=dev, and uses DB_NAME=loancentral_dev.
+- loancentral_dev is currently the richest accessible data source checked this session: 551 loans.
+- Remote .env DB was reachable but only showed 7 loans, so it was not used for dashboard stats.
+- Applied existing SQL migrations 001-011 plus missing dev tables/columns for analytics_events, feedback_submissions, notification_preferences, announcements, verified_lender, perm_version, and reddit_username.
+- Refreshed u/logistix1 as lender + verified_lender and recomputed its users aggregate from loan rows.
+- Verified u/logistix1 lender dashboard shows: 59 recorded loans, 20 active, 37 paid, 0 unpaid, $9,750.00 lent, $5,980.00 received back, $3,625.00 outstanding.
+
 Request Intelligence Sprint — COMPLETE
 Date: 2026-06-10
 Tests: 554/554 passing

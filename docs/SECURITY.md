@@ -17,6 +17,12 @@ Roles (`users.role`: borrower/lender/mod/admin) and verified-lender status live
 in the DB. Reddit flair is display-only and user-influencable; never read it to
 grant permissions.
 
+Because the bot sees a Reddit handle and the DB is keyed on the dashboard
+username, resolve identity through `services.resolve_user_identity` rather than
+comparing names directly — a raw comparison silently denies linked accounts.
+The optional flair gate (`REQUIRE_LENDER_FLAIR`) may only ever restrict, never
+grant, and must fail open when the flair cannot be read.
+
 ### 3. No production-credential changes without permission
 `.env` points at the live Render Postgres. Never rotate, edit, or copy prod
 credentials (DB, `API_KEY`, `SECRET_KEY`, Reddit creds) without the owner's

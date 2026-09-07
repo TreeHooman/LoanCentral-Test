@@ -110,7 +110,46 @@ def _ensure_column(conn, table, column, definition):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+# loan_requests was renamed from the old bot column names to the dashboard names.
+# Prod was migrated by migrations/migrate_loan_requests.py; this is the SQLite
+# equivalent so an existing dev/test DB created before the rename keeps working.
+_LOAN_REQUEST_RENAMES = [
+    ("borrower", "borrower_username"),
+    ("amount", "requested_amount"),
+    ("repay_amount", "requested_repayment_amount"),
+    ("repay_date", "requested_due_date"),
+    ("status", "request_status"),
+    ("thread_link", "thread_url"),
+]
+
+
+def _table_exists(conn, table):
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
+
+def _migrate_legacy_loan_requests(conn):
+    """Rename pre-rename loan_requests columns in place, before schema.sql runs.
+
+    schema.sql indexes borrower_username, so this has to happen first or the
+    whole script aborts on an older DB file.
+    """
+    if not _table_exists(conn, "loan_requests"):
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(loan_requests)").fetchall()}
+    for old_name, new_name in _LOAN_REQUEST_RENAMES:
+        if old_name in columns and new_name not in columns:
+            conn.execute(f"ALTER TABLE loan_requests RENAME COLUMN {old_name} TO {new_name}")
+            columns.discard(old_name)
+            columns.add(new_name)
+    conn.commit()
+
+
 def _ensure_schema(conn):
+    _migrate_legacy_loan_requests(conn)
+
     schema_path = os.path.join(PROJECT_ROOT, "schema.sql")
     with open(schema_path, "r", encoding="utf-8") as f:
         schema = _translate_sql(f.read())
@@ -128,6 +167,12 @@ def _ensure_schema(conn):
     _ensure_column(conn, "loans", "payment_timing", "TEXT")
     _ensure_column(conn, "loan_requests", "lender_note", "TEXT")
     _ensure_column(conn, "loan_requests", "expires_at", "TIMESTAMP")
+    # Columns the dashboard schema added after the rename
+    _ensure_column(conn, "loan_requests", "reddit_username", "VARCHAR(100)")
+    _ensure_column(conn, "loan_requests", "reddit_comment_id", "VARCHAR(30)")
+    _ensure_column(conn, "loan_requests", "updated_at", "TIMESTAMP")
+    _ensure_column(conn, "loan_requests", "funded_loan_id", "INTEGER")
+    _ensure_column(conn, "loan_requests", "notes", "TEXT")
     # Verified lender columns on user_roles
     _ensure_column(conn, "user_roles", "verified_lender", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "user_roles", "verified_lender_at", "TIMESTAMP")

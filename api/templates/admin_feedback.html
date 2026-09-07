@@ -11,11 +11,11 @@
 
 <div class="toolbar" style="margin-bottom:16px">
   <div class="tabs" id="statusTabs">
-    <button class="tab active" onclick="setFilter('status','')">All</button>
-    <button class="tab" onclick="setFilter('status','open')">Open</button>
-    <button class="tab" onclick="setFilter('status','reviewed')">Reviewed</button>
-    <button class="tab" onclick="setFilter('status','completed')">Completed</button>
-    <button class="tab" onclick="setFilter('status','duplicate')">Duplicate</button>
+    <button class="tab active" onclick="setFilter('status','', this)">All</button>
+    <button class="tab" onclick="setFilter('status','open', this)">Open</button>
+    <button class="tab" onclick="setFilter('status','reviewed', this)">Reviewed</button>
+    <button class="tab" onclick="setFilter('status','completed', this)">Completed</button>
+    <button class="tab" onclick="setFilter('status','duplicate', this)">Duplicate</button>
   </div>
   <select id="catFilter" onchange="setFilter('category', this.value)"
     style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px">
@@ -82,12 +82,12 @@ let _page = 0;
 const PAGE = 50;
 let _currentId = null;
 
-function setFilter(key, val) {
+function setFilter(key, val, btn) {
   _filters[key] = val;
   _page = 0;
   if (key === 'status') {
     document.querySelectorAll('#statusTabs .tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    btn?.classList.add('active');
   }
   loadFeedback();
 }

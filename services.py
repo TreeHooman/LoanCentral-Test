@@ -6,6 +6,7 @@ Bot commands call these functions.
 Future API/dashboard will call the same functions.
 """
 
+import random
 import time
 import logging
 import json
@@ -27,13 +28,39 @@ def _get_db():
 # ---------------------------------------------------------------------------
 
 def _generate_loan_id():
-    """Generate a unique loan ID based on current timestamp."""
-    return str(int(time.time()))
+    """Generate a public loan ID.
+
+    A bare second-resolution timestamp collides whenever two loans are created
+    in the same second, which surfaced to users as "Database error while
+    creating loan". The random suffix makes that rare and create_loan retries on
+    the remainder. Kept numeric and short because people retype these IDs into
+    Reddit comments.
+    """
+    return f"{int(time.time())}{random.randint(0, 999):03d}"
+
+
+def _is_duplicate_loan_id(error):
+    msg = str(error).lower()
+    return ("unique" in msg or "duplicate" in msg) and "loan_id" in msg
 
 
 def _looks_like_missing_column(error):
     msg = str(error).lower()
     return "does not exist" in msg and "column" in msg
+
+
+def _alias_match(column, aliases):
+    """SQL fragment + params matching `column` against any name an account uses.
+
+    Loans are recorded under a Reddit handle when the bot writes them and under
+    a dashboard username when the site does, so a single-name comparison misses
+    half of them.
+    """
+    names = [a for a in (aliases or []) if a]
+    if not names:
+        return "1=0", []
+    placeholders = ", ".join(["%s"] * len(names))
+    return f"lower({column}) IN ({placeholders})", names
 
 
 def log_event(event_type: str, actor: str = None, actor_role: str = None,
@@ -367,30 +394,42 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                 interest_rate = ((repay_amount - amount) / amount * 100).quantize(Decimal("0.01"))
 
         inserted_public_id = True
-        try:
-            cur.execute('''
-                INSERT INTO loans
-                (loan_id, lender, borrower, amount, currency, date_created, original_thread,
-                 status, repay_amount, repay_date, payment_method, interest_amount, interest_rate)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            ''', (
-                loan_id, lender, borrower, amount, currency, datetime.now(), thread_url,
-                'confirmed', repay_amount, repay_date or None, payment_method or None,
-                interest_amount, interest_rate
-            ))
-        except Exception as e:
-            if not _looks_like_missing_column(e):
-                raise
-            conn.rollback()
-            cur = conn.cursor()
-            inserted_public_id = False
-            cur.execute('''
-                INSERT INTO loans
-                (lender, borrower, amount, currency, date_created, original_thread, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            ''', (lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed'))
+        for _attempt in range(5):
+            try:
+                cur.execute('''
+                    INSERT INTO loans
+                    (loan_id, lender, borrower, amount, currency, date_created, original_thread,
+                     status, repay_amount, repay_date, payment_method, interest_amount, interest_rate)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (
+                    loan_id, lender, borrower, amount, currency, datetime.now(), thread_url,
+                    'confirmed', repay_amount, repay_date or None, payment_method or None,
+                    interest_amount, interest_rate
+                ))
+                break
+            except Exception as e:
+                if _is_duplicate_loan_id(e):
+                    # Another loan took this ID in the same second — pick a new one.
+                    conn.rollback()
+                    cur = conn.cursor()
+                    loan_id = _generate_loan_id()
+                    continue
+                if not _looks_like_missing_column(e):
+                    raise
+                conn.rollback()
+                cur = conn.cursor()
+                inserted_public_id = False
+                cur.execute('''
+                    INSERT INTO loans
+                    (lender, borrower, amount, currency, date_created, original_thread, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (lender, borrower, amount, currency, datetime.now(), thread_url, 'confirmed'))
+                break
+        else:
+            logger.error("create_loan: could not allocate a unique loan_id after 5 attempts")
+            return None, "Could not allocate a unique loan ID. Please try again."
 
         db_id = cur.fetchone()[0]
         if not inserted_public_id:
@@ -497,11 +536,14 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         else:
             db_id, public_id, lender, borrower, principal_amount, already_repaid, loan_currency, status, repay_total = result
 
-        # Role check (case-insensitive — stored names may differ in case from session username)
-        if actor_role == "lender" and actor.lower() != lender.lower():
+        # Role check against every name the actor is known by — a loan booked on
+        # the dashboard stores the dashboard username, but $paid_with_id arrives
+        # under the Reddit handle.
+        actor_names = set(account_aliases(actor))
+        if actor_role == "lender" and (lender or "").lower() not in actor_names:
             logger.warning(f"Payment auth mismatch for loan {loan_id}: actor={actor}, lender={lender}")
             return None, f"Loan ID {loan_id} exists, but it is recorded under lender u/{lender}. Only that lender can use $paid_with_id for this loan."
-        if actor_role == "borrower" and actor.lower() != borrower.lower():
+        if actor_role == "borrower" and (borrower or "").lower() not in actor_names:
             logger.warning(f"Repaid auth mismatch for loan {loan_id}: actor={actor}, borrower={borrower}")
             return None, f"No loan {loan_id} found where you are the borrower."
 
@@ -538,7 +580,8 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         ''', (new_repaid, new_status, datetime.now(), _timing, db_id))
 
         cur.execute('''
-            UPDATE users SET amount_repaid = amount_repaid + %s, last_updated = %s WHERE username = %s
+            UPDATE users SET amount_repaid = amount_repaid + %s, last_updated = %s
+            WHERE lower(username) = lower(%s)
         ''', (amount_paid, datetime.now(), borrower))
 
         if status == "unpaid":
@@ -548,14 +591,14 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
                         unpaid_loans = GREATEST(unpaid_loans - 1, 0),
                         unpaid_amount = GREATEST(unpaid_amount - %s, 0),
                         last_updated = %s
-                    WHERE username = %s
+                    WHERE lower(username) = lower(%s)
                 ''', (amount_paid, datetime.now(), borrower))
             else:
                 cur.execute('''
                     UPDATE users SET
                         unpaid_amount = GREATEST(unpaid_amount - %s, 0),
                         last_updated = %s
-                    WHERE username = %s
+                    WHERE lower(username) = lower(%s)
                 ''', (amount_paid, datetime.now(), borrower))
 
         conn.commit()
@@ -615,27 +658,29 @@ def mark_unpaid(loan_id: str, lender: str):
     try:
         cur = conn.cursor()
 
+        lender_clause, lender_params = _alias_match("lender", account_aliases(lender))
+
         schema_mode = "dashboard"
         try:
-            cur.execute('''
+            cur.execute(f'''
                 SELECT id, amount, currency, amount_repaid, original_thread, status, borrower,
                        COALESCE(repay_amount, amount)
                 FROM loans
-                WHERE (id::text = %s OR loan_id = %s) AND lower(lender) = lower(%s)
+                WHERE (id::text = %s OR loan_id = %s) AND {lender_clause}
                 ORDER BY id DESC LIMIT 1
-            ''', (loan_id, loan_id, lender))
+            ''', (loan_id, loan_id, *lender_params))
         except Exception as e:
             if not _looks_like_missing_column(e):
                 raise
             conn.rollback()
             schema_mode = "base"
             cur = conn.cursor()
-            cur.execute('''
+            cur.execute(f'''
                 SELECT id, amount, currency, amount_repaid, original_thread, status, borrower
                 FROM loans
-                WHERE id::text = %s AND lower(lender) = lower(%s)
+                WHERE id::text = %s AND {lender_clause}
                 ORDER BY id DESC LIMIT 1
-            ''', (loan_id, lender))
+            ''', (loan_id, *lender_params))
 
         result = cur.fetchone()
         if not result:
@@ -665,7 +710,7 @@ def mark_unpaid(loan_id: str, lender: str):
                 unpaid_loans = unpaid_loans + 1,
                 unpaid_amount = unpaid_amount + %s,
                 last_updated = %s
-            WHERE username = %s
+            WHERE lower(username) = lower(%s)
         ''', (remaining_unpaid, datetime.now(), borrower))
 
         conn.commit()
@@ -705,78 +750,6 @@ def mark_unpaid(loan_id: str, lender: str):
         conn.close()
 
 
-def mark_refunded(lender: str, borrower: str, amount: Decimal, currency: str):
-    """
-    Mark a loan as refunded and reverse stats.
-    Returns (loan_dict, error_message)
-    """
-    conn = _get_db()
-    if not conn:
-        return None, "Database connection failed."
-
-    try:
-        cur = conn.cursor()
-
-        cur.execute('''
-            SELECT id, status FROM loans
-            WHERE lender = %s AND borrower = %s AND amount = %s AND currency = %s
-            ORDER BY date_created DESC LIMIT 1
-        ''', (lender, borrower, amount, currency))
-
-        result = cur.fetchone()
-        if not result:
-            return None, f"No matching loan found from u/{lender} to u/{borrower} for {amount} {currency}."
-
-        db_id, status = result
-
-        if status == "refunded":
-            return None, "This loan has already been marked as refunded."
-        if status == "repaid":
-            return None, "This loan has already been fully repaid and cannot be marked refunded."
-
-        cur.execute('''
-            UPDATE loans SET status = 'refunded', last_updated = %s WHERE id = %s
-        ''', (datetime.now(), db_id))
-
-        cur.execute('''
-            UPDATE users SET
-                loans_as_lender = GREATEST(loans_as_lender - 1, 0),
-                amount_lent = GREATEST(amount_lent - %s, 0),
-                last_updated = %s
-            WHERE username = %s
-        ''', (amount, datetime.now(), lender))
-
-        cur.execute('''
-            UPDATE users SET
-                loans_as_borrower = GREATEST(loans_as_borrower - 1, 0),
-                amount_borrowed = GREATEST(amount_borrowed - %s, 0),
-                last_updated = %s
-            WHERE username = %s
-        ''', (amount, datetime.now(), borrower))
-
-        conn.commit()
-        logger.info(f"Loan {db_id} refunded: {lender} -> {borrower} {amount} {currency}")
-        log_event(
-            "loan_refunded",
-            actor=lender,
-            actor_role="lender",
-            target_user=borrower,
-            loan_id=db_id,
-            source="service",
-            details={"amount": str(amount), "currency": currency},
-        )
-
-        return {"db_id": db_id, "lender": lender, "borrower": borrower, "amount": amount, "currency": currency}, None
-
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"mark_refunded error: {e}", exc_info=True)
-        return None, "Database error while marking loan refunded."
-    finally:
-        cur.close()
-        conn.close()
-
-
 def mark_refunded_by_id(loan_id: str, lender: str):
     """
     Mark a loan as refunded by loan ID. Lender only.
@@ -786,33 +759,36 @@ def mark_refunded_by_id(loan_id: str, lender: str):
     if not conn:
         return None, "Database connection failed."
 
+    aliases = account_aliases(lender)
+    lender_clause, lender_params = _alias_match("lender", aliases)
+
     try:
         cur = conn.cursor()
 
         try:
-            cur.execute('''
-                SELECT id, borrower, amount, currency, status
+            cur.execute(f'''
+                SELECT id, lender, borrower, amount, currency, status
                 FROM loans
-                WHERE (id::text = %s OR loan_id = %s) AND lower(lender) = lower(%s)
+                WHERE (id::text = %s OR loan_id = %s) AND {lender_clause}
                 ORDER BY id DESC LIMIT 1
-            ''', (loan_id, loan_id, lender))
+            ''', (loan_id, loan_id, *lender_params))
         except Exception as e:
             if not _looks_like_missing_column(e):
                 raise
             conn.rollback()
             cur = conn.cursor()
-            cur.execute('''
-                SELECT id, borrower, amount, currency, status
+            cur.execute(f'''
+                SELECT id, lender, borrower, amount, currency, status
                 FROM loans
-                WHERE id::text = %s AND lower(lender) = lower(%s)
+                WHERE id::text = %s AND {lender_clause}
                 ORDER BY id DESC LIMIT 1
-            ''', (loan_id, lender))
+            ''', (loan_id, *lender_params))
 
         result = cur.fetchone()
         if not result:
             return None, f"Could not find a loan with ID {loan_id} where you are the lender."
 
-        db_id, borrower, amount, currency, status = result
+        db_id, loan_lender, borrower, amount, currency, status = result
         amount = Decimal(amount)
 
         if status == "refunded":
@@ -824,20 +800,22 @@ def mark_refunded_by_id(loan_id: str, lender: str):
             UPDATE loans SET status = 'refunded', last_updated = %s WHERE id = %s
         ''', (datetime.now(), db_id))
 
+        # Reverse the stats against the names the loan was recorded under —
+        # those are the rows create_loan incremented.
         cur.execute('''
             UPDATE users SET
                 loans_as_lender = GREATEST(loans_as_lender - 1, 0),
                 amount_lent = GREATEST(amount_lent - %s, 0),
                 last_updated = %s
-            WHERE username = %s
-        ''', (amount, datetime.now(), lender))
+            WHERE lower(username) = lower(%s)
+        ''', (amount, datetime.now(), loan_lender))
 
         cur.execute('''
             UPDATE users SET
                 loans_as_borrower = GREATEST(loans_as_borrower - 1, 0),
                 amount_borrowed = GREATEST(amount_borrowed - %s, 0),
                 last_updated = %s
-            WHERE username = %s
+            WHERE lower(username) = lower(%s)
         ''', (amount, datetime.now(), borrower))
 
         conn.commit()
@@ -1409,9 +1387,14 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
         conn.close()
 
 
-def get_loan_request(request_id: str):
+def get_request_summary(request_id: str):
     """
-    Fetch a loan request by REQ-XXXX id.
+    Fetch a loan request by REQ-XXXX id in the legacy bot/`/api/requests` shape.
+
+    Reads the canonical loan_requests columns but returns the older key names
+    ($fund and /api/requests/* consume these). The raw-column view lives in
+    get_loan_request() further down; keep the two apart — see the route-conflict
+    note in CLAUDE.md.
     Returns (request_dict, error)
     """
     conn = _get_db()
@@ -1445,7 +1428,7 @@ def get_loan_request(request_id: str):
             "expires_at":     None,
         }, None
     except Exception as e:
-        logger.error(f"get_loan_request error: {e}", exc_info=True)
+        logger.error(f"get_request_summary error: {e}", exc_info=True)
         return None, "Database error fetching request."
     finally:
         cur.close()
@@ -1458,7 +1441,7 @@ def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_d
     Creates a live loan and marks the request as funded.
     Returns (loan_id, error)
     """
-    req, err = get_loan_request(request_id)
+    req, err = get_request_summary(request_id)
     if err:
         return None, err
     if req["status"] != "open":
@@ -1518,7 +1501,7 @@ def cancel_loan_request(request_id: str, actor: str, actor_role: str = "lender",
     Mark an open loan request as cancelled from a specific REQ-ID workflow.
     This is not a browsable marketplace action; it only records a decision on a known request.
     """
-    req, err = get_loan_request(request_id)
+    req, err = get_request_summary(request_id)
     if err:
         return None, err
     if req["status"] != "open":
@@ -1531,9 +1514,9 @@ def cancel_loan_request(request_id: str, actor: str, actor_role: str = "lender",
         cur = conn.cursor()
         cur.execute('''
             UPDATE loan_requests
-            SET status = 'cancelled',
+            SET request_status = 'cancelled',
                 lender_note = COALESCE(NULLIF(%s, ''), lender_note)
-            WHERE request_id = %s AND status = 'open'
+            WHERE request_id = %s AND request_status = 'open'
         ''', (note or "", request_id.upper()))
         if cur.rowcount == 0:
             conn.rollback()
@@ -1637,47 +1620,6 @@ def find_duplicate_open_requests(borrower: str, exclude_reddit_post_id: str = No
         conn.close()
 
 
-def expire_old_requests(days: int = None):
-    """Mark open requests expired after configured/requested days."""
-    if days is None:
-        try:
-            days = int(os.getenv("REQUEST_EXPIRE_DAYS", "7"))
-        except ValueError:
-            days = 7
-    cutoff = datetime.now() - timedelta(days=max(1, days))
-    conn = _get_db()
-    if not conn:
-        return None, "Database connection failed."
-    try:
-        cur = conn.cursor()
-        cur.execute('''
-            UPDATE loan_requests
-            SET request_status = 'expired'
-            WHERE request_status = 'open'
-              AND created_at < %s
-            RETURNING request_id, borrower_username
-        ''', (cutoff,))
-        rows = cur.fetchall()
-        conn.commit()
-        for request_id, borrower in rows:
-            log_event(
-                "request_expired",
-                actor=None,
-                target_user=borrower,
-                request_id=request_id,
-                source="system",
-                details={"days": days},
-            )
-        return len(rows), None
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"expire_old_requests error: {e}", exc_info=True)
-        return None, "Database error expiring requests."
-    finally:
-        cur.close()
-        conn.close()
-
-
 # ---------------------------------------------------------------------------
 # Role / Auth Services
 # ---------------------------------------------------------------------------
@@ -1745,7 +1687,18 @@ def set_user_role(username: str, role: str, actor: str = None, actor_role: str =
 
 
 def update_last_login(username: str):
-    """Upsert user_roles on login — creates borrower record if first time."""
+    """Upsert user_roles on login — creates a borrower record if first time.
+
+    Resolves the name first: when it is a Reddit handle already linked to a
+    dashboard account, touch that account instead of inserting a second,
+    unverified row. Such a shadow row outranks nothing but shadows everything —
+    it is what made verified lenders read as plain borrowers after their first
+    bot command.
+    """
+    identity, _error = resolve_user_identity(username)
+    target = (identity or {}).get("username") or (username or "").strip().lower()
+    if not target:
+        return
     conn = _get_db()
     if not conn:
         return
@@ -1755,7 +1708,7 @@ def update_last_login(username: str):
             INSERT INTO user_roles (username, role, last_login)
             VALUES (%s, 'borrower', NOW())
             ON CONFLICT (username) DO UPDATE SET last_login = NOW()
-        """, (username.lower(),))
+        """, (target,))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -2707,8 +2660,106 @@ def set_verified_lender(username: str, verified: bool, granted_by: str,
         conn.close()
 
 
+def normalize_username(name: str) -> str:
+    """Strip u/ or /u/ decoration and casing off a username."""
+    key = (name or "").strip()
+    if key.startswith("/"):
+        key = key[1:]
+    if key.lower().startswith("u/"):
+        key = key[2:]
+    return key.strip().lower()
+
+
+def resolve_user_identity(name: str):
+    """
+    Map a name to the canonical account, matching on either the dashboard
+    username or the linked Reddit handle.
+
+    The bot only ever knows a Reddit handle while user_roles is keyed on the
+    dashboard username, so bot-side permission and loan lookups must go through
+    here or a lender whose two names differ is invisible to the bot.
+
+    Returns (identity, error) where identity is:
+        {"username": canonical dashboard username,
+         "reddit_username": linked handle or None,
+         "aliases": every lowercase name this account may be recorded under}
+    A name with no user_roles row resolves to itself, so bot-only accounts that
+    never touched the dashboard keep working.
+    """
+    key = normalize_username(name)
+    if not key:
+        return None, "No username supplied."
+
+    unlinked = {"username": key, "reddit_username": None, "aliases": [key]}
+
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT username, reddit_username
+            FROM user_roles
+            WHERE lower(username) = %s OR lower(reddit_username) = %s
+        """, (key, key))
+        rows = cur.fetchall() or []
+    except Exception as e:
+        logger.error(f"resolve_user_identity error: {e}", exc_info=True)
+        return None, "Database error resolving account."
+    finally:
+        cur.close()
+        conn.close()
+
+    if not rows:
+        return unlinked, None
+
+    if len(rows) > 1:
+        # An explicit reddit_username link, set by a moderator, outranks a bare
+        # username match: bot activity can auto-create a shell user_roles row
+        # under the Reddit handle, and that row must not shadow the real
+        # account. Only a genuinely contested handle is an error.
+        linked = [r for r in rows if (r[1] or "").lower() == key]
+        if len(linked) == 1:
+            rows = linked
+        else:
+            candidates = linked or [r for r in rows if (r[0] or "").lower() == key]
+            if len(candidates) != 1:
+                owners = ", ".join(sorted((r[0] or "?") for r in rows))
+                logger.error(f"Ambiguous identity for '{key}' — claimed by: {owners}")
+                return None, (
+                    f"The name u/{key} is linked to more than one LoanCentral account "
+                    f"({owners}). A moderator needs to resolve the duplicate link."
+                )
+            rows = candidates
+
+    db_username, reddit_username = rows[0]
+    aliases = {key}
+    if db_username:
+        aliases.add(db_username.lower())
+    if reddit_username:
+        aliases.add(reddit_username.lower())
+    return {
+        "username": (db_username or key).lower(),
+        "reddit_username": (reddit_username or None),
+        "aliases": sorted(aliases),
+    }, None
+
+
+def account_aliases(name: str):
+    """Every lowercase name an account may be recorded under. Falls back to the
+    given name so a lookup failure narrows results instead of widening them."""
+    identity, error = resolve_user_identity(name)
+    if error or not identity:
+        return [normalize_username(name)]
+    return identity["aliases"]
+
+
 def get_verified_lender_status(username: str):
-    """Returns (is_verified, details_dict, error)."""
+    """
+    Returns (is_verified, details_dict, error).
+
+    Accepts either a dashboard username or a linked Reddit handle.
+    """
     conn = _get_db()
     if not conn:
         return False, {}, "Database connection failed"
@@ -2717,8 +2768,13 @@ def get_verified_lender_status(username: str):
         cur.execute("""
             SELECT verified_lender, verified_lender_at, verified_lender_by,
                    verification_note, role
-            FROM user_roles WHERE lower(username)=lower(%s)
-        """, (username,))
+            FROM user_roles
+            WHERE lower(username)=lower(%s) OR lower(reddit_username)=lower(%s)
+            ORDER BY CASE WHEN lower(reddit_username)=lower(%s) THEN 0 ELSE 1 END,
+                     CASE WHEN verified_lender THEN 0 ELSE 1 END,
+                     CASE WHEN lower(username)=lower(%s) THEN 0 ELSE 1 END
+            LIMIT 1
+        """, (username, username, username, username))
         row = cur.fetchone()
         if not row:
             return False, {}, None
@@ -5211,11 +5267,18 @@ def get_request_analytics():
         conn.close()
 
 
-def expire_old_requests(days: int = 10, dry_run: bool = False):
+def expire_old_requests(days: int = None, dry_run: bool = False):
     """
     Mark open requests older than `days` days as expired.
+    days=None falls back to REQUEST_EXPIRE_DAYS, then 10.
     Never deletes. Returns (expired_count, error).
     """
+    if days is None:
+        try:
+            days = int(os.getenv("REQUEST_EXPIRE_DAYS", "10"))
+        except ValueError:
+            days = 10
+    days = max(1, int(days))
     conn = _get_db()
     if not conn:
         return 0, "Database connection failed"

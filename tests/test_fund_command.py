@@ -1,3 +1,4 @@
+import os
 import importlib
 import unittest
 from unittest.mock import patch
@@ -10,7 +11,7 @@ class FundCommandTests(unittest.TestCase):
         comment = FakeComment(body=body, author_name="lender", subreddit=FakeSubreddit(flair_text=flair_text))
         fund_command = importlib.import_module("commands.fund_command")
         vl_return = (True, None, None) if is_verified_lender else (False, None, None)
-        with patch("services.get_loan_request") as get_req, \
+        with patch("services.get_request_summary") as get_req, \
              patch("services.fund_loan_request") as fund_req, \
              patch("services.update_last_login"), \
              patch("services.get_verified_lender_status", return_value=vl_return):
@@ -42,13 +43,24 @@ class FundCommandTests(unittest.TestCase):
         fund_req.assert_not_called()
         self.assertIn("verification process", comment.replies[0])
 
-    def test_verified_lender_without_flair_is_rejected(self):
-        comment, _get_req, fund_req = self.run_fund_command(
-            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
-        )
+    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
+            comment, _get_req, fund_req = self.run_fund_command(
+                "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
+            )
 
         fund_req.assert_not_called()
         self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_missing_flair_is_allowed_when_gate_disabled(self):
+        # Default posture: the DB is the source of truth (docs/SECURITY.md rule 2).
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
+            comment, _get_req, fund_req = self.run_fund_command(
+                "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
+            )
+
+        fund_req.assert_called()
+        self.assertNotIn("Verified Lender flair", comment.replies[0])
 
     def test_flair_without_db_verification_is_rejected(self):
         comment, _get_req, fund_req = self.run_fund_command(
@@ -61,7 +73,7 @@ class FundCommandTests(unittest.TestCase):
     def test_currency_mismatch_is_rejected(self):
         comment = FakeComment(body="$fund REQ-0001 125 CAD 2026-06-30", author_name="lender")
         fund_command = importlib.import_module("commands.fund_command")
-        with patch("services.get_loan_request") as get_req, \
+        with patch("services.get_request_summary") as get_req, \
              patch("services.fund_loan_request") as fund_req, \
              patch("services.update_last_login"), \
              patch("services.get_verified_lender_status", return_value=(True, None, None)):

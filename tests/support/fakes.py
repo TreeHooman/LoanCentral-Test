@@ -113,7 +113,7 @@ class FakeRedditor:
 
 
 class FakeDb:
-    def __init__(self, loans=None, users=None, verified_lenders=None):
+    def __init__(self, loans=None, users=None, verified_lenders=None, reddit_links=None):
         self.loans = deepcopy(loans or [])
         self.users = deepcopy(users or {})
         self.next_id = max([loan["id"] for loan in self.loans], default=0) + 1
@@ -124,6 +124,17 @@ class FakeDb:
             self.verified_lenders = {"lender"}
         else:
             self.verified_lenders = set(verified_lenders)
+        # {dashboard_username: reddit_username} — mirrors user_roles.reddit_username.
+        self.reddit_links = {k.lower(): v.lower() for k, v in (reddit_links or {}).items()}
+
+    def aliases_for(self, name):
+        """Every name an account is recorded under, as resolve_user_identity sees it."""
+        key = (name or "").lower()
+        names = {key}
+        for dash_user, reddit_user in self.reddit_links.items():
+            if key in (dash_user, reddit_user):
+                names.update({dash_user, reddit_user})
+        return names
 
     def connection(self):
         return FakeConnection(self)
@@ -313,10 +324,12 @@ class FakeCursor:
             return
 
         if normalized.startswith("select id, amount, currency, amount_repaid"):
-            # mark_unpaid query: WHERE (id::text = %s OR loan_id = %s) AND lender = %s
-            db_id, _db_id_again, lender = params
+            # mark_unpaid: WHERE (id::text = %s OR loan_id = %s)
+            #                AND lower(lender) IN (one %s per alias)
+            db_id, _db_id_again, *lender_aliases = params
+            aliases = {(a or "").lower() for a in lender_aliases}
             loan = self.fake_db.find_loan(db_id)
-            if loan and loan.get("lender") != lender:
+            if loan and (loan.get("lender") or "").lower() not in aliases:
                 loan = None
             self.last_result = None if not loan else (
                 loan["id"],
@@ -330,14 +343,17 @@ class FakeCursor:
             )
             return
 
-        if normalized.startswith("select id, borrower, amount, currency, status"):
-            # mark_refunded_by_id query: WHERE (id::text = %s OR loan_id = %s) AND lender = %s
-            db_id, _db_id_again, lender = params
+        if normalized.startswith("select id, lender, borrower, amount, currency, status"):
+            # mark_refunded_by_id: WHERE (id::text = %s OR loan_id = %s)
+            #                        AND lower(lender) IN (one %s per alias)
+            db_id, _db_id_again, *lender_aliases = params
+            aliases = {(a or "").lower() for a in lender_aliases}
             loan = self.fake_db.find_loan(db_id)
-            if loan and loan.get("lender") != lender:
+            if loan and (loan.get("lender") or "").lower() not in aliases:
                 loan = None
             self.last_result = None if not loan else (
                 loan["id"],
+                loan["lender"],
                 loan["borrower"],
                 loan["amount"],
                 loan["currency"],
@@ -601,10 +617,28 @@ class FakeCursor:
             self.last_result = None
             return
 
+        # resolve_user_identity — match a name against username or reddit_username
+        if normalized.startswith("select username, reddit_username") and "from user_roles" in normalized:
+            key = (params[0] or "").lower()
+            rows = [
+                (dash_user, reddit_user)
+                for dash_user, reddit_user in self.fake_db.reddit_links.items()
+                if key in (dash_user, reddit_user)
+            ]
+            self.last_result = rows
+            return
+
         # get_verified_lender_status — SELECT verified_lender ... FROM user_roles
         if "select verified_lender" in normalized and "from user_roles" in normalized:
             username = (params[0] or "").lower()
-            is_verified = username in {u.lower() for u in self.fake_db.verified_lenders}
+            known = {u.lower() for u in self.fake_db.verified_lenders}
+            # Only widen to linked names if the real query actually joins on
+            # reddit_username, so this fake can still fail if that clause is lost.
+            if "reddit_username" in normalized:
+                candidates = self.fake_db.aliases_for(username)
+            else:
+                candidates = {username}
+            is_verified = bool(candidates & known)
             if is_verified:
                 from datetime import datetime
                 self.last_result = (True, datetime(2026, 1, 1), "mod", "Fake verified", "lender")

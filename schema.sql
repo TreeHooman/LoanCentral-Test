@@ -80,30 +80,30 @@ CREATE TABLE IF NOT EXISTS loan_attachments (
 );
 CREATE INDEX IF NOT EXISTS idx_attachments_loan_id ON loan_attachments(loan_id);
 
--- Loan requests table — created when bot sees a [REQ] post, funded when lender confirms on dashboard
+-- Loan requests table — created when bot sees a [REQ] post, funded when lender confirms on dashboard.
+-- Canonical shape: matches services._ensure_loan_requests_table and prod
+-- (prod was renamed from the old bot columns by migrations/migrate_loan_requests.py).
 CREATE TABLE IF NOT EXISTS loan_requests (
     id SERIAL PRIMARY KEY,
-    request_id TEXT UNIQUE NOT NULL,         -- e.g. REQ-0042
-    borrower TEXT NOT NULL,
-    amount NUMERIC NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'USD',
-    repay_amount NUMERIC,                    -- NULL if not stated in post, mandatory before funding
-    repay_date DATE,                         -- NULL if not stated in post
-    payment_method TEXT,                     -- PayPal, Venmo, etc. if stated
-    lender_note TEXT,
-    expires_at TIMESTAMP,
-    post_date TIMESTAMP NOT NULL,
-    thread_link TEXT NOT NULL,
-    reddit_post_id TEXT,                     -- raw Reddit post ID for dedup
-    status TEXT NOT NULL DEFAULT 'open',     -- open, funded, expired, cancelled
-    funded_by TEXT,                          -- lender username, set when funded
-    funded_date TIMESTAMP,
-    loan_id TEXT,                            -- FK to loans.loan_id once funded
-    created_at TIMESTAMP DEFAULT NOW()
+    request_id VARCHAR(20) NOT NULL UNIQUE,      -- e.g. REQ-0042
+    borrower_username VARCHAR(100) NOT NULL,
+    reddit_username VARCHAR(100),
+    requested_amount NUMERIC(12,2),
+    requested_repayment_amount NUMERIC(12,2),
+    requested_due_date DATE,
+    request_status VARCHAR(30) NOT NULL DEFAULT 'open',  -- open, funded, expired, cancelled
+    thread_url TEXT,
+    reddit_post_id VARCHAR(30),                  -- raw Reddit post ID for dedup
+    reddit_comment_id VARCHAR(30),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    funded_loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL,
+    notes TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_loan_requests_status   ON loan_requests(status);
-CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower ON loan_requests(borrower);
+CREATE INDEX IF NOT EXISTS idx_lr_borrower ON loan_requests (lower(borrower_username));
+CREATE INDEX IF NOT EXISTS idx_lr_status   ON loan_requests (request_status);
+CREATE INDEX IF NOT EXISTS idx_lr_created  ON loan_requests (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_loan_requests_request_id ON loan_requests(request_id);
 
 -- Immutable activity/audit events for bot, dashboard, and mod actions

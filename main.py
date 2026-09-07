@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import threading
 import sys
 import time
@@ -257,14 +258,31 @@ class CommandManager:
                 logger.error(f"Error loading command from {command_file}: {e}")
                 logger.error(traceback.format_exc())
     
+    @staticmethod
+    def _commandable_text(body):
+        """Lowercased comment text with quoted and fenced content removed.
+
+        Users quote the bot's own replies (which contain literal `$paid_with_id
+        ...` examples) and each other's commands; matching those would re-fire
+        commands nobody issued.
+        """
+        text = body or ""
+        text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)   # fenced blocks
+        lines = [
+            line for line in text.splitlines()
+            if not line.lstrip().startswith((">", "&gt;"))         # quoted lines
+            and not line.startswith("    ")                        # indented code
+        ]
+        return "\n".join(lines).lower()
+
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
         bot_username = (os.getenv("REDDIT_USERNAME") or "").lower()
         if comment.author is None or comment.author.name.lower() == bot_username:
             return
         
-        body_lower = comment.body.lower()
-        
+        body_lower = self._commandable_text(comment.body)
+
         # Check each command trigger
         for trigger, command_func in self.commands.items():
             if trigger in body_lower:
@@ -423,7 +441,34 @@ def post_monitor():
             logger.info("Reconnecting in 60 seconds...")
             time.sleep(60)
 
+def _preflight():
+    """Refuse to start against the live API with an incomplete configuration.
+
+    A bot with placeholder credentials or a placeholder user agent is the kind
+    of client Reddit throttles or blocks, so fail loudly here instead of
+    finding out in production.
+    """
+    from utils import reddit_config_problems
+
+    mode = (os.getenv("REDDIT_MODE") or "live").strip().lower()
+    if mode in ("dry_run", "dry-run", "dryrun", "off"):
+        logger.warning(f"REDDIT_MODE={mode}: running offline, no Reddit API calls will be made")
+        return
+
+    problems = reddit_config_problems()
+    if problems:
+        for problem in problems:
+            logger.error(f"Reddit config problem: {problem}")
+        sys.exit(
+            "Refusing to start against the live Reddit API with an incomplete "
+            "configuration (see the errors above). Fix them, or set "
+            "REDDIT_MODE=dry_run to run offline."
+        )
+
+
 if __name__ == "__main__":
+    _preflight()
+
     if not init_database():
         sys.exit("Failed to initialize database, exiting")
 

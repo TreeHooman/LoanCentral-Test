@@ -1,6 +1,7 @@
 """
 Tests for $refunded [loan_id] - lender cancels a loan by ID.
 """
+import os
 import importlib
 import sys
 import unittest
@@ -85,13 +86,29 @@ class RefundCommandTests(unittest.TestCase):
         comment, _ = self.run_refund_command(fake_db, "$refunded 41")
         self.assertIn("already been fully repaid", comment.replies[0])
 
-    def test_verified_lender_without_flair_is_rejected(self):
+    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
         fake_db = FakeDb(loans=[loan_record(db_id=41)])
-        comment, subreddit = self.run_refund_command(fake_db, "$refunded 41", flair_text="")
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
+            comment, subreddit = self.run_refund_command(fake_db, "$refunded 41", flair_text="")
 
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertEqual(subreddit.messages, [])
         self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_missing_flair_is_allowed_when_gate_disabled(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=41)])
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
+            comment, _subreddit = self.run_refund_command(fake_db, "$refunded 41", flair_text="")
+
+        self.assertEqual(fake_db.loans[0]["status"], "refunded")
+
+    def test_flair_read_failure_does_not_lock_out_lender(self):
+        # A 403 from flair() (bot not a mod) must not deny a DB-verified lender.
+        fake_db = FakeDb(loans=[loan_record(db_id=41)])
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}),              patch("commands.lender_gate._has_verified_lender_flair", return_value=(False, False)):
+            comment, _subreddit = self.run_refund_command(fake_db, "$refunded 41")
+
+        self.assertEqual(fake_db.loans[0]["status"], "refunded")
 
 
 if __name__ == "__main__":

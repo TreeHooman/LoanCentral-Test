@@ -1,6 +1,7 @@
 """
 Tests for $unpaid [loan_id] - lender marks a loan unpaid by ID only.
 """
+import os
 import importlib
 import sys
 import unittest
@@ -72,13 +73,22 @@ class UnpaidCommandTests(unittest.TestCase):
         comment = self.run_unpaid_command(fake_db, "$unpaid 31")
         self.assertEqual(fake_db.loans[0]["status"], "unpaid")
 
-    def test_verified_lender_without_flair_is_rejected(self):
+    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
         fake_db = FakeDb(loans=[loan_record(db_id=31)])
 
-        comment = self.run_unpaid_command(fake_db, "$unpaid 31", flair_text="")
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
+            comment = self.run_unpaid_command(fake_db, "$unpaid 31", flair_text="")
 
         self.assertEqual(fake_db.loans[0]["status"], "confirmed")
         self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_missing_flair_is_allowed_when_gate_disabled(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=31)])
+
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
+            comment = self.run_unpaid_command(fake_db, "$unpaid 31", flair_text="")
+
+        self.assertEqual(fake_db.loans[0]["status"], "unpaid")
 
 
 if __name__ == "__main__":

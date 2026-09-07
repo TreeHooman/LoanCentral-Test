@@ -1,3 +1,4 @@
+import os
 import importlib
 import sys
 import unittest
@@ -126,13 +127,22 @@ class PaidCommandTests(unittest.TestCase):
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("has been refunded", comment.replies[0])
 
-    def test_verified_lender_without_flair_is_rejected(self):
+    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
         fake_db = FakeDb(loans=[loan_record(db_id=12)])
 
-        comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", flair_text="")
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
+            comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", flair_text="")
 
         self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("0.00"))
         self.assertIn("Verified Lender flair", comment.replies[0])
+
+    def test_missing_flair_is_allowed_when_gate_disabled(self):
+        fake_db = FakeDb(loans=[loan_record(db_id=12)])
+
+        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
+            comment = self.run_paid_command(fake_db, "$paid_with_id 12 25 USD", flair_text="")
+
+        self.assertEqual(fake_db.loans[0]["amount_repaid"], Decimal("25"))
 
     def test_flair_without_db_verification_is_rejected(self):
         fake_db = FakeDb(loans=[loan_record(db_id=12)], verified_lenders=[])

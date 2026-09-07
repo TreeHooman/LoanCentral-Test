@@ -1,0 +1,31 @@
+# Demo: full loan lifecycle without Reddit.
+# Run with: python scripts/simulate.py scripts/scenarios/demo_loan_lifecycle.txt --reset
+
+# Borrower opens a [REQ] post - bot posts their history and a request ID.
+post u/sim_bob: [REQ] ($50) - (Springfield, USA), (repay 60 by 2026-08-01), (PayPal)
+requests
+
+# Unverified lender tries to record a loan - the DB gate rejects it.
+u/sim_alice: $loan 50 USD u/sim_bob
+
+# Moderator verifies alice (DB + flair), then the loan goes through.
+verify u/sim_alice
+u/sim_alice: $loan 50 USD u/sim_bob
+loans
+
+# Flair removed while still DB-verified. The flair gate is opt-in
+# (REQUIRE_LENDER_FLAIR) and off by default, so this loan is still recorded -
+# the DB is the source of truth for permissions.
+flair u/sim_alice off
+u/sim_alice: $loan 25 USD u/sim_bob
+loans
+flair u/sim_alice on
+
+# Borrower repays in two installments.
+u/sim_alice: $paid_with_id 1 30 USD
+u/sim_alice: $paid_with_id 1 20 USD
+loans
+users
+
+# Anyone can look up a lender's stats.
+u/sim_bob: $logi u/sim_alice

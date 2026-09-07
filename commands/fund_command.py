@@ -33,7 +33,7 @@ def _parse_fund(text):
 
 def process_fund_command(comment):
     """Fund an existing REQ code from Reddit and return the paid ID."""
-    from services import fund_loan_request, get_loan_request, update_last_login
+    from services import fund_loan_request, get_request_summary, update_last_login
 
     parsed = _parse_fund(comment.body)
     if not parsed:
@@ -45,7 +45,7 @@ def process_fund_command(comment):
     if not require_verified_lender(comment):
         return
 
-    req, req_error = get_loan_request(request_id)
+    req, req_error = get_request_summary(request_id)
     if req_error:
         comment.reply(with_dashboard_link(f"Error: {req_error}"))
         return

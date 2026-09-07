@@ -1,0 +1,29 @@
+# Reproduces the reported bug: a lender whose dashboard account name differs
+# from their Reddit handle. Before the identity fix the bot told them they were
+# not a verified lender, and $refunded / $unpaid could not find their loans.
+
+# left_associate is the dashboard account; LeftAssociate is the Reddit handle.
+verify left_associate
+link left_associate u/LeftAssociate
+
+# A borrower posts a request; the bot records it.
+post u/borrower_bob: [REQ] ($200) Need $200 for car repair, repay $220 on 2026-09-15
+
+requests
+
+# The lender funds it from Reddit, under their Reddit handle.
+u/LeftAssociate: $fund REQ-0001 220 USD 2026-09-15
+
+loans
+
+# Partial repayment, then a refund - both issued from the Reddit handle
+# against a loan recorded under the dashboard name.
+u/LeftAssociate: $paid_with_id 1 100 USD
+
+loans
+
+u/LeftAssociate: $refunded 1
+
+loans
+users
+outbox

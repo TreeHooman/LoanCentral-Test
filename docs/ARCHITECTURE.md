@@ -30,9 +30,18 @@ Browser / API ────────┘
   `COMMAND_TRIGGER` and a `process_*` function is loaded automatically — adding
   a bot command means adding one file, no `main.py` edits.
 - Lender-only commands (`$loan`, `$fund`, `$paid_with_id`, `$unpaid`,
-  `$refund`) call `commands/lender_gate.require_verified_lender` first:
-  DB `verified_lender` is the granting gate; Reddit flair is a second,
-  restrictive-only gate.
+  `$refund`) call `commands/lender_gate.require_verified_lender` first.
+  DB `verified_lender` is the only granting gate. The Reddit flair check is an
+  optional extra restriction behind `REQUIRE_LENDER_FLAIR=1`, off by default:
+  reading flair needs the bot to hold the `flair` mod permission, so losing mod
+  status denied every lender at once. Even when enabled it fails open — a flair
+  lookup that errors keeps the DB decision rather than locking the lender out.
+- **Identity**: the bot only ever knows a Reddit handle, while `user_roles` is
+  keyed on the dashboard username and links the two via `reddit_username`.
+  All bot-side permission and loan lookups go through
+  `services.resolve_user_identity` / `account_aliases`, which match either name.
+  Run `scripts/check_identity_links.py` to report accounts whose two names have
+  drifted apart.
 - Outbound Reddit writes (bans, reminders, DMs) are **not** made live: they are
   queued in the `reddit_actions` table via `enqueue_reddit_action` for human
   review (see docs/SECURITY.md rule 4).

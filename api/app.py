@@ -2279,8 +2279,8 @@ def expire_requests():
 @app.route("/api/requests/<request_id>", methods=["GET"])
 @require_auth
 def get_request(request_id):
-    from services import find_duplicate_open_requests, get_loan_request
-    req, error = get_loan_request(request_id)
+    from services import find_duplicate_open_requests, get_request_summary
+    req, error = get_request_summary(request_id)
     if error:
         return _json({"error": error}, 404)
     duplicates, dup_error = find_duplicate_open_requests(
@@ -2298,13 +2298,13 @@ def get_request(request_id):
 @app.route("/api/requests/<request_id>/note", methods=["POST"])
 @require_auth
 def note_request(request_id):
-    from services import _get_db, get_loan_request, log_event
+    from services import _get_db, get_request_summary, log_event
     data = request.get_json() or {}
     note = data.get("note", "").strip()
     if not note:
         return _json({"error": "note is required"}, 400)
 
-    req, error = get_loan_request(request_id)
+    req, error = get_request_summary(request_id)
     if error:
         return _json({"error": error}, 404)
     if session.get("role") not in ("lender", "mod", "admin"):
