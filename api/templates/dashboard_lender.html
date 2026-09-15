@@ -184,6 +184,11 @@
 {% endblock %}
 
 {% block scripts %}
+{% if pending_request_id %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => openNewLoanModal({{ pending_request_id | tojson }}));
+</script>
+{% endif %}
 <style>
   .sort-head { background:none;border:0;color:var(--muted);font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;padding:0;text-align:left; }
   .sort-head:hover { color:var(--text); }

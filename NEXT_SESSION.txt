@@ -1,3 +1,29 @@
+Current handoff - 2026-09-08
+
+- Owner emphasized preserving the existing bot and avoiding account/API risk.
+  Keep development local; do not push, deploy, start live Reddit tests, or change
+  the other computer's bot as a side effect of development. No ban-proof
+  guarantee is possible; verify approved use and shared-account limits before
+  a deliberate live test. Do not delete/recreate the account or API registration.
+- Request-Code Funding is implemented locally, not pushed/deployed.
+- Last code verification: 620 tests passed; desktop/mobile browser flow passed.
+- Feature: docs/REQUEST_CODE_FLOW.md; release: docs/REQUEST_CODE_RELEASE.md.
+- Community brainstorm: docs/COMMUNITY_RECOVERY.md (draft, not posted).
+- New API account is not assumed. Owner prefers existing bot account and EU sub.
+- Do not delete/recreate the working bot, its app registration, or its data.
+- Owner confirmed the legacy bot runs on a separate computer. Its runtime,
+  revision, restart setup, exact EU target, and production login remain to verify.
+- Owner confirmed lenders alone mark/update loans. Borrower confirmation is
+  not required. Keep that flow; prepare matching pinned instructions for launch.
+- Owner reports declining participation due to too few lenders. New-lender
+  recruitment waits for the bot release/rebrand. Use existing lenders for pilots.
+- Offline title checks found missing bare-dollar principal parsing and missing
+  Payback/[REPAY] repayment parsing. These need coverage before live release.
+- Existing local demo: http://127.0.0.1:5055 (availability depends on process).
+- No production configuration, Reddit content, or credentials changed.
+
+Historical notes below (not current release status):
+
 Latest local dev DB refresh - 2026-06-24
 
 - Active local dashboard URL: http://127.0.0.1:5000

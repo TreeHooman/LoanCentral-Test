@@ -17,6 +17,7 @@ from io import StringIO
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import wraps
+from urllib.parse import urlsplit
 
 # Parent directory on path so we can import services / utils
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +37,7 @@ _is_prod = os.getenv("LOANCENTRAL_ENV", "prod") == "prod"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = _is_prod  # HTTPS only in prod
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 API_KEY = os.getenv("API_KEY", "changeme")
 # Master-key auth is disabled when API_KEY is unset or left at the insecure
@@ -44,7 +46,7 @@ API_KEY_AUTH_ENABLED = bool(API_KEY) and API_KEY != "changeme"
 
 
 def _api_key_ok(key):
-    return API_KEY_AUTH_ENABLED and key == API_KEY
+    return API_KEY_AUTH_ENABLED and isinstance(key, str) and secrets.compare_digest(key, API_KEY)
 IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(PROJECT_ROOT, "uploads"))
@@ -138,6 +140,52 @@ def add_security_headers(response):
     if _is_prod:
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
+
+
+@app.before_request
+def reject_cross_origin_writes():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if request.headers.get("Sec-Fetch-Site") == "cross-site":
+        return _json({"error": "Cross-site writes are not allowed."}, 403)
+    origin = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+    source = origin if origin is not None else referer
+    if source is not None:
+        try:
+            parsed = urlsplit(source)
+            target = urlsplit(request.host_url)
+            same_origin = (parsed.scheme, parsed.netloc) == (target.scheme, target.netloc)
+        except ValueError:
+            same_origin = False
+        if not same_origin:
+            return _json({"error": "Cross-origin writes are not allowed."}, 403)
+
+
+@app.before_request
+def validate_key_session():
+    if session.get("auth_method") != "key" or request.path.startswith("/static/"):
+        return None
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Unable to verify session."}, 503)
+    try:
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT k.username, r.role FROM lender_keys k
+            JOIN user_roles r ON r.username = k.username
+            WHERE k.key_hash = %s AND k.active = TRUE AND k.username = %s
+        ''', (session.get("key_hash", ""), session.get("username", "")))
+        row = cur.fetchone()
+    except Exception:
+        return _json({"error": "Unable to verify session."}, 503)
+    finally:
+        conn.close()
+    if not row:
+        session.clear()
+        return _json({"error": "Session revoked. Sign in again."}, 401)
+    session["role"] = row[1]
 
 
 @app.before_request
@@ -469,6 +517,30 @@ def _is_lender_verified_fresh(username: str) -> bool:
     return verified
 
 
+def _lender_write_actor(data):
+    if not isinstance(data, dict):
+        return None, _json({"error": "Expected a JSON object."}, 400)
+    actor = session.get("username", "").strip().lower()
+    if not actor or session.get("role") not in ("lender", "admin"):
+        return None, _json({"error": "Verified lender session required."}, 403)
+    if data.get("lender") is not None and data["lender"] != actor:
+        return None, _json({"error": "You can only act as yourself."}, 403)
+    if not _is_lender_verified_fresh(actor):
+        return None, _json({"error": "Verified lender access required."}, 403)
+    return actor, None
+
+
+def _money_input(value):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)) or len(str(value)) > 100:
+        raise ValueError("Invalid amount")
+    number = Decimal(str(value))
+    if not number.is_finite() or number <= 0 or number > Decimal("9999999999.99"):
+        raise ValueError("Invalid amount")
+    if number != number.quantize(Decimal("0.01")):
+        raise ValueError("Use at most two decimal places")
+    return number
+
+
 def verified_lender_required(f):
     """
     Requires verified lender, mod, or admin.
@@ -559,23 +631,30 @@ def home():
     return redirect(url_for("dashboard_borrower"))
 
 
-@app.route("/auth/key")
+@app.route("/auth/key", methods=["POST"])
 def auth_key():
-    """Log in with a lender API key. GET /auth/key?k=<key>"""
-    from services import validate_lender_key, get_user_role
-    key = request.args.get("k", "").strip()
+    """Receive credentials in a header, never in a URL."""
+    from services import validate_lender_key, get_user_role, _key_hash
+    if not _otp_check_rate(request.remote_addr):
+        return _json({"error": "Too many login attempts. Try again later."}, 429)
+    key = request.headers.get("X-API-Key", "").strip()
     if not key:
-        flash("No key provided.", "error")
-        return redirect(url_for("login"))
+        return _json({"error": "A lender key is required."}, 400)
     username, error = validate_lender_key(key)
     if error or not username:
-        flash("Invalid or revoked key. Contact your admin.", "error")
-        return redirect(url_for("login"))
-    role, _ = get_user_role(username)
+        return _json({"error": "Invalid or revoked key."}, 401)
+    role, role_error = get_user_role(username)
+    if role_error:
+        return _json({"error": "Unable to verify account."}, 503)
+    pending_request = session.get("pending_fund_request")
+    session.clear()
+    if pending_request:
+        session["pending_fund_request"] = pending_request
     session["username"] = username
     session["role"] = role or "lender"
     session["auth_method"] = "key"
-    return redirect(url_for("home"))
+    session["key_hash"] = _key_hash(key)
+    return _json({"ok": True, "redirect": url_for("home")})
 
 
 @app.route("/dashboard/admin/keys")
@@ -697,13 +776,17 @@ def api_borrower_claim():
     if not _otp_check_rate(request.remote_addr):
         return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
     from services import (verify_borrower_loan_claim, get_borrower_contact,
-                          create_borrower_otp, set_borrower_contact)
+                          create_borrower_otp)
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or any(not isinstance(data.get(k, ""), str) for k in ("username", "loan_id", "via")):
+        return _json({"error": "Invalid login request."}, 400)
     username  = (data.get("username") or "").strip().lower()
     loan_id   = (data.get("loan_id") or "").strip()
     via       = (data.get("via") or "email").strip()          # 'email' | 'sms'
-    new_email = (data.get("new_email") or "").strip() or None
-    new_phone = (data.get("new_phone") or "").strip() or None
+    if data.get("new_email") or data.get("new_phone"):
+        return _json({"error": "Contact changes require moderator verification."}, 403)
+    if via not in ("email", "sms"):
+        return _json({"error": "Invalid delivery method."}, 400)
 
     if not username or not loan_id:
         return _json({"error": "Username and loan ID are required."}, 400)
@@ -714,20 +797,16 @@ def api_borrower_claim():
     if not matched:
         return _json({"error": "No loan found for that username and loan ID."}, 400)
 
-    # Allow borrower to register contact info on first claim
-    if new_email or new_phone:
-        set_borrower_contact(username, contact_email=new_email, contact_phone=new_phone)
-
     email, phone = get_borrower_contact(username)
 
     if via == "sms":
         contact = phone
         if not contact:
-            return _json({"error": "No phone number on file. Please provide one."}, 400)
+            return _json({"error": "Contact a moderator to verify your phone number."}, 400)
     else:
         contact = email
         if not contact:
-            return _json({"error": "No email address on file. Please provide one."}, 400)
+            return _json({"error": "Contact a moderator to verify your email address."}, 400)
 
     code, err = create_borrower_otp(username, contact, via)
     if err:
@@ -740,7 +819,7 @@ def api_borrower_claim():
             _send_otp_email(contact, code)
     except Exception as e:
         logger.error(f"OTP send failed: {e}", exc_info=True)
-        return _json({"error": f"Failed to send code: {e}"}, 500)
+        return _json({"error": "Unable to send the code. Please try again later."}, 503)
 
     masked = contact[:2] + "***" + contact[-4:] if len(contact) > 6 else "***"
     return _json({"ok": True, "masked": masked, "via": via})
@@ -753,6 +832,8 @@ def api_borrower_verify():
         return _json({"error": "Too many attempts. Please wait 15 minutes and try again."}, 429)
     from services import verify_borrower_otp, get_user_role, update_last_login
     data     = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or any(not isinstance(data.get(k, ""), str) for k in ("username", "code")):
+        return _json({"error": "Invalid login request."}, 400)
     username = (data.get("username") or "").strip().lower()
     code     = (data.get("code") or "").strip()
     if not username or not code:
@@ -760,10 +841,10 @@ def api_borrower_verify():
     ok, err = verify_borrower_otp(username, code)
     if not ok:
         return _json({"error": err or "Invalid code."}, 400)
-    role, _ = get_user_role(username)
+    session.clear()
     session.permanent = True
     session["username"]    = username
-    session["role"]        = role or "borrower"
+    session["role"]        = "borrower"
     session["auth_method"] = "otp"
     update_last_login(username)
     return _json({"ok": True, "redirect": url_for("home")})
@@ -1096,7 +1177,20 @@ def dashboard_lender():
     return render_template("dashboard_lender.html",
                            username=session["username"],
                            role=session["role"],
-                           verified_lender=session.get("verified_lender", False))
+                           verified_lender=session.get("verified_lender", False),
+                           pending_request_id=session.pop("pending_fund_request", None))
+
+
+@app.route("/record-request/<request_id>")
+def record_request_link(request_id):
+    from services import normalize_request_id
+    request_id = normalize_request_id(request_id)
+    if not request_id:
+        return _json({"error": "Invalid request code."}, 404)
+    session["pending_fund_request"] = request_id
+    if not session.get("username"):
+        return redirect(url_for("login"))
+    return redirect(url_for("dashboard_lender"))
 
 
 @app.route("/dashboard/borrower")
@@ -1473,6 +1567,9 @@ def update_loan_terms(loan_id):
 def bulk_mark_paid():
     from services import _get_db, mark_repaid
     data = request.get_json() or {}
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     loan_ids = data.get("loan_ids") or []
     lender = data.get("lender", session.get("username", "")).strip().lower()
 
@@ -1541,7 +1638,9 @@ def bulk_mark_paid():
 def set_loan_unpaid(loan_id):
     from services import mark_unpaid
     data   = request.get_json() or {}
-    lender = data.get("lender", session.get("username", "")).strip().lower()
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     if not lender:
         return _json({"error": "lender is required"}, 400)
     if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
@@ -1557,7 +1656,9 @@ def set_loan_unpaid(loan_id):
 def set_loan_refunded(loan_id):
     from services import mark_refunded_by_id
     data   = request.get_json() or {}
-    lender = data.get("lender", session.get("username", "")).strip().lower()
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     if not lender:
         return _json({"error": "lender is required"}, 400)
     if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
@@ -1713,15 +1814,24 @@ def report_payment(loan_id):
 def set_loan_paid(loan_id):
     from services import mark_repaid
     data     = request.get_json() or {}
-    lender   = data.get("lender", session.get("username", "")).strip().lower()
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     amount   = data.get("amount")
-    currency = data.get("currency", "").upper()
+    currency = data.get("currency", "")
+    if not isinstance(currency, str):
+        return _json({"error": "Invalid currency."}, 400)
+    currency = currency.upper()
     timing   = data.get("timing")  # 'early', 'late', 'on_time', or None
     if not all([lender, amount, currency]):
         return _json({"error": "lender, amount, and currency are required"}, 400)
     if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
         return _json({"error": "Verified lender access required."}, 403)
-    result, error = mark_repaid(loan_id, Decimal(str(amount)), currency, lender, actor_role="lender", payment_timing=timing)
+    try:
+        amount = _money_input(amount)
+    except (ValueError, ArithmeticError):
+        return _json({"error": "Enter a positive amount with at most two decimal places."}, 400)
+    result, error = mark_repaid(loan_id, amount, currency, lender, actor_role="lender", payment_timing=timing)
     if error:
         return _json({"error": error}, 400)
     return _json(result)
@@ -2088,6 +2198,9 @@ def clear_unpaid(loan_id):
 @require_auth
 def save_note(loan_id):
     from services import _get_db, log_event
+    loan_id, denied = _private_loan_access(loan_id, allow_mod=True)
+    if denied is not None:
+        return denied
     data = request.get_json() or {}
     note = data.get("note", "").strip()
     conn = _get_db()
@@ -2099,15 +2212,11 @@ def save_note(loan_id):
             UPDATE loans SET notes = %s, last_updated = NOW()
             WHERE id::text = %s OR loan_id = %s
         """, (note or None, loan_id, loan_id))
+        cur.execute('''
+            INSERT INTO audit_events (event_type, actor, actor_role, loan_id, source, details)
+            VALUES ('loan_note_updated', %s, %s, %s, 'dashboard', %s)
+        ''', (session.get("username"), session.get("role"), loan_id, json.dumps({"note_length": len(note)})))
         conn.commit()
-        log_event(
-            "loan_note_updated",
-            actor=session.get("username"),
-            actor_role=session.get("role"),
-            loan_id=loan_id,
-            source="dashboard",
-            details={"note_length": len(note)},
-        )
         return _json({"ok": True})
     except Exception as e:
         conn.rollback()
@@ -2119,10 +2228,40 @@ def save_note(loan_id):
         conn.close()
 
 
+def _private_loan_access(loan_id, allow_mod=False):
+    """Private lender notes/documents need object ownership, not just a login."""
+    from services import _get_db, resolve_user_identity
+    conn = _get_db()
+    if not conn:
+        return None, _json({"error": "Unable to verify loan access."}, 503)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, loan_id, lender FROM loans WHERE id::text = %s OR loan_id = %s", (loan_id, loan_id))
+        rows = cur.fetchall()
+    except Exception:
+        return None, _json({"error": "Unable to verify loan access."}, 503)
+    finally:
+        conn.close()
+    if len(rows) != 1:
+        return None, _json({"error": "Loan not found or ambiguous ID."}, 404)
+    canonical = str(loan_id)
+    if _api_key_ok(request.headers.get("X-API-Key")) or _is_admin():
+        return canonical, None
+    if allow_mod and session.get("role") == "mod":
+        return canonical, None
+    identity, error = resolve_user_identity(session.get("username"))
+    if not error and identity and str(rows[0][2]).lower() in identity["aliases"]:
+        return canonical, None
+    return None, _json({"error": "Private lender records are not available to this account."}, 403)
+
+
 @app.route("/api/loans/<loan_id>/attachments", methods=["GET"])
 @require_auth
 def get_attachments(loan_id):
     from services import _get_db
+    loan_id, denied = _private_loan_access(loan_id)
+    if denied is not None:
+        return denied
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
@@ -2154,6 +2293,9 @@ def upload_attachment(loan_id):
     import uuid, pathlib
     from services import _get_db
     from flask import send_from_directory
+    loan_id, denied = _private_loan_access(loan_id)
+    if denied is not None:
+        return denied
     if "file" not in request.files:
         return _json({"error": "No file provided"}, 400)
     f = request.files["file"]
@@ -2168,6 +2310,9 @@ def upload_attachment(loan_id):
     safe_name = f"{uuid.uuid4().hex}{ext}"
     f.save(os.path.join(upload_dir, safe_name))
     size = os.path.getsize(os.path.join(upload_dir, safe_name))
+    # Browser-supplied MIME types must not turn an allowed file into active HTML.
+    import mimetypes
+    safe_mime = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
@@ -2176,7 +2321,7 @@ def upload_attachment(loan_id):
         cur.execute("""
             INSERT INTO loan_attachments (loan_id, uploaded_by, filename, original_name, file_size, mime_type)
             VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-        """, (loan_id, session.get("username", "unknown"), safe_name, f.filename, size, f.content_type))
+        """, (loan_id, session.get("username", "unknown"), safe_name, f.filename, size, safe_mime))
         att_id = cur.fetchone()[0]
         conn.commit()
         return _json({"ok": True, "id": att_id, "original_name": f.filename,
@@ -2196,6 +2341,9 @@ def upload_attachment(loan_id):
 def download_attachment(loan_id, att_id):
     from flask import send_from_directory
     from services import _get_db
+    loan_id, denied = _private_loan_access(loan_id)
+    if denied is not None:
+        return denied
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
@@ -2207,7 +2355,7 @@ def download_attachment(loan_id, att_id):
         if not row:
             return _json({"error": "Not found"}, 404)
         upload_dir = UPLOAD_DIR
-        return send_from_directory(upload_dir, row[0], download_name=row[1])
+        return send_from_directory(upload_dir, row[0], download_name=row[1], as_attachment=True)
     finally:
         cur.close()
         conn.close()
@@ -2218,10 +2366,16 @@ def download_attachment(loan_id, att_id):
 def create_loan_manual():
     from services import create_loan
     data        = request.get_json() or {}
+    if not isinstance(data, dict):
+        return _json({"error": "Expected a JSON object."}, 400)
+    if any(not isinstance(data.get(field, ""), str) for field in ("borrower", "currency", "repay_date", "thread_link", "payment_method")):
+        return _json({"error": "Invalid loan fields."}, 400)
     lender      = session.get("username", "").strip().lower()
+    if session.get("role") not in ("lender", "admin") or not lender:
+        return _json({"error": "Verified lender session required."}, 403)
     borrower    = data.get("borrower", "").strip().lower()
     # Dashboard loan creation requires verified lender (same rule as bot).
-    if session.get("role") == "lender" and not _is_lender_verified_fresh(lender):
+    if not _is_lender_verified_fresh(lender):
         return _json({"error": "Verified lender access required."}, 403)
     amount      = data.get("amount")
     currency    = data.get("currency", "USD").strip().upper()
@@ -2239,11 +2393,28 @@ def create_loan_manual():
         return _json({"error": "repay_date is required"}, 400)
     if lender == borrower:
         return _json({"error": "You cannot loan to yourself."}, 400)
+    from services import resolve_user_identity
+    import re
+    if not re.fullmatch(r"[a-z0-9_-]{1,100}", borrower) or not re.fullmatch(r"[A-Z]{3}", currency):
+        return _json({"error": "Invalid borrower or currency."}, 400)
+    identity, identity_error = resolve_user_identity(lender)
+    if identity_error or not identity:
+        return _json({"error": "Unable to verify borrower identity."}, 503)
+    if borrower in identity["aliases"]:
+        return _json({"error": "You cannot loan to yourself."}, 400)
+    try:
+        from datetime import date
+        date.fromisoformat(repay_date)
+        amount, repay_amount = _money_input(amount), _money_input(repay_amount)
+        interest_amount = _money_input(interest_amount) if interest_amount not in (None, 0, "0", "0.00") else None
+        interest_rate = _money_input(interest_rate) if interest_rate not in (None, 0, "0", "0.00") else None
+    except (ValueError, TypeError, ArithmeticError):
+        return _json({"error": "Invalid amount, interest, or repayment date."}, 400)
     loan_id, error = create_loan(
-        lender, borrower, Decimal(str(amount)), currency, thread_link or "dashboard",
-        repay_amount=Decimal(str(repay_amount)), repay_date=repay_date, payment_method=payment_method,
-        interest_amount=Decimal(str(interest_amount)) if interest_amount is not None else None,
-        interest_rate=Decimal(str(interest_rate)) if interest_rate is not None else None,
+        lender, borrower, amount, currency, thread_link or "dashboard",
+        repay_amount=repay_amount, repay_date=repay_date, payment_method=payment_method,
+        interest_amount=interest_amount,
+        interest_rate=interest_rate,
     )
     if error:
         return _json({"error": error}, 400)
@@ -2251,11 +2422,9 @@ def create_loan_manual():
 
 
 @app.route("/api/requests", methods=["GET"])
-@require_auth
+@require_mod_api
 def list_requests():
-    from services import expire_old_requests, get_open_requests
-    if os.getenv("AUTO_EXPIRE_REQUESTS_ON_READ", "yes").lower() in ("1", "true", "yes"):
-        expire_old_requests()
+    from services import get_open_requests
     requests, error = get_open_requests(limit=200)
     if error:
         return _json({"error": error}, 500)
@@ -2283,6 +2452,13 @@ def get_request(request_id):
     req, error = get_request_summary(request_id)
     if error:
         return _json({"error": error}, 404)
+    from services import resolve_user_identity
+    if not (_is_mod_or_admin() or _api_key_ok(request.headers.get("X-API-Key"))):
+        identity, identity_error = resolve_user_identity(session.get("username"))
+        own_request = not identity_error and identity and req["borrower"].lower() in identity["aliases"]
+        verified_lender = session.get("role") == "lender" and _is_lender_verified_fresh(session.get("username"))
+        if not own_request and not verified_lender:
+            return _json({"error": "Request is not available to this account."}, 403)
     duplicates, dup_error = find_duplicate_open_requests(
         req.get("borrower", ""),
         exclude_request_id=req.get("request_id"),
@@ -2342,18 +2518,32 @@ def note_request(request_id):
 @app.route("/api/requests/<request_id>/fund", methods=["POST"])
 @require_auth
 def fund_request(request_id):
-    from services import fund_loan_request
+    from services import fund_loan_request, normalize_request_id
     data        = request.get_json() or {}
-    lender      = data.get("lender", session.get("username", "")).strip().lower()
+    if not isinstance(data, dict):
+        return _json({"error": "Expected a JSON object."}, 400)
+    lender = session.get("username", "").strip().lower()
+    if session.get("role") not in ("lender", "admin") or not lender:
+        return _json({"error": "Verified lender session required."}, 403)
+    if not _is_lender_verified_fresh(lender):
+        return _json({"error": "Verified lender access required."}, 403)
+    if data.get("lender") is not None and data["lender"] != lender:
+        return _json({"error": "You can only record loans as yourself."}, 403)
+    request_id = normalize_request_id(request_id)
+    if not request_id:
+        return _json({"error": "Invalid request code."}, 400)
     repay_amount = data.get("repay_amount")
-    repay_date   = data.get("repay_date", "").strip()
+    repay_date   = data.get("repay_date", "")
+    if not isinstance(repay_date, str):
+        return _json({"error": "repay_date must be YYYY-MM-DD."}, 400)
+    repay_date = repay_date.strip()
     if not lender:
         return _json({"error": "lender is required"}, 400)
     if not repay_amount:
         return _json({"error": "repay_amount is required"}, 400)
     if not repay_date:
         return _json({"error": "repay_date is required"}, 400)
-    loan_id, error = fund_loan_request(request_id, lender, float(repay_amount), repay_date)
+    loan_id, error = fund_loan_request(request_id, lender, repay_amount, repay_date)
     if error:
         return _json({"error": error}, 400)
     return _json({"ok": True, "loan_id": loan_id, "paid_id": loan_id, "request_id": request_id})
@@ -2363,8 +2553,8 @@ def fund_request(request_id):
 @require_auth
 def cancel_request(request_id):
     from services import cancel_loan_request
-    if session.get("role") not in ("lender", "mod", "admin"):
-        return _json({"error": "Only lenders or mods can cancel a looked-up request."}, 403)
+    if not _is_mod_or_admin():
+        return _json({"error": "Moderator access required to cancel requests."}, 403)
     data = request.get_json() or {}
     note = (data.get("note") or "").strip()
     result, error = cancel_loan_request(

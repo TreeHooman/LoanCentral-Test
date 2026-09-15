@@ -10,7 +10,7 @@ import inspect
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
-from bot_messages import with_dashboard_link
+from bot_messages import request_dashboard_link, with_dashboard_link
 from utils import reddit, reddit_limiter
 
 # Load environment variables
@@ -332,6 +332,8 @@ def handle_new_post(post):
             if request_id:
                 reply_parts.append(
                     f"LoanCentral request ID: `{request_id}`\n\n"
+                    f"{request_dashboard_link(request_id)} to review the request and record funding, "
+                    "or use the Reddit command below.\n\n"
                     "After lender and borrower agree to terms on Reddit, a verified lender can fund it with:\n\n"
                     f"`$fund {request_id} [repay_amount] [currency] [YYYY-MM-DD]`\n\n"
                     "Funding returns a Paid ID for `$paid_with_id`, `$unpaid`, and `$refunded`. "

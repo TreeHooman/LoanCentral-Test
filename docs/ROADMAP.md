@@ -10,8 +10,14 @@ Ship a tested LoanCentral bot upgrade within 40 active work hours without touchi
 - Do not run tests against the production database.
 - Keep real `.env` files out of Git.
 - Test command logic offline before using any Reddit API.
-- Use a test Reddit account and test subreddit only after offline tests pass.
+- Use the existing bot account for controlled EU staging after offline tests;
+  isolate the test database and subreddit list. A new API account is not assumed.
 - Keep rollback possible before production integration.
+
+Owner decisions (2026-09-08): the legacy bot runs on another computer. This
+computer is the development/test environment. Lenders record loans without a
+borrower confirmation step. New-lender recruitment waits until the bot release
+and community rebrand are ready.
 
 ## Milestones
 
@@ -103,8 +109,10 @@ Status: Done
 
 Status: Pending
 
-- Use only test credentials.
-- Use only a test/private subreddit.
+- Follow the current [request-code release plan](REQUEST_CODE_RELEASE.md).
+- Keep the existing account/API registration; use an isolated test database.
+- Confirm LoanCentral EU is available for testing and exclude it from the
+  legacy monitoring list before starting the upgraded process there.
 - Confirm Reddit replies, flair checks, and command parsing.
 
 ### 8. Production Integration
@@ -125,6 +133,9 @@ Status: Pending
 
 Status: In progress
 
+- Implemented locally: [request-code funding](REQUEST_CODE_FLOW.md), including
+  bot links, autofill, verified-lender checks, and atomic request-to-loan linking.
+  Live staging and release remain pending.
 - Done: borrower profile page from clickable usernames, scoped to own/mod/shared-loan visibility.
 - Done: CSV loan export for borrower and lender history.
 - Done: lender loan search by borrower name, loan ID, status, and notes.

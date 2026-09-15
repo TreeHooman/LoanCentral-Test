@@ -17,7 +17,7 @@ def _parse_fund(text):
     Returns (request_id, repay_amount, currency, repay_date) or None.
     """
     match = re.search(
-        r"\$fund\s+(REQ-\d{4,})\s+(\d+(?:\.\d+)?)(?:\s+([A-Z]{3}))?\s+(\d{4}-\d{2}-\d{2})",
+        r"\$fund\s+(REQ-[A-Z0-9]{4,16})\s+(\d+(?:\.\d+)?)(?:\s+([A-Z]{3}))?\s+(\d{4}-\d{2}-\d{2})",
         text,
         re.IGNORECASE,
     )

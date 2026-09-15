@@ -1,5 +1,26 @@
 # LoanCentral Next Feature Priorities
 
+## Request-Code Funding Release Candidate
+
+Status: implemented locally; not deployed. Last verification: 2026-09-08,
+620 Python tests passed and desktop/mobile browser checks passed.
+
+- Done: Reddit request replies include a request code and dashboard link.
+- Done: code lookup fills the borrower, principal, currency, payment method,
+  and thread; the lender reviews repayment terms before recording funding.
+- Done: verified lender authorization, duplicate-funding protection, linked
+  request/loan records, and transaction-level funding audit.
+- Done: isolated offline demo with fake accounts and a new SQLite database.
+- Confirmed: lenders record and update loans; borrowers do not confirm or approve
+  the request-code funding action. Update the pinned procedure at launch.
+- Pending: test and support the title formats actually used in the community.
+- Pending: guarded EU staging, real login/account linking, PostgreSQL tests,
+  backup restore drill, and deployment of the tested candidate.
+
+See [feature behavior](REQUEST_CODE_FLOW.md),
+[release plan](REQUEST_CODE_RELEASE.md), and
+[community recovery discussion](COMMUNITY_RECOVERY.md).
+
 ## Near-Term Dashboard
 
 - Done: mobile polish pass on lender, borrower, profile, and mod pages with phone-width checks.
@@ -14,7 +35,7 @@
 
 - Done: scheduled reminder dry-run job foundation that batches reminder checks without Reddit calls.
 - Done: Reddit action queue for reminders, flair sync, and mod-confirmed bans without live Reddit calls.
-- Pending: live test-subreddit reminder delivery after test Reddit credentials are connected.
+- Pending: live test-subreddit reminder delivery after the shared-account staging setup is verified.
 - Lender DM when a due date passes, with strict cooldowns.
 - Bot confirmation comment after dashboard funding, only when a Reddit thread exists.
 - Bot congratulations comment after full repayment, with opt-out/cooldown controls.
@@ -41,7 +62,8 @@
 
 ## Infrastructure
 
-- Staging test subreddit and test Reddit accounts before production API use.
+- Staging in LoanCentral EU using the existing bot account, separate test data,
+  and distinct monitoring lists; exact subreddit and bot host still to confirm.
 - Migration dry-run script for existing database upgrades.
 - Deployment checklist with rollback steps.
 - Structured app logs for API requests, bot actions, errors, and reminder jobs.

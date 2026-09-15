@@ -71,7 +71,7 @@
 
     <div class="divider"><hr><span>or</span><hr></div>
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
-      <input type="text" id="keyInput" placeholder="Lender key (LC-...)"
+      <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
         autocomplete="off" spellcheck="false" />
       <button type="submit"
@@ -106,13 +106,22 @@
   </div>
 </div>
 <script>
-  function submitKey(e) {
+  async function submitKey(e) {
     e.preventDefault();
     const key = document.getElementById('keyInput').value.trim();
     const errEl = document.getElementById('keyError');
     if (!key) { errEl.textContent = 'Enter your key.'; errEl.style.display = 'block'; return; }
     errEl.style.display = 'none';
-    window.location.href = '/auth/key?k=' + encodeURIComponent(key);
+    try {
+      const response = await fetch('/auth/key', {method: 'POST', headers: {'X-API-Key': key}, credentials: 'same-origin'});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to sign in.');
+      document.getElementById('keyInput').value = '';
+      window.location.assign(result.redirect);
+    } catch (error) {
+      errEl.textContent = error.message;
+      errEl.style.display = 'block';
+    }
   }
 </script>
 </body>

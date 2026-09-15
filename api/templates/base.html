@@ -781,46 +781,15 @@
 <div class="modal-overlay" id="newLoanModal">
   <div class="modal" style="width:480px">
     <h3>Record New Loan</h3>
-    <div class="flow-steps">
-      <div class="flow-step">
-        <div class="flow-step-num">1</div>
-        <div>
-          <div class="flow-step-title">Agree on Reddit first</div>
-          <div class="flow-step-copy">Use the Reddit thread or DMs to agree on amount, repay amount, due date, and payment method.</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-step-num">2</div>
-        <div>
-          <div class="flow-step-title">Paste the REQ-ID</div>
-          <div class="flow-step-copy">If the bot gave the post a REQ-ID, paste it here and click Look Up to auto-fill the record.</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-step-num">3</div>
-        <div>
-          <div class="flow-step-title">Review before recording</div>
-          <div class="flow-step-copy">Confirm the terms match what was agreed. Recording creates the Paid ID used for Reddit repayment commands.</div>
-        </div>
-      </div>
-    </div>
-    <div class="req-tips">
-      <div class="req-tips-title">Quick checks</div>
-      <ul>
-        <li>Do not record a loan before funds are actually sent.</li>
-        <li>Use the borrower Reddit username only, with no u/ prefix.</li>
-        <li>Keep payment screenshots or notes in the loan detail after saving.</li>
-      </ul>
-    </div>
     <div class="modal-error" id="newLoanError"></div>
 
     <div class="req-field-grid">
       <div>
-        <label>Request ID (optional)</label>
-        <input type="text" id="nlReqId" placeholder="e.g. REQ-0042" style="text-transform:uppercase" />
+        <label for="nlReqId">Request Code (optional)</label>
+        <input type="text" id="nlReqId" placeholder="e.g. 3841 or REQ-AB12CD34" style="text-transform:uppercase" oninput="resetRequestLookup()" />
       </div>
       <div style="display:flex;align-items:flex-end">
-        <button class="btn-primary" onclick="lookupRequest()" style="white-space:nowrap" title="Auto-fill loan details from a known REQ-ID">Look Up</button>
+        <button id="nlLookupButton" class="btn-primary" onclick="lookupRequest()" style="white-space:nowrap" title="Look up request">Look Up</button>
       </div>
     </div>
 
@@ -851,15 +820,15 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div>
         <label>Agreed Repay Amount <span style="color:var(--red)">*</span></label>
-        <input type="number" id="nlRepayAmount" placeholder="e.g. 200.00" step="0.01" min="0.01" />
+        <input type="number" id="nlRepayAmount" placeholder="e.g. 200.00" step="0.01" min="0.01" oninput="document.getElementById('nlFundsSent').checked = false" />
       </div>
       <div>
         <label>Due Date <span style="color:var(--red)">*</span></label>
-        <input type="date" id="nlRepayDate" />
+        <input type="date" id="nlRepayDate" oninput="document.getElementById('nlFundsSent').checked = false" />
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div id="nlInterestFields" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div>
         <label>Interest Amount <span style="color:var(--muted);font-weight:400;font-size:11px">optional</span></label>
         <input type="number" id="nlInterestAmount" placeholder="e.g. 30.00" step="0.01" min="0" />
@@ -876,9 +845,13 @@
     <label>Reddit Thread Link</label>
     <input type="text" id="nlThreadLink" placeholder="https://reddit.com/r/..." />
 
+    <label style="display:flex;align-items:center;gap:8px;margin:12px 0">
+      <input type="checkbox" id="nlFundsSent" style="width:18px;height:18px;margin:0;flex:none" />
+      <span>I have sent the funds and confirmed these terms.</span>
+    </label>
     <div class="modal-actions" style="margin-top:8px">
       <button class="btn-cancel" onclick="closeModal('newLoanModal')">Cancel</button>
-      <button class="btn-confirm" onclick="submitNewLoan()">Record Loan</button>
+      <button id="nlSubmitButton" class="btn-confirm" onclick="submitNewLoan()">Record Loan</button>
     </div>
   </div>
 </div>
@@ -1045,7 +1018,36 @@
     }
   }
 
-  function openNewLoanModal() {
+  let loadedRequestId = null;
+  let requestLookupVersion = 0;
+  let recordingLoan = false;
+
+  function normalizedRequestCode() {
+    let code = document.getElementById('nlReqId').value.trim().toUpperCase().replace(/^REQ-/, '');
+    if (!code) return '';
+    if (/^\d+$/.test(code)) code = code.padStart(4, '0');
+    return `REQ-${code}`;
+  }
+
+  function resetRequestLookup() {
+    loadedRequestId = null;
+    requestLookupVersion++;
+    document.getElementById('nlLookupButton').disabled = false;
+    document.getElementById('nlAutoFillBanner').style.display = 'none';
+    document.getElementById('nlDuplicateWarning').style.display = 'none';
+    document.getElementById('nlRejectWrap').style.display = 'none';
+    document.getElementById('nlFundsSent').checked = false;
+    document.getElementById('nlInterestFields').style.display = 'grid';
+    for (const id of ['nlBorrower', 'nlAmount', 'nlCurrency', 'nlPaymentMethod', 'nlThreadLink']) {
+      document.getElementById(id).readOnly = false;
+    }
+    for (const id of ['nlInterestAmount', 'nlInterestRate']) {
+      document.getElementById(id).disabled = false;
+    }
+  }
+
+  function openNewLoanModal(requestId = '') {
+    resetRequestLookup();
     document.getElementById('nlReqId').value = '';
     document.getElementById('nlBorrower').value = '';
     document.getElementById('nlAmount').value = '';
@@ -1061,19 +1063,30 @@
     document.getElementById('nlRejectWrap').style.display = 'none';
     document.getElementById('newLoanError').style.display = 'none';
     document.getElementById('newLoanModal').classList.add('open');
+    document.getElementById('nlReqId').focus();
+    if (requestId) {
+      document.getElementById('nlReqId').value = requestId;
+      lookupRequest();
+    }
   }
 
   async function lookupRequest() {
-    const reqId = document.getElementById('nlReqId').value.trim().toUpperCase();
+    const reqId = normalizedRequestCode();
     const errEl = document.getElementById('newLoanError');
     if (!reqId) { errEl.textContent = 'Enter a Request ID first.'; errEl.style.display = 'block'; return; }
+    resetRequestLookup();
+    const lookupVersion = requestLookupVersion;
+    document.getElementById('nlLookupButton').disabled = true;
     try {
-      const r = await apiFetch(`/api/requests/${reqId}`);
+      const r = await apiFetch(`/api/requests/${encodeURIComponent(reqId)}`);
+      if (lookupVersion !== requestLookupVersion) return;
       if (r.status !== 'open') {
         errEl.textContent = `${reqId} is already ${r.status} — cannot fund again.`;
         errEl.style.display = 'block'; return;
       }
       errEl.style.display = 'none';
+      loadedRequestId = r.request_id;
+      document.getElementById('nlReqId').value = r.request_id;
       document.getElementById('nlBorrower').value      = r.borrower || '';
       document.getElementById('nlAmount').value        = r.amount ? parseFloat(r.amount).toFixed(2) : '';
       document.getElementById('nlCurrency').value      = r.currency || 'USD';
@@ -1083,7 +1096,14 @@
       document.getElementById('nlThreadLink').value    = r.thread_link || '';
       document.getElementById('nlBannerReqId').textContent = reqId;
       document.getElementById('nlAutoFillBanner').style.display = 'block';
-      document.getElementById('nlRejectWrap').style.display = 'block';
+      document.getElementById('nlInterestFields').style.display = 'none';
+      for (const id of ['nlBorrower', 'nlAmount', 'nlCurrency', 'nlPaymentMethod', 'nlThreadLink']) {
+        document.getElementById(id).readOnly = true;
+      }
+      for (const id of ['nlInterestAmount', 'nlInterestRate']) {
+        document.getElementById(id).value = '';
+        document.getElementById(id).disabled = true;
+      }
       const duplicateCount = Number(r.duplicate_open_request_count || 0);
       const duplicateWarning = document.getElementById('nlDuplicateWarning');
       if (duplicateCount > 0) {
@@ -1093,14 +1113,18 @@
         duplicateWarning.style.display = 'none';
       }
     } catch(e) {
+      if (lookupVersion !== requestLookupVersion) return;
       errEl.textContent = e.message; errEl.style.display = 'block';
+    } finally {
+      if (lookupVersion === requestLookupVersion) document.getElementById('nlLookupButton').disabled = false;
     }
   }
 
   async function submitNewLoan() {
+    if (recordingLoan) return;
     let result;
     const errEl       = document.getElementById('newLoanError');
-    const reqId       = document.getElementById('nlReqId').value.trim().toUpperCase() || null;
+    const reqId       = normalizedRequestCode() || null;
     const borrower    = document.getElementById('nlBorrower').value.trim().toLowerCase();
     const amount      = parseFloat(document.getElementById('nlAmount').value);
     const currency    = document.getElementById('nlCurrency').value.trim().toUpperCase() || 'USD';
@@ -1110,14 +1134,18 @@
     const interestAmountR = document.getElementById('nlInterestAmount').value.trim();
     const interestRateR   = document.getElementById('nlInterestRate').value.trim();
 
+    if (reqId && reqId !== loadedRequestId) { errEl.textContent = 'Look up this request before recording the loan.'; errEl.style.display='block'; return; }
+    if (!document.getElementById('nlFundsSent').checked) { errEl.textContent = 'Confirm that the funds were sent and the terms agreed.'; errEl.style.display='block'; return; }
     if (!borrower)           { errEl.textContent = 'Borrower username is required.';  errEl.style.display='block'; return; }
     if (!amount || amount<=0){ errEl.textContent = 'Amount must be greater than 0.';  errEl.style.display='block'; return; }
     if (!repayAmount || repayAmount<=0){ errEl.textContent = 'Repay amount is required.'; errEl.style.display='block'; return; }
     if (!repayDate)          { errEl.textContent = 'Repay date is required.';          errEl.style.display='block'; return; }
 
+    recordingLoan = true;
+    document.getElementById('nlSubmitButton').disabled = true;
     try {
       if (reqId) {
-        result = await apiFetch(`/api/requests/${reqId}/fund`, {
+        result = await apiFetch(`/api/requests/${encodeURIComponent(reqId)}/fund`, {
           method: 'POST',
           body: JSON.stringify({ lender: ME, repay_amount: repayAmount, repay_date: repayDate })
         });
@@ -1137,6 +1165,10 @@
       toast(`Loan recorded. Paid ID: ${result.paid_id || result.loan_id}`, 'success');
       if (typeof loadData === 'function') loadData();
     } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    finally {
+      recordingLoan = false;
+      document.getElementById('nlSubmitButton').disabled = false;
+    }
   }
 
   async function cancelLookedUpRequest() {
@@ -1209,11 +1241,11 @@
       el.innerHTML = list.map(a => {
         const size = a.file_size ? (a.file_size / 1024).toFixed(1) + ' KB' : '';
         return `<div class="attach-item">
-          <a href="${a.url}" target="_blank">${a.original_name}</a>
-          <span style="color:var(--muted);font-size:11px">${size} · ${a.uploaded_by} · ${a.uploaded_at ? a.uploaded_at.split('T')[0] : ''}</span>
+          <a href="/api/loans/${encodeURIComponent(loanId)}/attachments/${Number(a.id)}/download" target="_blank" rel="noopener noreferrer">${escapeHtml(a.original_name)}</a>
+          <span style="color:var(--muted);font-size:11px">${size} · ${escapeHtml(a.uploaded_by || '')} · ${escapeHtml(a.uploaded_at ? a.uploaded_at.split('T')[0] : '')}</span>
         </div>`;
       }).join('');
-    } catch(e) { document.getElementById('ldAttachList').innerHTML = `<p style="color:var(--red);font-size:12px">${e.message}</p>`; }
+    } catch(e) { document.getElementById('ldAttachList').textContent = e.message; }
   }
 
   async function saveNote() {
@@ -1421,12 +1453,12 @@ async function loadNotifications() {
     return;
   }
   list.innerHTML = notifs.map(n => `
-    <div onclick="markRead(${n.id},this)" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;${n.read?'opacity:0.55':''}transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+    <div onclick="markRead(${Number(n.id)},this)" style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;${n.read?'opacity:0.55':''}transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <div style="display:flex;align-items:flex-start;gap:8px">
         ${!n.read ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:5px"></span>' : '<span style="width:7px;flex-shrink:0"></span>'}
         <div style="min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${n.title}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${n.message}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${escapeHtml(n.title)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.4">${escapeHtml(n.message)}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">${new Date(n.created_at).toLocaleString()}</div>
         </div>
       </div>

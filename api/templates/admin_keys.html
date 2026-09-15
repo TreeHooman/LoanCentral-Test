@@ -15,7 +15,7 @@
 
 <div class="callout" style="margin-bottom:18px">
   <strong>How keys work:</strong> Create a key for a lender's Reddit username. The key is shown <strong>once</strong> — copy it and send it to them via Reddit DM. They visit
-  <code>/auth/key?k=&lt;key&gt;</code> to log in. Keys can be revoked any time.
+  <code>/login</code> to log in with their key. Keys can be revoked any time.
 </div>
 
 <div class="table-wrap">
@@ -130,7 +130,7 @@
       });
       closeModal('createKeyModal');
       document.getElementById('newKeyDisplay').textContent = result.key;
-      const loginUrl = `${BASE_URL}/auth/key?k=${encodeURIComponent(result.key)}`;
+      const loginUrl = `${BASE_URL}/login`;
       document.getElementById('newKeyLoginUrl').innerHTML =
         `Login URL for u/${escapeHtml(result.username)}:<br><strong>${escapeHtml(loginUrl)}</strong>`;
       document.getElementById('showKeyModal').classList.add('open');
@@ -149,7 +149,7 @@
 
   function copyLoginUrl(username) {
     // We don't store the plaintext — just give admin the base URL to send
-    const msg = `To log into LoanCentral, visit: ${BASE_URL}/auth/key?k=YOUR_KEY\n\n(Replace YOUR_KEY with the key you were given.)`;
+    const msg = `To log into LoanCentral, visit: ${BASE_URL}/login\n\nEnter the lender key you were given in the login form.`;
     navigator.clipboard.writeText(msg).then(() => toast('Login instructions copied.', 'success'));
   }
 

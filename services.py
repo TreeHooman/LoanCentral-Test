@@ -354,7 +354,8 @@ def update_reddit_action_status(action_id: int, status: str, actor: str = None, 
 
 def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str,
                 repay_amount: Decimal = None, repay_date: str = None, payment_method: str = None,
-                interest_amount: Decimal = None, interest_rate: Decimal = None):
+                interest_amount: Decimal = None, interest_rate: Decimal = None,
+                request_id: str = None):
     """
     Confirm and save a new loan to the database.
     Returns (loan_db_id, error_message).
@@ -373,6 +374,26 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
     try:
         cur = conn.cursor()
+
+        if request_id:
+            # Claim the request in the same transaction as the loan and its stats.
+            cur.execute('''
+                UPDATE loan_requests SET request_status = request_status
+                WHERE request_id = %s AND request_status = 'open'
+                RETURNING borrower_username, requested_amount, notes, thread_url
+            ''', (request_id,))
+            claimed = cur.fetchone()
+            if not claimed:
+                return None, "Request is no longer open. Refresh before recording a loan."
+            borrower, amount = claimed[0], Decimal(str(claimed[1]))
+            metadata = _request_metadata(claimed[2])
+            currency = metadata.get("currency", "USD")
+            payment_method = metadata.get("method")
+            thread_url = claimed[3] or ""
+            if metadata.get("expires") and metadata["expires"] < datetime.now().date().isoformat():
+                return None, "This request has expired."
+            if amount <= 0 or lender == borrower:
+                return None, "Invalid request amount or borrower."
 
         # Block exact duplicate confirmations (same lender, borrower, amount, currency, thread)
         cur.execute('''
@@ -395,6 +416,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
 
         inserted_public_id = True
         for _attempt in range(5):
+            if request_id:
+                cur.execute("SAVEPOINT request_loan_insert")
             try:
                 cur.execute('''
                     INSERT INTO loans
@@ -411,10 +434,16 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             except Exception as e:
                 if _is_duplicate_loan_id(e):
                     # Another loan took this ID in the same second — pick a new one.
-                    conn.rollback()
-                    cur = conn.cursor()
+                    if request_id:
+                        cur.execute("ROLLBACK TO SAVEPOINT request_loan_insert")
+                        cur.execute("RELEASE SAVEPOINT request_loan_insert")
+                    else:
+                        conn.rollback()
+                        cur = conn.cursor()
                     loan_id = _generate_loan_id()
                     continue
+                if request_id:
+                    raise
                 if not _looks_like_missing_column(e):
                     raise
                 conn.rollback()
@@ -432,6 +461,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             return None, "Could not allocate a unique loan ID. Please try again."
 
         db_id = cur.fetchone()[0]
+        if request_id:
+            cur.execute("RELEASE SAVEPOINT request_loan_insert")
         if not inserted_public_id:
             loan_id = str(db_id)
 
@@ -455,6 +486,20 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                 last_updated = %s
         ''', (borrower, amount, datetime.now(), amount, datetime.now()))
 
+        if request_id:
+            cur.execute('''
+                UPDATE loan_requests
+                SET request_status = 'funded', funded_loan_id = %s, updated_at = NOW()
+                WHERE request_id = %s
+            ''', (db_id, request_id))
+            cur.execute('''
+                INSERT INTO audit_events
+                (event_type, actor, actor_role, target_user, loan_id, request_id, source, details)
+                VALUES ('request_funded', %s, 'lender', %s, %s, %s, 'service', %s)
+            ''', (lender, borrower, loan_id, request_id, json.dumps({
+                "amount": str(amount), "currency": currency,
+                "repay_amount": str(repay_amount), "repay_date": repay_date,
+            })))
         conn.commit()
         logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
         log_event("loan_created", actor=lender, actor_role="lender", target_user=borrower,
@@ -1262,13 +1307,18 @@ def _parse_req_title(title: str) -> dict:
     """
     result = {"amount": None, "currency": "USD", "repay_amount": None, "repay_date": None, "payment_method": None}
 
-    # Amount: ($150) or ($1,500)
-    m = _re.search(r'\(\$([0-9,]+(?:\.[0-9]{1,2})?)\)', title)
+    # Accept an explicit currency inside the amount parentheses.
+    m = _re.search(
+        r'\(\s*(?P<prefix>USD|CAD|EUR|GBP|AUD|NZD|\$|\u20ac|\u00a3)?\s*'
+        r'(?P<amount>[0-9,]+(?:\.[0-9]{1,2})?)\s*'
+        r'(?P<suffix>USD|CAD|EUR|GBP|AUD|NZD)?\s*\)', title, _re.IGNORECASE)
     if m:
-        result["amount"] = float(m.group(1).replace(",", ""))
+        result["amount"] = float(m.group("amount").replace(",", ""))
+        currency = (m.group("suffix") or m.group("prefix") or "USD").upper()
+        result["currency"] = {"$": "USD", "\u20ac": "EUR", "\u00a3": "GBP"}.get(currency, currency)
 
     # Repay amount: (Repay $210) or (Repay $210.50)
-    m = _re.search(r'\brepay\b[^)]*\$([0-9,]+(?:\.[0-9]{1,2})?)', title, _re.IGNORECASE)
+    m = _re.search(r'\brepay\s+(?:(?:USD|CAD|EUR|GBP|AUD|NZD|\$|\u20ac|\u00a3)\s*)?([0-9,]+(?:\.[0-9]{1,2})?)(?![0-9/\-])', title, _re.IGNORECASE)
     if m:
         result["repay_amount"] = float(m.group(1).replace(",", ""))
 
@@ -1286,6 +1336,14 @@ def _parse_req_title(title: str) -> dict:
         except ValueError:
             pass
 
+    iso_date = _re.search(r'\b\d{4}-\d{2}-\d{2}\b', title)
+    if iso_date:
+        from datetime import date
+        try:
+            result["repay_date"] = date.fromisoformat(iso_date.group()).isoformat()
+        except ValueError:
+            pass
+
     # Payment method: (PayPal), (Venmo), (CashApp), (Zelle), (crypto)
     m = _re.search(r'\b(paypal|venmo|cashapp|cash\s*app|zelle|crypto|bitcoin|btc|e-transfer|interac)\b', title, _re.IGNORECASE)
     if m:
@@ -1295,20 +1353,27 @@ def _parse_req_title(title: str) -> dict:
 
 
 def _next_request_id() -> str:
-    """Generate next REQ-XXXX id."""
-    conn = _get_db()
-    if not conn:
-        return f"REQ-{int(time.time()) % 10000:04d}"
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM loan_requests")
-        n = cur.fetchone()[0]
-        return f"REQ-{n + 1:04d}"
-    except Exception:
-        return f"REQ-{int(time.time()) % 10000:04d}"
-    finally:
-        cur.close()
-        conn.close()
+    """Use the dashboard ID format; row counts can reuse existing codes."""
+    return _generate_request_id()
+
+
+def normalize_request_id(value):
+    code = (value or "").strip().upper()
+    if code.startswith("REQ-"):
+        code = code[4:]
+    if not _re.fullmatch(r"[A-Z0-9]{1,32}", code):
+        return ""
+    return "REQ-" + (code.zfill(4) if code.isdigit() else code)
+
+
+def _request_metadata(notes):
+    """Read the metadata saved by the bot in the existing notes column."""
+    result = {}
+    for part in (notes or "").split(";"):
+        key, separator, value = part.strip().partition(":")
+        if separator and key in ("currency", "method", "expires"):
+            result[key] = value.strip()
+    return result
 
 
 def save_loan_request(borrower: str, title: str, thread_link: str, post_date, reddit_post_id: str = None):
@@ -1397,6 +1462,9 @@ def get_request_summary(request_id: str):
     note in CLAUDE.md.
     Returns (request_dict, error)
     """
+    request_id = normalize_request_id(request_id)
+    if not request_id:
+        return None, "Invalid request code."
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
@@ -1411,21 +1479,22 @@ def get_request_summary(request_id: str):
         row = cur.fetchone()
         if not row:
             return None, f"Request {request_id} not found."
+        metadata = _request_metadata(row[8])
         return {
             "request_id":     row[0],
             "borrower":       row[1],
             "amount":         row[2],
-            "currency":       "USD",
+            "currency":       metadata.get("currency", "USD"),
             "repay_amount":   row[3],
             "repay_date":     row[4].isoformat() if row[4] else None,
-            "payment_method": None,
+            "payment_method": metadata.get("method"),
             "post_date":      row[7].isoformat() if row[7] else None,
             "thread_link":    row[5],
             "status":         row[6],
             "funded_by":      None,
             "funded_date":    None,
             "lender_note":    None,
-            "expires_at":     None,
+            "expires_at":     metadata.get("expires"),
         }, None
     except Exception as e:
         logger.error(f"get_request_summary error: {e}", exc_info=True)
@@ -1441,59 +1510,41 @@ def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_d
     Creates a live loan and marks the request as funded.
     Returns (loan_id, error)
     """
+    request_id = normalize_request_id(request_id)
+    lender = normalize_username(lender)
+    verified, _, verification_error = get_verified_lender_status(lender)
+    if verification_error or not verified:
+        return None, "Verified lender access required."
     req, err = get_request_summary(request_id)
     if err:
         return None, err
     if req["status"] != "open":
         return None, f"Request {request_id} is already {req['status']}."
-    if not repay_amount or repay_amount <= 0:
-        return None, "Repay amount is required."
-    if not repay_date:
-        return None, "Repay date is required."
+    try:
+        repayment = Decimal(str(repay_amount))
+        if not repayment.is_finite() or repayment <= 0:
+            return None, "Repay amount must be a positive number."
+        from datetime import date
+        date.fromisoformat(repay_date)
+    except (ValueError, TypeError, ArithmeticError):
+        return None, "Enter a valid repay amount and date (YYYY-MM-DD)."
+    identity, identity_error = resolve_user_identity(lender)
+    if identity_error:
+        return None, identity_error
+    if normalize_username(req["borrower"]) in identity["aliases"]:
+        return None, "You cannot loan to yourself."
 
-    from decimal import Decimal
-    loan_id, err = create_loan(
+    return create_loan(
         lender=lender,
         borrower=req["borrower"],
         amount=Decimal(str(req["amount"])),
         currency=req["currency"],
         thread_url=req["thread_link"] or "",
-        repay_amount=Decimal(str(repay_amount)),
+        repay_amount=repayment,
         repay_date=repay_date,
         payment_method=req.get("payment_method"),
+        request_id=request_id,
     )
-    if err:
-        return None, err
-
-    conn = _get_db()
-    if not conn:
-        return None, "Database connection failed."
-    try:
-        cur = conn.cursor()
-        cur.execute('''
-            UPDATE loan_requests
-            SET request_status = 'funded', updated_at = NOW()
-            WHERE request_id = %s
-        ''', (request_id.upper(),))
-        conn.commit()
-        log_event(
-            "request_funded",
-            actor=lender,
-            actor_role="lender",
-            target_user=req["borrower"],
-            loan_id=loan_id,
-            request_id=request_id.upper(),
-            source="dashboard",
-            details={"repay_amount": str(repay_amount), "repay_date": repay_date, "payment_method": req.get("payment_method")},
-        )
-        return loan_id, None
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"fund_loan_request error: {e}", exc_info=True)
-        return None, "Database error funding request."
-    finally:
-        cur.close()
-        conn.close()
 
 
 def cancel_loan_request(request_id: str, actor: str, actor_role: str = "lender", note: str = None):
