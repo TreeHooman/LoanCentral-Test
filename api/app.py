@@ -188,6 +188,41 @@ def validate_key_session():
     session["role"] = row[1]
 
 
+#: Paths a banned user may still reach — otherwise they cannot even read why
+#: they were banned or sign out.
+_BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms",
+                     "/health", "/favicon.ico")
+
+
+@app.before_request
+def reject_banned_users():
+    """Global ban enforcement, in one place.
+
+    Doing this per route is how the dispute bug happened — forty checks, one
+    of them missing. A banned account is refused everywhere at once, for both
+    page loads and the JSON API.
+    """
+    username = session.get("username")
+    if not username:
+        return None
+    path = request.path or ""
+    if path.startswith(_BAN_EXEMPT_PATHS) or path in _BAN_EXEMPT_PATHS:
+        return None
+
+    from services import is_user_banned
+    banned, details = is_user_banned(username)
+    if not banned:
+        return None
+
+    reason = (details or {}).get("reason") or "No reason recorded."
+    if path.startswith("/api/"):
+        return _json({"error": "This account is banned from LoanCentral.",
+                      "reason": reason}, 403)
+    session.clear()
+    flash(f"This account is banned from LoanCentral. {reason}", "error")
+    return redirect(url_for("login"))
+
+
 @app.before_request
 def require_public_dev_access():
     token = os.getenv("PUBLIC_DASHBOARD_TOKEN", "").strip()
@@ -3819,6 +3854,94 @@ def api_backfill_requests():
                   "requests_backfilled",
                   new_value={"created": created, "skipped": skipped})
     return _json({"created": created, "skipped": skipped, "dry_run": dry_run})
+
+
+# ---------------------------------------------------------------------------
+# Admin: bans
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/bans", methods=["GET"])
+@require_mod_api
+def api_list_bans():
+    from services import list_banned_users
+    active_only = request.args.get("active", "1") not in ("0", "false", "no")
+    rows, error = list_banned_users(active_only=active_only)
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"bans": rows, "count": len(rows)})
+
+
+@app.route("/api/admin/bans/<username>", methods=["GET"])
+@require_mod_api
+def api_get_ban(username):
+    from services import is_user_banned
+    banned, details = is_user_banned(username)
+    return _json({"username": username.lower(), "banned": banned, "ban": details})
+
+
+@app.route("/api/admin/bans/<username>", methods=["POST"])
+@require_mod_api
+def api_ban_user(username):
+    from services import ban_user
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return _json({"error": "Expected a JSON object."}, 400)
+    actor = session.get("username")
+    if not actor:
+        return _json({"error": "A signed-in moderator is required to ban."}, 403)
+    result, error = ban_user(
+        username,
+        reason=(data.get("reason") or "").strip(),
+        actor=actor,
+        actor_role=session.get("role", "mod"),
+        loan_id=(data.get("loan_id") or None),
+    )
+    if error:
+        return _json({"error": error}, 403 if "admin" in error.lower() else 400)
+    return _json(result)
+
+
+@app.route("/api/admin/bans/<username>", methods=["DELETE"])
+@require_mod_api
+def api_unban_user(username):
+    from services import unban_user
+    data = request.get_json(silent=True) or {}
+    actor = session.get("username")
+    if not actor:
+        return _json({"error": "A signed-in moderator is required to unban."}, 403)
+    result, error = unban_user(
+        username, actor=actor, actor_role=session.get("role", "mod"),
+        reason=(data.get("reason") or "").strip() if isinstance(data, dict) else None)
+    if error:
+        return _json({"error": error}, 400)
+    return _json(result)
+
+
+# ---------------------------------------------------------------------------
+# Admin: Reddit synchronisation health
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/reddit-sync/failures", methods=["GET"])
+@require_mod_api
+def api_reddit_sync_failures():
+    """Actions that need a human — the brief's "review synchronisation failures"."""
+    import reddit_sync
+    rows, error = reddit_sync.sync_failures()
+    if error:
+        return _json({"error": error}, 500)
+    return _json({"failures": rows, "count": len(rows)})
+
+
+@app.route("/api/admin/reddit-sync/pending", methods=["GET"])
+@require_mod_api
+def api_reddit_sync_pending():
+    """What a sync pass would do right now. Read-only: never sends to Reddit."""
+    import reddit_sync
+    summary, error = reddit_sync.run_once(
+        limit=min(int(request.args.get("limit", 25) or 25), 100), live=False)
+    if error:
+        return _json({"error": error}, 500)
+    return _json(summary)
 
 
 # ---------------------------------------------------------------------------

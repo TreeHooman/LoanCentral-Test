@@ -267,3 +267,26 @@ CREATE TABLE IF NOT EXISTS announcements (
 
 CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(active);
 CREATE INDEX IF NOT EXISTS idx_announcements_created ON announcements(created_at);
+
+-- Global platform bans. The DB is the source of truth (docs/SECURITY.md rule 2);
+-- a Reddit subreddit ban is a separate, operational action queued through
+-- reddit_actions. One row per ban episode, so the history is preserved when a
+-- user is unbanned and later banned again.
+CREATE TABLE IF NOT EXISTS banned_users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    reason TEXT,
+    banned_by TEXT NOT NULL,
+    banned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    unbanned_by TEXT,
+    unbanned_at TIMESTAMP,
+    unban_reason TEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    loan_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_banned_users_username ON banned_users(lower(username));
+-- At most one active ban per user, so repeated ban actions are idempotent
+-- rather than piling up rows that all have to be cleared to unban.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_banned_users_active
+    ON banned_users (lower(username)) WHERE active;

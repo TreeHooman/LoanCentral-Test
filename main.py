@@ -290,6 +290,16 @@ class CommandManager:
                     if self._is_rate_limited(comment.author.name, trigger):
                         logger.info(f"Rate limited command {trigger} from user {comment.author.name}")
                         return
+                    # A platform ban applies to both interfaces. Checked before
+                    # the command runs and answered with silence: replying would
+                    # spend an API call telling a banned account something it
+                    # already knows, on every comment it posts.
+                    from services import is_user_banned
+                    banned, _ = is_user_banned(comment.author.name)
+                    if banned:
+                        logger.info(
+                            f"Ignoring {trigger} from banned user {comment.author.name}")
+                        return
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
                     reddit_limiter.wait()
                     command_func(comment)

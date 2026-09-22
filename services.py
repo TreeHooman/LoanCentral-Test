@@ -2922,6 +2922,255 @@ def set_verified_lender(username: str, verified: bool, granted_by: str,
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Global platform bans
+# ---------------------------------------------------------------------------
+#
+# The database is the source of truth (docs/SECURITY.md rule 2). A Reddit
+# subreddit ban is a separate operational action, queued through
+# reddit_actions for a human; it is a reflection of this record, not the record.
+
+def _ensure_banned_users_table(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS banned_users (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                reason TEXT,
+                banned_by TEXT NOT NULL,
+                banned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                unbanned_by TEXT,
+                unbanned_at TIMESTAMP,
+                unban_reason TEXT,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                loan_id TEXT
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_banned_users_username "
+                    "ON banned_users(lower(username))")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_banned_users_active "
+                    "ON banned_users (lower(username)) WHERE active")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+
+
+def is_user_banned(username: str):
+    """Return (banned, details_or_None).
+
+    Checks every alias of the account, so banning the dashboard name also stops
+    the linked Reddit handle and vice versa — otherwise a banned user just uses
+    their other name.
+
+    Fails **closed on nothing**: a database error returns (False, None) and is
+    logged. A ban is a restriction, and an outage must not lock the whole
+    platform out; the write-side permission checks still apply.
+    """
+    if not username:
+        return False, None
+    conn = _get_db()
+    if not conn:
+        return False, None
+    try:
+        _ensure_banned_users_table(conn)
+        aliases = account_aliases(username)
+        clause, params = _alias_match("username", aliases)
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT username, reason, banned_by, banned_at, loan_id
+            FROM banned_users
+            WHERE {clause} AND active
+            ORDER BY banned_at DESC LIMIT 1
+        """, params)
+        row = cur.fetchone()
+        if not row:
+            return False, None
+        return True, {
+            "username": row[0], "reason": row[1], "banned_by": row[2],
+            "banned_at": str(row[3]) if row[3] else None, "loan_id": row[4],
+        }
+    except Exception as e:
+        logger.error(f"is_user_banned error: {e}", exc_info=True)
+        return False, None
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def ban_user(username: str, reason: str, actor: str, actor_role: str = "mod",
+             loan_id: str = None):
+    """Ban an account from the platform. Returns (result, error).
+
+    Idempotent: banning an already-banned account reports the existing ban
+    rather than stacking rows, so a double-clicked button is harmless.
+    """
+    username = normalize_username(username)
+    actor = normalize_username(actor)
+    if not username:
+        return None, "A username is required."
+    if not actor:
+        return None, "An actor is required."
+    if username == actor:
+        return None, "You cannot ban yourself."
+
+    target_role, _ = get_user_role(username)
+    if target_role in ("mod", "admin") and actor_role != "admin":
+        return None, "Only an admin can ban a moderator or admin."
+
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        _ensure_banned_users_table(conn)
+        cur = conn.cursor()
+        cur.execute("SELECT id, reason FROM banned_users "
+                    "WHERE lower(username) = %s AND active", (username,))
+        existing = cur.fetchone()
+        if existing:
+            return {"ok": True, "username": username, "already_banned": True,
+                    "ban_id": existing[0]}, None
+
+        cur.execute("""
+            INSERT INTO banned_users (username, reason, banned_by, banned_at, active, loan_id)
+            VALUES (%s, %s, %s, %s, TRUE, %s)
+            RETURNING id
+        """, (username, (reason or "").strip() or None, actor, datetime.now(), loan_id))
+        ban_id = cur.fetchone()[0]
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        # The partial unique index turns a double submit into this.
+        if _is_unique_violation(e, "banned_users", "uq_banned_users_active"):
+            return {"ok": True, "username": username, "already_banned": True}, None
+        logger.error(f"ban_user error: {e}", exc_info=True)
+        return None, "Database error while banning user."
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+    # Sessions re-check permissions when perm_version moves, so an active
+    # session loses access without waiting for logout.
+    _bump_perm_version(username)
+    log_event("user_banned", actor=actor, actor_role=actor_role, target_user=username,
+              loan_id=loan_id, source="dashboard",
+              details={"reason": reason, "ban_id": ban_id})
+    log_audit(actor, actor_role, "user_banned", "user", username,
+              new_value={"banned": True, "reason": reason, "loan_id": loan_id})
+    return {"ok": True, "username": username, "ban_id": ban_id,
+            "already_banned": False}, None
+
+
+def unban_user(username: str, actor: str, actor_role: str = "mod", reason: str = None):
+    """Lift every active ban on an account. Returns (result, error)."""
+    username = normalize_username(username)
+    actor = normalize_username(actor)
+    if not username:
+        return None, "A username is required."
+
+    conn = _get_db()
+    if not conn:
+        return None, "Database connection failed."
+    try:
+        _ensure_banned_users_table(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE banned_users
+            SET active = FALSE, unbanned_by = %s, unbanned_at = %s, unban_reason = %s
+            WHERE lower(username) = %s AND active
+        """, (actor, datetime.now(), (reason or "").strip() or None, username))
+        lifted = cur.rowcount
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"unban_user error: {e}", exc_info=True)
+        return None, "Database error while unbanning user."
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+    if not lifted:
+        return {"ok": True, "username": username, "was_banned": False}, None
+
+    _bump_perm_version(username)
+    log_event("user_unbanned", actor=actor, actor_role=actor_role, target_user=username,
+              source="dashboard", details={"reason": reason})
+    log_audit(actor, actor_role, "user_unbanned", "user", username,
+              new_value={"banned": False, "reason": reason})
+    return {"ok": True, "username": username, "was_banned": True}, None
+
+
+def list_banned_users(active_only: bool = True, limit: int = 200):
+    """Ban records, newest first. Returns (rows, error)."""
+    limit = max(1, min(int(limit or 200), 500))
+    conn = _get_db()
+    if not conn:
+        return [], "Database connection failed."
+    try:
+        _ensure_banned_users_table(conn)
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT id, username, reason, banned_by, banned_at,
+                   unbanned_by, unbanned_at, unban_reason, active, loan_id
+            FROM banned_users
+            {'WHERE active' if active_only else ''}
+            ORDER BY banned_at DESC
+            LIMIT %s
+        """, (limit,))
+        columns = ["id", "username", "reason", "banned_by", "banned_at",
+                   "unbanned_by", "unbanned_at", "unban_reason", "active", "loan_id"]
+        rows = []
+        for row in cur.fetchall() or []:
+            record = dict(zip(columns, row))
+            record["active"] = bool(record["active"])
+            for field in ("banned_at", "unbanned_at"):
+                if record[field]:
+                    record[field] = str(record[field])
+            rows.append(record)
+        return rows, None
+    except Exception as e:
+        logger.error(f"list_banned_users error: {e}", exc_info=True)
+        return [], "Database error listing bans."
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
+def _bump_perm_version(username: str):
+    """Invalidate cached session permissions for an account. Best-effort."""
+    conn = _get_db()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE user_roles SET perm_version = COALESCE(perm_version, 0) + 1 "
+                    "WHERE lower(username) = lower(%s)", (username,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"_bump_perm_version failed for {username}: {e}")
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+
 def normalize_username(name: str) -> str:
     """Strip u/ or /u/ decoration and casing off a username."""
     key = (name or "").strip()

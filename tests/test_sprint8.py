@@ -444,7 +444,8 @@ class ExpandedMetricsAPITests(unittest.TestCase):
             sess["role"]     = "admin"
         return client
 
-    def test_expanded_metrics_endpoint(self):
+    @patch("services.is_user_banned", return_value=(False, None))
+    def test_expanded_metrics_endpoint(self, _no_ban):
         conn, cur = _make_conn()
         cur.fetchone.side_effect = [
             (100, 40, 50, 5, 2, 3, 10, 8),
@@ -486,7 +487,8 @@ class AnalyticsAPITests(unittest.TestCase):
             sess["role"]     = "admin"
         return client
 
-    def test_analytics_summary(self):
+    @patch("services.is_user_banned", return_value=(False, None))
+    def test_analytics_summary(self, _no_ban):
         conn, cur = _make_conn()
         cur.fetchall.side_effect = [
             [("page_view", 50)],
