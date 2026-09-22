@@ -1672,9 +1672,27 @@ def set_loan_refunded(loan_id):
 @app.route("/api/loans/<loan_id>/dispute", methods=["POST"])
 @require_auth
 def set_loan_disputed(loan_id):
-    from services import dispute_loan
-    data     = request.get_json() or {}
-    borrower = data.get("borrower", session.get("username", "")).strip().lower()
+    from services import dispute_loan, account_aliases
+    data = request.get_json() or {}
+    if not isinstance(data, dict):
+        return _json({"error": "Expected a JSON object."}, 400)
+    actor = session.get("username", "").strip().lower()
+    supplied = data.get("borrower")
+    if not isinstance(supplied, (str, type(None))):
+        return _json({"error": "Invalid borrower."}, 400)
+    supplied = (supplied or "").strip().lower()
+
+    if actor:
+        # A session may only dispute as itself. The loan stores whichever name
+        # the loan was recorded under, so accept any alias of the caller
+        # (dashboard name or linked Reddit name) but never another user's.
+        borrower = supplied or actor
+        if borrower != actor and borrower not in account_aliases(actor):
+            return _json({"error": "You can only dispute your own loans."}, 403)
+    else:
+        # Master API key (no session): caller is already admin-level.
+        borrower = supplied
+
     if not borrower:
         return _json({"error": "borrower is required"}, 400)
     result, error = dispute_loan(loan_id, borrower)
@@ -1781,15 +1799,17 @@ def report_payment(loan_id):
         if note:
             report_text += f" Note: {note}"
 
+        # The newline lives in the parameter, not the SQL: Postgres' E'\n'
+        # escape-string syntax is a hard syntax error on SQLite (dev/demo).
         cur.execute("""
             UPDATE loans
             SET notes = CASE
                 WHEN notes IS NULL OR notes = '' THEN %s
-                ELSE notes || E'\n' || %s
+                ELSE notes || %s
             END,
             last_updated = NOW()
             WHERE id = %s
-        """, (report_text, report_text, db_id))
+        """, (report_text, "\n" + report_text, db_id))
         conn.commit()
         log_event(
             "borrower_payment_reported",

@@ -5185,15 +5185,17 @@ def update_request_status(request_id: str, new_status: str, actor: str, note: st
         update_note = f"Status changed to '{new_status}' by {actor}"
         if note:
             update_note += f": {note}"
+        # The newline lives in the parameter, not the SQL: Postgres' E'\n'
+        # escape-string syntax is a hard syntax error on SQLite (dev/demo).
         cur.execute("""
             UPDATE loan_requests
             SET request_status = %s,
                 updated_at     = NOW(),
                 notes = CASE WHEN notes IS NULL THEN %s
-                             ELSE notes || E'\\n' || %s END
+                             ELSE notes || %s END
             WHERE request_id = %s
             RETURNING id
-        """, (new_status, update_note, update_note, request_id))
+        """, (new_status, update_note, "\n" + update_note, request_id))
         if not cur.fetchone():
             conn.rollback()
             return False, "Request not found"
