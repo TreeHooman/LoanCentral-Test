@@ -184,6 +184,11 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "reddit_username", "TEXT")
     _ensure_column(conn, "user_roles", "reddit_username_linked_at", "TIMESTAMP")
     _ensure_column(conn, "user_roles", "reddit_username_linked_by", "TEXT")
+    # Retry bookkeeping for the Reddit sync worker. Postgres gets these from
+    # scripts/migrations/013_integrity_constraints.sql.
+    _ensure_column(conn, "reddit_actions", "attempts", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "reddit_actions", "next_attempt_at", "TIMESTAMP")
+    _ensure_column(conn, "reddit_actions", "last_error", "TEXT")
     conn.commit()
 
     _ensure_unique_indexes(conn)

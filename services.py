@@ -270,6 +270,79 @@ def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: st
         conn.close()
 
 
+#: What the bot sets a funded request's post flair to, where it has permission.
+FUNDED_FLAIR_TEXT = os.getenv("REDDIT_FUNDED_FLAIR", "FUNDED")
+
+
+def funded_comment_body(lender: str, loan_id: str) -> str:
+    """The bot comment that marks a request funded on Reddit.
+
+    Kept here rather than in the worker so the wording is testable without a
+    Reddit client, and identical whichever interface triggered the funding.
+    """
+    return (
+        f"Funded by u/{lender}.\n\n"
+        f"Loan ID: `{loan_id}`\n\n"
+        "This request is now recorded as funded in LoanCentral. "
+        "LoanCentral is a record-keeping tool and is not a party to this loan."
+    )
+
+
+def queue_request_funded_sync(request_id: str, loan_id: str, lender: str,
+                              reddit_post_id: str, reddit_comment_id: str = None):
+    """Stage the Reddit-side reflection of a funded request.
+
+    Never calls Reddit. Two actions are queued: the flair change and the
+    informational comment. Both are deduped by enqueue_reddit_action on
+    (action_type, target_user, loan_id, request_id), so funding that is retried
+    or replayed does not produce duplicate comments — one of the explicit
+    requirements for the bot.
+
+    Failures are logged and swallowed: the loan is already committed and the
+    database is authoritative, so a queueing problem must not surface as a
+    funding error. Unqueued syncs are visible in the admin sync view.
+    """
+    subreddit = (os.getenv("PRIMARY_SUBREDDIT")
+                 or (os.getenv("SUBREDDITS", "").split(",")[0].strip() or None))
+    payload = {
+        "request_id": request_id,
+        "loan_id": loan_id,
+        "lender": lender,
+        "reddit_post_id": reddit_post_id,
+        "reddit_comment_id": reddit_comment_id,
+    }
+    queued = []
+    try:
+        result, error = enqueue_reddit_action(
+            "flair_sync",
+            target_user=lender, loan_id=loan_id, request_id=request_id,
+            subreddit=subreddit,
+            payload={**payload, "flair_text": FUNDED_FLAIR_TEXT},
+            reason=f"Request {request_id} funded; reflect on the Reddit post.",
+            created_by=lender,
+        )
+        if error:
+            logger.error(f"queue_request_funded_sync flair_sync failed: {error}")
+        else:
+            queued.append(result)
+
+        result, error = enqueue_reddit_action(
+            "funded_comment",
+            target_user=lender, loan_id=loan_id, request_id=request_id,
+            subreddit=subreddit,
+            payload={**payload, "body": funded_comment_body(lender, loan_id)},
+            reason=f"Request {request_id} funded by u/{lender}.",
+            created_by=lender,
+        )
+        if error:
+            logger.error(f"queue_request_funded_sync funded_comment failed: {error}")
+        else:
+            queued.append(result)
+    except Exception as e:
+        logger.error(f"queue_request_funded_sync error: {e}", exc_info=True)
+    return queued
+
+
 def list_reddit_actions(status: str = None, action_type: str = None, limit: int = 100):
     """List queued/history Reddit actions for mod review."""
     limit = max(1, min(int(limit or 100), 500))
@@ -406,7 +479,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             cur.execute('''
                 UPDATE loan_requests SET request_status = request_status
                 WHERE request_id = %s AND request_status = 'open'
-                RETURNING borrower_username, requested_amount, notes, thread_url
+                RETURNING borrower_username, requested_amount, notes, thread_url,
+                          reddit_post_id, reddit_comment_id
             ''', (request_id,))
             claimed = cur.fetchone()
             if not claimed:
@@ -416,6 +490,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             currency = metadata.get("currency", "USD")
             payment_method = metadata.get("method")
             thread_url = claimed[3] or ""
+            # Kept for the post-commit Reddit sync enqueue below.
+            reddit_post_id, reddit_comment_id = claimed[4], claimed[5]
             if metadata.get("expires") and metadata["expires"] < datetime.now().date().isoformat():
                 return None, "This request has expired."
             if amount <= 0 or lender == borrower:
@@ -554,6 +630,20 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             lender, "loan_confirmed",
             "Loan recorded",
             f"Loan {loan_id} for u/{borrower} ({amount} {currency}) has been recorded.")
+
+        if request_id and reddit_post_id:
+            # Queued *after* the commit, deliberately. The database is the
+            # authoritative record: the loan is funded whether or not Reddit
+            # ever hears about it, so a queue failure must not be able to undo
+            # it. enqueue_reddit_action dedupes on (type, loan, request), so
+            # re-running this is harmless.
+            queue_request_funded_sync(
+                request_id=request_id,
+                loan_id=loan_id,
+                lender=lender,
+                reddit_post_id=reddit_post_id,
+                reddit_comment_id=reddit_comment_id,
+            )
         return loan_id, None
 
     except Exception as e:
@@ -1523,6 +1613,35 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
                 pass
         logger.error(f"save_loan_request error: {e}", exc_info=True)
         return None, "Database error saving loan request."
+    finally:
+        cur.close()
+        conn.close()
+
+
+def set_request_reddit_comment_id(request_id: str, comment_id: str):
+    """Record the bot's own reply as the comment to edit later.
+
+    main.py used to call post.reply() and discard the result, so nothing knew
+    which comment belonged to the bot and the "Funded by u/..." update had
+    nowhere to go. Best-effort: a failure here must not break post handling,
+    since the request row itself is already saved.
+    """
+    if not request_id or not comment_id:
+        return False
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE loan_requests SET reddit_comment_id = %s WHERE request_id = %s",
+            (str(comment_id), request_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"set_request_reddit_comment_id error: {e}", exc_info=True)
+        return False
     finally:
         cur.close()
         conn.close()

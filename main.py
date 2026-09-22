@@ -314,6 +314,7 @@ def handle_new_post(post):
         username = post.author.name
         user_info = generate_user_info(username)
         reply_parts = [user_info]
+        request_id = None   # [PRE] posts never create one
 
         if "[req]" in post.title.lower():
             from services import find_duplicate_open_requests, save_loan_request
@@ -350,8 +351,16 @@ def handle_new_post(post):
         
         # Reply once, with history plus any REQ-ID info, to minimize Reddit API calls.
         reddit_limiter.wait()
-        post.reply(with_dashboard_link("\n\n---\n\n".join(reply_parts)))
+        bot_comment = post.reply(with_dashboard_link("\n\n---\n\n".join(reply_parts)))
         logger.info(f"Successfully commented on post {post.id} for user {username}")
+
+        # Store the bot's own comment id so the funding sync can edit this
+        # comment later instead of posting a second one. Costs no extra API
+        # call — reply() already returned the comment.
+        comment_id = getattr(bot_comment, "id", None)
+        if request_id and comment_id:
+            from services import set_request_reddit_comment_id
+            set_request_reddit_comment_id(request_id, comment_id)
         
     except Exception as e:
         logger.error(f"Error handling new post {post.id}: {e}")
