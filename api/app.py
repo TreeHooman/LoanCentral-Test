@@ -3593,12 +3593,26 @@ def api_update_request_status(request_id):
     note       = data.get("note", "")
     if not new_status:
         return _json({"error": "status required"}, 400)
-    ok, error = update_request_status(request_id, new_status, session["username"], note)
+
+    # Leaving a terminal status (correcting a request funded by mistake) is an
+    # admin action, not an ordinary mod one, and is audited as an override.
+    force = bool(data.get("force"))
+    if force and not (_is_admin() or _api_key_ok(request.headers.get("X-API-Key"))):
+        return _json({"error": "Admin access required to override a request status."}, 403)
+
+    ok, error = update_request_status(request_id, new_status, session["username"], note,
+                                      force=force)
     if not ok:
-        return _json({"error": error}, 400 if "Invalid" in error or "not found" in error.lower() else 500)
+        # A refused transition is the caller asking for something the lifecycle
+        # does not allow — a client error. Only a real database failure is 500.
+        if error == "Request not found":
+            return _json({"error": error}, 404)
+        if "Database" in error:
+            return _json({"error": error}, 500)
+        return _json({"error": error}, 400)
     log_audit(session["username"], session.get("role","mod"), "request_status_updated",
               target_type="loan_request", target_id=request_id,
-              new_value={"status": new_status, "note": note})
+              new_value={"status": new_status, "note": note, "forced": force})
     from services import log_request_event, get_loan_request, create_notification
     log_request_event(request_id, "status_changed", actor=session["username"],
                       note=f"Status → {new_status}" + (f": {note}" if note else ""))

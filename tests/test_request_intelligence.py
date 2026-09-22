@@ -1,5 +1,7 @@
 """Tests for Request Intelligence Sprint (Tasks 1-10)."""
 import unittest
+
+from tests.support.dbcase import RealDBTestCase
 from unittest.mock import patch, MagicMock, call
 from datetime import datetime
 import sys, os
@@ -295,20 +297,22 @@ class GetRequestAnalyticsExpandedTests(unittest.TestCase):
 # funded_backfill status acceptance
 # ---------------------------------------------------------------------------
 
-class FundedBackfillStatusTests(unittest.TestCase):
+class FundedBackfillStatusTests(RealDBTestCase):
+    """Runs against a real database: a MagicMock cursor cannot model the
+    current status, which update_request_status now reads to validate the
+    transition."""
 
-    @patch("services._get_db")
-    @patch("services._ensure_loan_requests_table")
-    @patch("services.log_event")
-    def test_funded_backfill_is_valid_status(self, mock_log, mock_tbl, mock_db):
-        from services import update_request_status
-        conn = MagicMock(); cur = MagicMock()
-        cur.fetchone.return_value = (1,)  # simulate row found by RETURNING id
-        conn.cursor.return_value = cur
-        mock_db.return_value = conn
-        ok, err = update_request_status("REQ-001", "funded_backfill", "system")
-        self.assertTrue(ok)
+    def test_funded_backfill_is_valid_status(self):
+        from services import create_loan_request, update_request_status
+        request_id, error = create_loan_request(borrower_username="borrower")
+        self.assertIsNone(error)
+        ok, err = update_request_status(request_id, "funded_backfill", "system")
         self.assertIsNone(err)
+        self.assertTrue(ok)
+        status = self.query(
+            "SELECT request_status FROM loan_requests WHERE request_id = %s",
+            (request_id,))[0][0]
+        self.assertEqual(status, "funded_backfill")
 
     def test_funded_backfill_in_lr_statuses(self):
         from services import _LR_STATUSES

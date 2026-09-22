@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 LOAN_STATUSES = ("confirmed", "partially_repaid", "repaid",
                  "unpaid", "refunded", "disputed")
 REQUEST_STATUSES = ("open", "funded", "expired", "cancelled",
-                    "removed", "duplicate", "funded_backfill")
+                    "removed", "duplicate", "denied_by_mod", "funded_backfill")
 
 
 def _in_list(values):

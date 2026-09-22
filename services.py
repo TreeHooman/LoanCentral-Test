@@ -14,6 +14,14 @@ import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from loan_states import (
+    LOAN_STATUSES,
+    REQUEST_STATUSES,
+    TERMINAL_LOAN_STATUSES,
+    loan_transition_error,
+    request_transition_error,
+)
+
 logger = logging.getLogger("LoanCentral")
 
 
@@ -632,6 +640,13 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         new_repaid = already_repaid + amount_paid
         new_status = "repaid" if new_repaid >= loan_amount else "partially_repaid"
 
+        # Lifecycle guard. The checks above produce the specific wording each
+        # command has always used; this catches anything they miss, so a new
+        # call site cannot invent an illegal move. See loan_states.py.
+        _blocked = loan_transition_error(status, new_status)
+        if _blocked:
+            return None, _blocked
+
         cur.execute('''
             UPDATE loans SET amount_repaid = %s, status = %s, last_updated = %s, payment_timing = %s WHERE id = %s
         ''', (new_repaid, new_status, datetime.now(), _timing, db_id))
@@ -757,6 +772,13 @@ def mark_unpaid(loan_id: str, lender: str):
         if status == "refunded":
             return None, "This loan has been refunded."
 
+        # Lifecycle guard. The checks above produce the specific wording each
+        # command has always used; this catches anything they miss, so a new
+        # call site cannot invent an illegal move. See loan_states.py.
+        _blocked = loan_transition_error(status, "unpaid")
+        if _blocked:
+            return None, _blocked
+
         cur.execute('''
             UPDATE loans SET status = 'unpaid', last_updated = %s WHERE id = %s
         ''', (datetime.now(), db_id))
@@ -852,6 +874,13 @@ def mark_refunded_by_id(loan_id: str, lender: str):
             return None, "This loan has already been marked as refunded."
         if status == "repaid":
             return None, "This loan has already been fully repaid and cannot be marked refunded."
+
+        # Lifecycle guard. The checks above produce the specific wording each
+        # command has always used; this catches anything they miss, so a new
+        # call site cannot invent an illegal move. See loan_states.py.
+        _blocked = loan_transition_error(status, "refunded")
+        if _blocked:
+            return None, _blocked
 
         cur.execute('''
             UPDATE loans SET status = 'refunded', last_updated = %s WHERE id = %s
@@ -2054,6 +2083,13 @@ def dispute_loan(loan_id: str, borrower: str):
             return None, "This loan is already closed and cannot be disputed."
         if status == 'disputed':
             return None, "This loan is already marked as disputed."
+        # Lifecycle guard. The checks above produce the specific wording each
+        # command has always used; this catches anything they miss, so a new
+        # call site cannot invent an illegal move. See loan_states.py.
+        _blocked = loan_transition_error(status, "disputed")
+        if _blocked:
+            return None, _blocked
+
         cur.execute('''
             UPDATE loans SET status = 'disputed', last_updated = %s WHERE id = %s
         ''', (datetime.now(), db_id))
@@ -4936,11 +4972,10 @@ import re as _lr_re
 import random as _lr_random
 import string as _lr_string
 
-_LR_STATUSES = {
-    "open", "funded", "cancelled", "expired",
-    "removed", "duplicate", "denied_by_mod",
-    "funded_backfill",
-}
+# The status vocabulary lives in loan_states.py so the lifecycle rules and the
+# set of legal values cannot drift apart. Kept under the old name because
+# analytics queries and tests reference it.
+_LR_STATUSES = REQUEST_STATUSES
 
 
 def _generate_request_id() -> str:
@@ -5219,39 +5254,68 @@ def get_loan_request_queue(
         conn.close()
 
 
-def update_request_status(request_id: str, new_status: str, actor: str, note: str = None):
+def update_request_status(request_id: str, new_status: str, actor: str, note: str = None,
+                          force: bool = False):
     """
     Update a loan request's status. Mod/admin only via API layer.
+
+    The move is checked against loan_states.REQUEST_TRANSITIONS first. Before
+    that table existed this accepted any status from any status, so a funded
+    request could be reopened and then funded a second time, orphaning the
+    first loan.
+
+    `force` is the admin correction path for a request funded by mistake. It is
+    recorded in the request note and the audit event.
+
     Returns (ok, error).
     """
-    if new_status not in _LR_STATUSES:
-        return False, f"Invalid status: {new_status}"
     conn = _get_db()
     if not conn:
         return False, "Database connection failed"
     try:
         _ensure_loan_requests_table(conn)
         cur = conn.cursor()
+
+        cur.execute(
+            "SELECT request_status FROM loan_requests WHERE request_id = %s",
+            (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return False, "Request not found"
+        current_status = row[0]
+
+        transition_error = request_transition_error(current_status, new_status, force=force)
+        if transition_error:
+            return False, transition_error
+
         update_note = f"Status changed to '{new_status}' by {actor}"
+        if force:
+            update_note += " (admin override)"
         if note:
             update_note += f": {note}"
         # The newline lives in the parameter, not the SQL: Postgres' E'\n'
         # escape-string syntax is a hard syntax error on SQLite (dev/demo).
+        # `AND request_status = %s` makes this compare-and-set: if another
+        # request changed the status between the SELECT above and here, this
+        # updates nothing rather than applying a decision based on stale state.
         cur.execute("""
             UPDATE loan_requests
             SET request_status = %s,
                 updated_at     = NOW(),
                 notes = CASE WHEN notes IS NULL THEN %s
                              ELSE notes || %s END
-            WHERE request_id = %s
+            WHERE request_id = %s AND request_status = %s
             RETURNING id
-        """, (new_status, update_note, "\n" + update_note, request_id))
+        """, (new_status, update_note, "\n" + update_note, request_id, current_status))
         if not cur.fetchone():
             conn.rollback()
-            return False, "Request not found"
+            return False, "Request changed while you were working on it. Refresh and try again."
         conn.commit()
         log_event("loan_request_status_updated", target_user=actor, source="system",
-                  details={"request_id": request_id, "new_status": new_status})
+                  details={"request_id": request_id,
+                           "previous_status": current_status,
+                           "new_status": new_status,
+                           "forced": bool(force)})
         return True, None
     except Exception as e:
         conn.rollback()

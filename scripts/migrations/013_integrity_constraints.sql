@@ -59,7 +59,8 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_lr_status') THEN
         ALTER TABLE loan_requests ADD CONSTRAINT ck_lr_status
             CHECK (request_status IN ('open', 'funded', 'expired', 'cancelled',
-                                      'removed', 'duplicate', 'funded_backfill')) NOT VALID;
+                                      'removed', 'duplicate', 'denied_by_mod',
+                                      'funded_backfill')) NOT VALID;
     END IF;
 END
 $$;

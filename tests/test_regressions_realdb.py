@@ -142,10 +142,10 @@ class DisputeAuthorizationTests(RealDBTestCase):
 
 
 class RequestStateTransitionTests(RealDBTestCase):
-    """Documents the missing state machine — see docs/reports/AUDIT_2026-09-21.md §3.3.
+    """The state machine from loan_states.py — see AUDIT_2026-09-21.md §3.3.
 
-    These pass today and describe current behaviour. They are here so the
-    Phase 2 state machine has a concrete before/after to change.
+    Before it existed, update_request_status accepted any status from any
+    status, so a funded request could be reopened and funded again.
     """
 
     def setUp(self):
@@ -158,17 +158,52 @@ class RequestStateTransitionTests(RealDBTestCase):
         )
         self.assertIsNone(error)
 
-    def test_funded_request_can_currently_be_reopened(self):
-        """Known gap: no transition rules, so funded -> open is allowed."""
-        services.update_request_status(self.request_id, "funded", actor="mod")
-        ok, error = services.update_request_status(self.request_id, "open", actor="mod")
-        self.assertTrue(ok, error)
-        status = self.query(
+    def _status(self):
+        return self.query(
             "SELECT request_status FROM loan_requests WHERE request_id = %s",
             (self.request_id,))[0][0]
-        self.assertEqual(status, "open")
+
+    def test_funded_request_cannot_be_reopened(self):
+        """The double-funding hole: funded -> open is no longer a legal move."""
+        services.update_request_status(self.request_id, "funded", actor="mod")
+        ok, error = services.update_request_status(self.request_id, "open", actor="mod")
+        self.assertFalse(ok)
+        self.assertIn("admin override", error)
+        self.assertEqual(self._status(), "funded")
+
+    def test_admin_override_can_correct_a_mistaken_funding(self):
+        services.update_request_status(self.request_id, "funded", actor="mod")
+        ok, error = services.update_request_status(
+            self.request_id, "open", actor="admin", note="funded in error", force=True)
+        self.assertIsNone(error)
+        self.assertTrue(ok)
+        self.assertEqual(self._status(), "open")
+
+    def test_override_is_recorded_in_the_request_note(self):
+        services.update_request_status(self.request_id, "funded", actor="mod")
+        services.update_request_status(self.request_id, "open", actor="admin", force=True)
+        notes = self.query("SELECT notes FROM loan_requests WHERE request_id = %s",
+                           (self.request_id,))[0][0]
+        self.assertIn("admin override", notes)
+
+    def test_normal_transitions_still_work(self):
+        for target in ("expired", "open", "duplicate", "open", "cancelled"):
+            ok, error = services.update_request_status(self.request_id, target, actor="mod")
+            self.assertTrue(ok, f"{target}: {error}")
+        self.assertEqual(self._status(), "cancelled")
+
+    def test_removed_is_terminal(self):
+        services.update_request_status(self.request_id, "removed", actor="mod")
+        ok, error = services.update_request_status(self.request_id, "open", actor="mod")
+        self.assertFalse(ok)
+        self.assertEqual(self._status(), "removed")
 
     def test_invalid_status_is_still_rejected(self):
         ok, error = services.update_request_status(self.request_id, "banana", actor="mod")
         self.assertFalse(ok)
         self.assertIn("Invalid status", error)
+
+    def test_no_op_transition_is_rejected(self):
+        ok, error = services.update_request_status(self.request_id, "open", actor="mod")
+        self.assertFalse(ok)
+        self.assertIn("already open", error)
