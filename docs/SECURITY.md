@@ -5,7 +5,7 @@ change (human or AI) that violates one needs explicit sign-off from the owner
 first. See also `docs/reports/security_audit.md` and
 `docs/reports/PERMISSION_AUDIT_REPORT.md` for point-in-time audit results.
 
-## The 8 rules
+## The 10 rules
 
 ### 1. No Reddit OAuth
 Do not implement Reddit OAuth for dashboard login. Auth is deferred by design
@@ -55,6 +55,20 @@ Secrets live in `.env` / Render env vars only. Never commit them, never log
 them, never put API keys in URLs — keys are **header-only** (`X-API-Key`);
 the query-string fallback was deliberately removed. Don't reintroduce it.
 
+### 9. Permission checks belong in a decorator or a shared helper
+Every write route must carry a recognised gate. Inline, copy-pasted checks are
+how `/api/loans/<id>/dispute` shipped without one — it trusted a username from
+the request body and wrote the audit row against the victim. Use
+`_lender_write_actor()`, the `require_*` decorators, or `role_required`.
+`tests/test_permissions_realdb.py::EveryWriteRouteHasAGateTests` fails the
+build if a new write route has none; fix the route, don't widen the exemptions.
+
+### 10. Security-relevant tests must hit a real database
+A `MagicMock` connection accepts SQL no database would, so a mocked test
+proves nothing about permissions, constraints or transactions. Anything
+covering auth, loan state or migrations uses
+`tests/support/dbcase.RealDBTestCase`.
+
 ## Enforcement conventions
 
 - Dashboard pages: `@role_required("mod", "admin")` (or stricter).
@@ -62,3 +76,9 @@ the query-string fallback was deliberately removed. Don't reintroduce it.
   `@require_admin_api`.
 - List endpoints must scope results to the caller unless mod/admin — the
   `/api/loans` leak (fixed 2026-06-25, commit `7ae6c3c`) is the cautionary tale.
+- Never take an acting username from the request body. Bind it to the session
+  and, where linked accounts matter, widen with `account_aliases()` — never
+  with whatever the browser sent.
+- Bans are global and checked centrally (`reject_banned_users`); they resolve
+  through `account_aliases`, so a banned user cannot switch to their other
+  name.

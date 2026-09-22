@@ -18,10 +18,15 @@ Postgres in prod, SQLite in dev/tests. Base schema in `schema.sql`; runtime
   `currency`, optional `interest_amount`/`interest_rate`.
 - `status` lifecycle: `confirmed → partially_repaid → repaid`, or
   `unpaid` (default flagged by lender), `refunded`, `disputed`.
+  The allowed transitions live in **`loan_states.LOAN_TRANSITIONS`** — that
+  table, not this sentence, is authoritative.
 - Borrower acknowledgement: `borrower_acknowledged_at/_note`.
 - `payment_timing`: `early` / `late` / `on_time` / NULL.
 
-**Invariants** (enforced in `services.py`, not DB constraints):
+**Invariants** (enforced in `loan_states.py` + `services.py`, and since
+migration 013 also by database constraints — `ck_loans_*`, `uq_loans_loan_id`.
+CHECKs are `NOT VALID`, so they bind new writes without rejecting existing
+rows; run `scripts/check_db_integrity.py` before VALIDATEing them):
 - Only the loan's recorded lender may run lender actions on it; only its
   borrower may run borrower actions (case-insensitive match).
 - Repayments: total capped at 1.5× `repay_amount`; overpayment beyond the
@@ -45,7 +50,10 @@ Recomputed from loan rows (`loans_as_lender`, `amount_lent`, `unpaid_loans`,
 ### loan_requests — [REQ] posts (NEW system)
 Live columns per `_ensure_loan_requests_table`. `request_id` like `REQ-0042`;
 `request_status`: `open, funded, expired, cancelled, removed, duplicate,
-funded_backfill` (`_LR_STATUSES`); `funded_loan_id` → `loans.loan_id`.
+denied_by_mod, funded_backfill` (`_LR_STATUSES`, which is now just
+`loan_states.REQUEST_STATUSES`). Transitions: `loan_states.REQUEST_TRANSITIONS`
+— `funded` is terminal, and leaving it needs an admin `force=True` override
+that is audited. `funded_loan_id` → `loans.id`.
 Companion `request_events` table = immutable per-request timeline.
 **Do not confuse with the OLD `/api/requests/*` system** (deprecated).
 
@@ -65,7 +73,9 @@ transaction (docs/SECURITY.md rule 6).
 ## Supporting tables
 
 - `verification_applications` — lender verification queue (pending/approved/denied).
-- `reddit_actions` — staged outbound Reddit writes (`queued → sent/skipped/failed/cancelled`); the only path to live Reddit mutations.
+- `reddit_actions` — staged outbound Reddit writes (`queued → sent/skipped/failed/cancelled`); the only path to live Reddit mutations. Carries `attempts` / `next_attempt_at` / `last_error` for `reddit_sync.py`'s retry+backoff. Drained only by `scripts/reddit_sync_worker.py --live`.
+- `banned_users` — global platform bans, one row per ban episode. A partial unique index allows one active ban per user, so re-banning is idempotent and history survives an unban. Enforced by the `reject_banned_users` before_request hook and by the bot.
+- `schema_migrations` — which files in `scripts/migrations/` have been applied, with checksums.
 - `notifications` / `notification_preferences` — in-app notifications + opt-outs.
 - `feedback_submissions` — user bug reports/suggestions.
 - `announcements` — platform notices (public GET serves `active_only`).

@@ -42,9 +42,16 @@ Browser / API ────────┘
   `services.resolve_user_identity` / `account_aliases`, which match either name.
   Run `scripts/check_identity_links.py` to report accounts whose two names have
   drifted apart.
-- Outbound Reddit writes (bans, reminders, DMs) are **not** made live: they are
-  queued in the `reddit_actions` table via `enqueue_reddit_action` for human
-  review (see docs/SECURITY.md rule 4).
+- Outbound Reddit writes (bans, reminders, DMs) are **not** made live from the
+  bot: they are queued in `reddit_actions` via `enqueue_reddit_action`
+  (see docs/SECURITY.md rule 4).
+- Funding a request queues a `flair_sync` and a `funded_comment`, **after** the
+  loan commits. `reddit_sync.py` executes them, but only when
+  `scripts/reddit_sync_worker.py` is run with `--live`; it is dry-run by
+  default. Failures retry with backoff, then land in `failed` for review at
+  `/api/admin/reddit-sync/failures`. A deleted post is `skipped`, not retried.
+- The bot stores its own reply's comment id on the request, so the funding
+  sync **edits** that comment instead of adding a second one.
 
 ## Web / API (`api/`)
 
@@ -57,6 +64,21 @@ Browser / API ────────┘
 - `api/auth.py` — Reddit OAuth helpers, present but **not configured**
   (standing rule: no Reddit OAuth). Borrower login is OTP
   (email/SMS) with per-IP rate limiting; read-only magic links via `/view/<token>`.
+
+## Loan lifecycle (`loan_states.py`)
+
+One module, no project imports: the allowed loan and request statuses and the
+transitions between them, plus `loan_transition_error()` /
+`request_transition_error()`. Every mutation consults it, so a status rule
+changes in exactly one place and neither interface can invent an illegal move.
+`funded` is terminal for a request — reopening one needs an admin override,
+which is what prevented the same request being funded twice.
+
+## Reddit synchronisation (`reddit_sync.py`)
+
+Reddit is treated as a view of the database, never a source of truth. The
+database is authoritative: if the dashboard says funded, it is funded, and a
+Reddit outage is a queue backlog rather than a data problem.
 
 ## Services (`services.py`)
 
