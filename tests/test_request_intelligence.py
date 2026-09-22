@@ -556,20 +556,6 @@ class AuditLogIntegrationTests(unittest.TestCase):
         audit_kwargs = mock_audit.call_args
         self.assertIn("request_status_updated", audit_kwargs[0])
 
-    @patch("services.update_request_status", return_value=(True, None))
-    @patch("services.log_audit")
-    @patch("services.log_request_event", return_value=(1, None))
-    @patch("services.get_loan_request", return_value=({"borrower_username": "alice"}, None))
-    @patch("services.create_notification")
-    def test_status_change_logs_request_event(self, mock_notif, mock_get, mock_event, mock_audit, mock_update):
-        res = self.client.patch("/api/loan-requests/REQ-002/status",
-                                json={"status": "duplicate"},
-                                content_type="application/json")
-        self.assertEqual(res.status_code, 200)
-        mock_event.assert_called()
-        event_type = mock_event.call_args[0][1]
-        self.assertEqual(event_type, "status_changed")
-
     @patch("services.link_request_to_loan", return_value=(True, None))
     @patch("services.log_audit")
     @patch("services.log_request_event", return_value=(1, None))
@@ -579,18 +565,6 @@ class AuditLogIntegrationTests(unittest.TestCase):
                                content_type="application/json")
         self.assertEqual(res.status_code, 200)
         mock_audit.assert_called_once()
-
-    @patch("services.link_request_to_loan", return_value=(True, None))
-    @patch("services.log_audit")
-    @patch("services.log_request_event", return_value=(1, None))
-    def test_link_action_logs_request_event(self, mock_event, mock_audit, mock_link):
-        res = self.client.post("/api/loan-requests/REQ-003/link",
-                               json={"loan_db_id": 42},
-                               content_type="application/json")
-        self.assertEqual(res.status_code, 200)
-        mock_event.assert_called()
-        event_type = mock_event.call_args[0][1]
-        self.assertEqual(event_type, "linked_to_loan")
 
 
 # ---------------------------------------------------------------------------

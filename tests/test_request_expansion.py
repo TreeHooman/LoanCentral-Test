@@ -322,6 +322,9 @@ class RequestAnalyticsPageTests(unittest.TestCase):
 # Event logging wired into status-change and link routes
 # ---------------------------------------------------------------------------
 
+# Timeline events moved from the route layer into services (Phase 3) so the
+# bot and $fund produce them too. They are covered end-to-end, against a real
+# database, in tests/test_request_timeline.py.
 class EventLoggingIntegrationTests(unittest.TestCase):
 
     def setUp(self):
@@ -333,41 +336,6 @@ class EventLoggingIntegrationTests(unittest.TestCase):
             s["username"] = "moduser"
             s["role"] = "mod"
             s["perm_version"] = 0
-
-    @patch("services.log_request_event", return_value=(1, None))
-    @patch("services.log_audit")
-    @patch("services.update_request_status", return_value=(True, None))
-    def test_status_change_logs_event(self, mock_upd, mock_audit, mock_log_event):
-        r = self.client.patch("/api/loan-requests/REQ-TEST0001/status",
-                              json={"status": "expired", "note": "too old"})
-        self.assertEqual(r.status_code, 200)
-        mock_log_event.assert_called_once()
-        call_args = mock_log_event.call_args[0]
-        self.assertEqual(call_args[0], "REQ-TEST0001")
-        self.assertEqual(call_args[1], "status_changed")
-
-    @patch("services.log_request_event", return_value=(2, None))
-    @patch("services.log_audit")
-    @patch("services.link_request_to_loan", return_value=(True, None))
-    def test_link_logs_event(self, mock_link, mock_audit, mock_log_event):
-        r = self.client.post("/api/loan-requests/REQ-TEST0001/link",
-                             json={"loan_db_id": 42})
-        self.assertEqual(r.status_code, 200)
-        mock_log_event.assert_called_once()
-        call_args = mock_log_event.call_args[0]
-        self.assertEqual(call_args[0], "REQ-TEST0001")
-        self.assertEqual(call_args[1], "linked_to_loan")
-
-    @patch("services.log_request_event", return_value=(3, None))
-    @patch("services.find_duplicate_loan_requests", return_value=([], None))
-    @patch("services.create_loan_request", return_value=("REQ-NEW00001", None))
-    def test_create_logs_event(self, mock_create, mock_dupes, mock_log_event):
-        r = self.client.post("/api/loan-requests",
-                             json={"borrower_username": "moduser"})
-        self.assertEqual(r.status_code, 201)
-        mock_log_event.assert_called_once()
-        call_args = mock_log_event.call_args[0]
-        self.assertEqual(call_args[1], "created")
 
     @patch("services.log_request_event", return_value=(4, None))
     @patch("services.find_duplicate_loan_requests", return_value=([

@@ -392,6 +392,12 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
     if not conn:
         return None, "Database connection failed."
 
+    if request_id:
+        # Create the timeline table before the transaction opens: this commits,
+        # and the funding event below is written inside the loan's transaction,
+        # where a missing table would roll the whole loan back.
+        _ensure_request_events_table(conn)
+
     try:
         cur = conn.cursor()
 
@@ -520,6 +526,14 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                 "amount": str(amount), "currency": currency,
                 "repay_amount": str(repay_amount), "repay_date": repay_date,
             })))
+            # The request timeline's most important entry. It lives here rather
+            # than in the route so $fund, the dashboard, and any future caller
+            # all produce it — before this, funding left no timeline event at
+            # all, whichever interface did it.
+            _log_request_event_with_cursor(
+                cur, request_id, "funded", actor=lender,
+                note=f"Funded by u/{lender} — loan {loan_id} "
+                     f"({amount} {currency}, repay {repay_amount} by {repay_date})")
         conn.commit()
         logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
         log_event("loan_created", actor=lender, actor_role="lender", target_user=borrower,
@@ -1483,6 +1497,9 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
                 "expires_at": expires_at.isoformat() if expires_at else None,
             },
         )
+        log_request_event(
+            request_id, "created", actor=borrower.lower(),
+            note=f"Imported from Reddit post {reddit_post_id or '(unknown)'}")
         return request_id, None
     except Exception as e:
         conn.rollback()
@@ -1641,6 +1658,8 @@ def cancel_loan_request(request_id: str, actor: str, actor_role: str = "lender",
             source="dashboard",
             details={"note_length": len(note or "")},
         )
+        log_request_event(request_id.upper(), "status_changed", actor=actor,
+                          note="open -> cancelled" + (f": {note}" if note else ""))
         return {"ok": True, "request_id": request_id.upper(), "status": "cancelled"}, None
     except Exception as e:
         conn.rollback()
@@ -5094,6 +5113,8 @@ def create_loan_request(
                   details={"request_id": request_id, "db_id": db_id,
                            "amount": str(requested_amount) if requested_amount else None})
         cur.close()
+        log_request_event(request_id, "created", actor=borrower_username.lower(),
+                          note="Request recorded")
         return request_id, None
     except Exception as e:
         conn.rollback()
@@ -5316,6 +5337,12 @@ def update_request_status(request_id: str, new_status: str, actor: str, note: st
                            "previous_status": current_status,
                            "new_status": new_status,
                            "forced": bool(force)})
+        # Timeline entry lives here, not in the route, so every caller produces it.
+        log_request_event(
+            request_id, "status_changed", actor=actor,
+            note=f"{current_status} -> {new_status}"
+                 + (" (admin override)" if force else "")
+                 + (f": {note}" if note else ""))
         return True, None
     except Exception as e:
         conn.rollback()
@@ -5345,17 +5372,34 @@ def link_request_to_loan(request_id: str, loan_db_id: int, actor: str, override:
         _, current_status, existing_loan_id = row
         if existing_loan_id and not override:
             return False, f"Request already linked to loan ID {existing_loan_id}. Use override=True to re-link."
+
+        # Linking moves the request to 'funded', so it is a lifecycle change and
+        # goes through the same table as every other one. Without this a removed
+        # or cancelled request could be quietly resurrected as funded.
+        if current_status != "funded":
+            transition_error = request_transition_error(
+                current_status, "funded", force=override)
+            if transition_error:
+                return False, transition_error
+
+        # Compare-and-set against the status this call read.
         cur.execute("""
             UPDATE loan_requests
             SET funded_loan_id  = %s,
                 request_status  = 'funded',
                 updated_at      = NOW()
-            WHERE request_id = %s
-        """, (loan_db_id, request_id))
+            WHERE request_id = %s AND request_status = %s
+        """, (loan_db_id, request_id, current_status))
+        if cur.rowcount == 0:
+            conn.rollback()
+            return False, "Request changed while you were working on it. Refresh and try again."
         conn.commit()
         log_event("loan_request_linked", target_user=actor, source="system",
                   details={"request_id": request_id, "loan_db_id": loan_db_id,
                            "override": override})
+        log_request_event(
+            request_id, "linked_to_loan", actor=actor,
+            note=f"Linked to loan #{loan_db_id}" + (" (override)" if override else ""))
         return True, None
     except Exception as e:
         conn.rollback()
@@ -5551,6 +5595,7 @@ def search_loan_requests(
 
 _REQUEST_EVENT_TYPES = (
     "created",
+    "funded",
     "status_changed",
     "linked_to_loan",
     "unlinked_from_loan",

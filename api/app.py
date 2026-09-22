@@ -3515,9 +3515,9 @@ def api_create_loan_request():
     )
     if error:
         return _json({"error": error}, 500)
-    from services import log_request_event, find_duplicate_loan_requests, create_notification
-    log_request_event(request_id, "created", actor=session.get("username"),
-                      note=f"Request created for u/{borrower}")
+    # The "created" timeline event is written by services.create_loan_request,
+    # so the bot's imports produce one too. Do not log it again here.
+    from services import find_duplicate_loan_requests, create_notification
     dupes, _ = find_duplicate_loan_requests(borrower, days=10, exclude_request_id=request_id)
     create_notification(
         borrower, "request_recorded",
@@ -3613,9 +3613,8 @@ def api_update_request_status(request_id):
     log_audit(session["username"], session.get("role","mod"), "request_status_updated",
               target_type="loan_request", target_id=request_id,
               new_value={"status": new_status, "note": note, "forced": force})
-    from services import log_request_event, get_loan_request, create_notification
-    log_request_event(request_id, "status_changed", actor=session["username"],
-                      note=f"Status → {new_status}" + (f": {note}" if note else ""))
+    # "status_changed" is written by services.update_request_status.
+    from services import get_loan_request, create_notification
     req, _ = get_loan_request(request_id)
     if req:
         borrower = req.get("borrower_username", "")
@@ -3656,9 +3655,7 @@ def api_link_request_to_loan(request_id):
     log_audit(session["username"], session.get("role","mod"), "request_linked_to_loan",
               target_type="loan_request", target_id=request_id,
               new_value={"loan_db_id": loan_db_id, "override": override})
-    from services import log_request_event
-    log_request_event(request_id, "linked_to_loan", actor=session["username"],
-                      note=f"Linked to loan DB ID {loan_db_id}" + (" (override)" if override else ""))
+    # "linked_to_loan" is written by services.link_request_to_loan.
     return _json({"ok": True, "request_id": request_id, "loan_db_id": loan_db_id})
 
 
