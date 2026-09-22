@@ -1,3 +1,65 @@
+Current handoff - 2026-09-21  (branch: refactor/dashboard-authoritative)
+
+FULL AUDIT + REPAIR PLAN: docs/reports/AUDIT_2026-09-21.md  <- read this first
+
+Owner decisions this session:
+- KEEP the VISION.md boundary: lenders get request-code lookup, NOT a
+  browsable list of open requests. No marketplace.
+- This machine builds bot 2.0. Its database is outdated and not connected to
+  the live r/loancentral bot. All migrations were written additive+idempotent
+  so they apply cleanly to the live DB when it is reconnected.
+
+Done (8 commits on refactor/dashboard-authoritative, 620 -> 757 tests):
+  1. Fixed: any logged-in user could dispute anyone's loan, and the audit row
+     named the victim as the actor.
+  2. Fixed: update_request_status and report_payment used Postgres E'
+',
+     a hard syntax error on SQLite - every mod status change on the dev
+     dashboard failed. Same class: mark_notifications_read used id=ANY(%s).
+  3. Added tests/support/dbcase.RealDBTestCase. ~85% of the old suite mocked
+     the DB connection, which is why 1 and 2 shipped green.
+  4. schema_migrations tracking + integrity constraints (migration 013) +
+     scripts/check_db_integrity.py.
+  5. loan_states.py - one lifecycle table for loans and requests. Closes the
+     funded -> open -> funded double-funding hole.
+  6. Request timeline events moved from routes into services, so the bot and
+     $fund produce them. "Funded by u/X" was previously never recorded.
+  7. One shared lender gate; structural test that fails if a write route
+     ships without a permission check.
+  8. Reddit sync: funding queues flair + comment, reddit_sync.py drains with
+     retry/backoff, bot stores its own comment id so retries edit rather than
+     duplicate. Dry-run unless --live.
+  9. Global bans (banned_users) - this did NOT exist before; "$ban" was only
+     ever a queued note for a human. Enforced in one before_request hook and
+     in the bot; follows linked Reddit aliases.
+
+NOT done / still open:
+- Migrations 012/013/014 have NOT been run against any database. The dev
+  SQLite DB gets the equivalent schema from local_db automatically. Before
+  touching the live DB: back up, run scripts/check_db_integrity.py, then
+  python scripts/run_migrations.py --status.
+- No admin HTML pages for bans or sync health yet - the API endpoints exist
+  (/api/admin/bans, /api/admin/reddit-sync/{pending,failures}) but nothing in
+  api/templates/ calls them.
+- The Reddit sync worker is never scheduled. It only acts with
+  `python scripts/reddit_sync_worker.py --live`. Decide how to run it before
+  relying on flair/comment sync.
+- api/auth.py (Reddit OAuth) is dead by SECURITY rule 1 but still wired to
+  /auth/reddit and /auth/callback. Left in place - removing it touches login.
+- The two request route families (/api/requests/* and /api/loan-requests/*)
+  still overlap on one table. See AUDIT section 4.1.
+- services.py and api/app.py are still monoliths. Splitting them is the last
+  step, deliberately.
+- Dev DB has one pre-existing self-loan row (id 317) that blocks VALIDATEing
+  ck_loans_parties_differ. Left alone - it is dev data.
+- $help still tells users lender commands need the Reddit Verified Lender
+  flair. REQUIRE_LENDER_FLAIR is off by default, so that text is wrong.
+
+Run the suite with system python, not venv/ (the venv has no pytest):
+  python -m pytest tests/ -q
+
+--------------------------------------------------------------------------
+
 Current handoff - 2026-09-08
 
 - Owner emphasized preserving the existing bot and avoiding account/API risk.
