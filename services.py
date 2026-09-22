@@ -49,6 +49,18 @@ def _looks_like_missing_column(error):
     return "does not exist" in msg and "column" in msg
 
 
+def _is_unique_violation(error, *column_hints):
+    """True when an insert lost a race against a unique index.
+
+    Postgres and SQLite word this differently ("duplicate key value violates
+    unique constraint" vs "UNIQUE constraint failed"), so match on both.
+    """
+    msg = str(error).lower()
+    if "unique" not in msg and "duplicate" not in msg:
+        return False
+    return not column_hints or any(hint.lower() in msg for hint in column_hints)
+
+
 def _alias_match(column, aliases):
     """SQL fragment + params matching `column` against any name an account uses.
 
@@ -1445,6 +1457,24 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
         return request_id, None
     except Exception as e:
         conn.rollback()
+        # The dedup SELECT above and this INSERT are not atomic, so two imports
+        # of the same post can both pass the check. uq_lr_reddit_post_id turns
+        # that race into this error; the correct answer is still the request
+        # the winner created, not a failure.
+        if reddit_post_id and _is_unique_violation(e, "reddit_post_id", "uq_lr_reddit_post_id"):
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT request_id FROM loan_requests WHERE reddit_post_id = %s",
+                    (reddit_post_id,))
+                row = cur.fetchone()
+                if row:
+                    logger.info(
+                        f"save_loan_request: post {reddit_post_id} was imported "
+                        f"concurrently; returning existing {row[0]}")
+                    return row[0], None
+            except Exception:
+                pass
         logger.error(f"save_loan_request error: {e}", exc_info=True)
         return None, "Database error saving loan request."
     finally:
@@ -4943,12 +4973,32 @@ def _ensure_loan_requests_table(conn):
         cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_borrower ON loan_requests (lower(borrower_username))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_status   ON loan_requests (request_status)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_created  ON loan_requests (created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_lr_reddit   ON loan_requests (reddit_post_id) WHERE reddit_post_id IS NOT NULL")
         conn.commit()
     except Exception:
         conn.rollback()
     finally:
         cur.close()
+
+    # Uniqueness guarantees, each guarded on its own: on a database that already
+    # holds duplicate rows these fail, and that must not take the rest of the
+    # table setup down with it. Postgres gets the same indexes from
+    # scripts/migrations/013_integrity_constraints.sql.
+    # Run scripts/check_db_integrity.py to find what is blocking one.
+    for statement in (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_reddit_post_id "
+        "ON loan_requests (reddit_post_id) WHERE reddit_post_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_funded_loan_id "
+        "ON loan_requests (funded_loan_id) WHERE funded_loan_id IS NOT NULL",
+    ):
+        cur = conn.cursor()
+        try:
+            cur.execute(statement)
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            logger.warning(f"loan_requests uniqueness index not applied: {exc}")
+        finally:
+            cur.close()
 
 
 def create_loan_request(

@@ -186,6 +186,38 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "reddit_username_linked_by", "TEXT")
     conn.commit()
 
+    _ensure_unique_indexes(conn)
+
+
+# Uniqueness guarantees that back the Python-side invariants. Postgres gets the
+# same set from scripts/migrations/013_integrity_constraints.sql; this is the
+# SQLite half so dev and test behave like production.
+#
+# Each runs on its own: an existing dev database may already hold duplicates,
+# and one unbuildable index must not stop the others. Run
+# `python scripts/check_db_integrity.py` to see what is blocking one.
+_UNIQUE_INDEXES = [
+    ("uq_lr_reddit_post_id",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_reddit_post_id "
+     "ON loan_requests (reddit_post_id) WHERE reddit_post_id IS NOT NULL"),
+    ("uq_lr_funded_loan_id",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_funded_loan_id "
+     "ON loan_requests (funded_loan_id) WHERE funded_loan_id IS NOT NULL"),
+    ("uq_loans_loan_id",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_loans_loan_id "
+     "ON loans (loan_id) WHERE loan_id IS NOT NULL"),
+]
+
+
+def _ensure_unique_indexes(conn):
+    for name, statement in _UNIQUE_INDEXES:
+        try:
+            conn.execute(statement)
+            conn.commit()
+        except sqlite3.Error as exc:
+            conn.rollback()
+            print(f"[SCHEMA] unique index {name} not applied: {exc}")
+
 
 def get_sqlite_connection(path=None):
     db_path = path or os.getenv("SQLITE_DB_PATH", DEFAULT_DB_PATH)
