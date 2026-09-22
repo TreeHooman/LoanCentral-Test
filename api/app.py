@@ -2070,7 +2070,16 @@ def get_verification_applications():
 def apply_verification():
     from services import submit_verification_application
     data = request.get_json() or {}
-    username = session.get("username") or data.get("username", "")
+    # A session applies as itself. The body may only name the caller — the old
+    # `session or body` fallback let a request apply on someone else's behalf,
+    # the same pattern that made the dispute route exploitable.
+    username = session.get("username") or ""
+    supplied = (data.get("username") or "").strip().lower()
+    if username:
+        if supplied and supplied != username.strip().lower():
+            return _json({"error": "You can only apply as yourself."}, 403)
+    else:
+        username = supplied   # master API key, no session
     result, error = submit_verification_application(
         username=username,
         requested_role=data.get("requested_role", "lender"),
@@ -2390,13 +2399,13 @@ def create_loan_manual():
         return _json({"error": "Expected a JSON object."}, 400)
     if any(not isinstance(data.get(field, ""), str) for field in ("borrower", "currency", "repay_date", "thread_link", "payment_method")):
         return _json({"error": "Invalid loan fields."}, 400)
-    lender      = session.get("username", "").strip().lower()
-    if session.get("role") not in ("lender", "admin") or not lender:
-        return _json({"error": "Verified lender session required."}, 403)
+    # Dashboard loan creation requires a verified lender, same rule as the bot.
+    # Uses the shared helper so the lender gate has one definition — this route
+    # and fund_request used to re-implement it inline.
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     borrower    = data.get("borrower", "").strip().lower()
-    # Dashboard loan creation requires verified lender (same rule as bot).
-    if not _is_lender_verified_fresh(lender):
-        return _json({"error": "Verified lender access required."}, 403)
     amount      = data.get("amount")
     currency    = data.get("currency", "USD").strip().upper()
     repay_amount = data.get("repay_amount")
@@ -2540,15 +2549,11 @@ def note_request(request_id):
 def fund_request(request_id):
     from services import fund_loan_request, normalize_request_id
     data        = request.get_json() or {}
-    if not isinstance(data, dict):
-        return _json({"error": "Expected a JSON object."}, 400)
-    lender = session.get("username", "").strip().lower()
-    if session.get("role") not in ("lender", "admin") or not lender:
-        return _json({"error": "Verified lender session required."}, 403)
-    if not _is_lender_verified_fresh(lender):
-        return _json({"error": "Verified lender access required."}, 403)
-    if data.get("lender") is not None and data["lender"] != lender:
-        return _json({"error": "You can only record loans as yourself."}, 403)
+    # Shared lender gate: session role, "act as yourself", and a fresh DB check
+    # of verified-lender status. See _lender_write_actor.
+    lender, denied = _lender_write_actor(data)
+    if denied is not None:
+        return denied
     request_id = normalize_request_id(request_id)
     if not request_id:
         return _json({"error": "Invalid request code."}, 400)

@@ -2736,10 +2736,17 @@ def mark_notifications_read(username: str, notification_ids: list = None):
     try:
         cur = conn.cursor()
         if notification_ids:
-            cur.execute("""
+            # An explicit IN list rather than Postgres' id=ANY(%s), which SQLite
+            # (dev/test) cannot execute. Ids are coerced to int, so the
+            # generated placeholders carry no user-supplied SQL.
+            ids = [int(value) for value in notification_ids]
+            if not ids:
+                return True, None
+            placeholders = ", ".join(["%s"] * len(ids))
+            cur.execute(f"""
                 UPDATE notifications SET read=TRUE
-                WHERE lower(username)=lower(%s) AND id=ANY(%s)
-            """, (username, notification_ids))
+                WHERE lower(username)=lower(%s) AND id IN ({placeholders})
+            """, [username, *ids])
         else:
             cur.execute(
                 "UPDATE notifications SET read=TRUE WHERE lower(username)=lower(%s)",
