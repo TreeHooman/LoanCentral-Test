@@ -33,6 +33,10 @@ free tier does not expire.
   copied from the bot computer into Neon (step 3 below), replacing it.
 - The bot connects to Neon with the same `DB_*` lines as `.env` on the build
   machine (step C).
+- In Neon → project → **Computes** → edit the primary compute, set the
+  autoscaling **maximum to 0.25 CU**. The free plan allows 100 compute-hours a
+  month; at the default maximum of 2 CU a busy hour costs 8× as much. Check
+  **Usage** on the Neon dashboard once a week after launch.
 - Point any uptime monitor at `/ping`, **not** `/health`. `/health` queries the
   database, and polling it keeps Neon awake and uses up the free compute hours.
 
@@ -223,17 +227,25 @@ Then mark any test loans **Refunded** so they don't count in anyone's history.
 ### 8. Decide how Reddit updates keep flowing
 
 Nothing is posted to Reddit unless `reddit_sync_worker.py --live` runs. Either
-run it by hand now and then, or schedule it every 5 minutes on the bot
+run it by hand now and then, or schedule it every **30 minutes** on the bot
 computer. In a Command Prompt, from the 2.0 folder (the path is filled in by
 `%CD%`):
 
 ```
-schtasks /Create /TN "LoanCentral Reddit Sync" /SC MINUTE /MO 5 /F /TR "\"python\" \"%CD%\scripts\reddit_sync_worker.py\" --live"
+schtasks /Create /TN "LoanCentral Reddit Sync" /SC MINUTE /MO 30 /F /TR "\"python\" \"%CD%\scripts\reddit_sync_worker.py\" --live"
 eddit_sync_worker.py\" --live"
 ```
 
 Check it with `schtasks /Query /TN "LoanCentral Reddit Sync"`, and stop it with
 `schtasks /Change /TN "LoanCentral Reddit Sync" /DISABLE`.
+
+**Why 30 and not 5:** Neon's free plan gives 100 compute-hours a month and
+sleeps after 5 idle minutes. Every run wakes it, so a 5-minute schedule keeps it
+awake around the clock (~180 hours) and Neon **suspends the database for the rest
+of the month** when the allowance runs out, taking the bot and dashboard down.
+Every 30 minutes costs about 30 hours. Funded flair and comments can lag by up
+to 30 minutes; the loan itself is recorded instantly. Run the worker by hand
+when you want an update out sooner.
 
 Only one live pass can run at a time, on any machine: a second one (a manual
 run during a scheduled one, say) sees "Another live sync pass is already
