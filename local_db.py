@@ -49,11 +49,92 @@ sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 sqlite3.register_converter("DATE", _convert_date)
 
 
+# Timestamps are written by Python with datetime.now() (local), so every
+# "now" SQLite computes has to be local too. CURRENT_TIMESTAMP and
+# datetime('now') are UTC, and mixing the two silently skewed every date-window
+# query by the machine's UTC offset — which is how the Reddit sync backoff came
+# to expire instantly (see reddit_sync.due_actions).
+_SQLITE_NOW = "datetime('now','localtime')"
+_SQLITE_TODAY = "date('now','localtime')"
+
+
 def _translate_sql(sql):
+    """Rewrite the project's PostgreSQL into something SQLite can run.
+
+    Production is Postgres; this exists so dev, tests and the demo exercise the
+    same code. Everything here was added because a real query failed without
+    it — dialect gaps meant roughly a third of the service layer could not run
+    in dev at all, so those paths could be neither demoed nor tested.
+    """
     sql = re.sub(r"\bSERIAL\s+PRIMARY\s+KEY\b", "INTEGER PRIMARY KEY AUTOINCREMENT", sql, flags=re.I)
     sql = re.sub(r"\bJSONB\b", "TEXT", sql, flags=re.I)
-    sql = re.sub(r"\bNOW\(\)", "CURRENT_TIMESTAMP", sql, flags=re.I)
+
+    # --- intervals ---------------------------------------------------------
+    # Most specific first: each of these would otherwise be eaten by a later,
+    # looser rule.
+
+    # NOW() + (%s * INTERVAL '1 day')  — days come from a bound parameter
+    sql = re.sub(
+        r"\bNOW\(\)\s*([-+])\s*\(\s*%s\s*\*\s*INTERVAL\s*'1\s+day'\s*\)",
+        lambda m: f"datetime('now','localtime','{m.group(1)}' || %s || ' days')",
+        sql, flags=re.I)
+
+    # NOW() - (%s || ' days')::INTERVAL
+    sql = re.sub(
+        r"\bNOW\(\)\s*([-+])\s*\(\s*%s\s*\|\|\s*'\s*(\w+)\s*'\s*\)\s*::\s*INTERVAL",
+        lambda m: f"datetime('now','localtime','{m.group(1)}' || %s || ' {m.group(2)}')",
+        sql, flags=re.I)
+
+    # NOW() - %s::INTERVAL  — the whole interval ("30 days") is the parameter
+    sql = re.sub(
+        r"\bNOW\(\)\s*([-+])\s*%s\s*::\s*INTERVAL",
+        lambda m: f"datetime('now','localtime','{m.group(1)}' || %s)",
+        sql, flags=re.I)
+
+    # CURRENT_DATE ± INTERVAL '7 days'
+    sql = re.sub(
+        r"\bCURRENT_DATE\s*([-+])\s*INTERVAL\s*'(\d+)\s+(\w+)'",
+        lambda m: f"date('now','localtime','{m.group(1)}{m.group(2)} {m.group(3)}')",
+        sql, flags=re.I)
+
+    # NOW() ± INTERVAL '30 days'
+    sql = re.sub(
+        r"\bNOW\(\)\s*([-+])\s*INTERVAL\s*'(\d+)\s+(\w+)'",
+        lambda m: f"datetime('now','localtime','{m.group(1)}{m.group(2)} {m.group(3)}')",
+        sql, flags=re.I)
+
+    # column ± INTERVAL '10 days'  (e.g. r1.created_at - INTERVAL '10 days')
+    sql = re.sub(
+        r"([\w.]+)\s*([-+])\s*INTERVAL\s*'(\d+)\s+(\w+)'",
+        lambda m: f"datetime({m.group(1)},'{m.group(2)}{m.group(3)} {m.group(4)}')",
+        sql, flags=re.I)
+
+    # EXTRACT(EPOCH FROM (a - b)) — seconds between two timestamps.
+    sql = re.sub(
+        r"\bEXTRACT\(\s*EPOCH\s+FROM\s*\(\s*([\w.]+)\s*-\s*([\w.]+)\s*\)\s*\)",
+        r"((julianday(\1) - julianday(\2)) * 86400.0)",
+        sql, flags=re.I)
+
+    # --- date_trunc --------------------------------------------------------
+    # 'week' matches Postgres, which truncates to Monday: step forward to the
+    # coming Sunday, then back six days.
+    sql = re.sub(r"\bDATE_TRUNC\(\s*'month'\s*,\s*NOW\(\)\s*\)",
+                 f"strftime('%Y-%m-01',{_SQLITE_NOW})", sql, flags=re.I)
+    sql = re.sub(r"\bDATE_TRUNC\(\s*'month'\s*,\s*([^)]+)\)",
+                 r"strftime('%Y-%m-01',\1)", sql, flags=re.I)
+    sql = re.sub(r"\bDATE_TRUNC\(\s*'day'\s*,\s*([^)]+)\)",
+                 r"date(\1)", sql, flags=re.I)
+    sql = re.sub(r"\bDATE_TRUNC\(\s*'week'\s*,\s*([^)]+)\)",
+                 r"date(\1,'weekday 0','-6 days')", sql, flags=re.I)
+
+    # --- remaining casts and functions ------------------------------------
     sql = re.sub(r"\bid::text\b", "CAST(id AS TEXT)", sql, flags=re.I)
+    sql = re.sub(r"::date\b", "", sql, flags=re.I)
+    # A column DEFAULT must be a literal or a *parenthesised* expression in
+    # SQLite, so this cannot share the general NOW() rule below.
+    sql = re.sub(r"\bDEFAULT\s+NOW\(\)", f"DEFAULT ({_SQLITE_NOW})", sql, flags=re.I)
+    sql = re.sub(r"\bNOW\(\)", _SQLITE_NOW, sql, flags=re.I)
+    sql = re.sub(r"\bCURRENT_DATE\b", _SQLITE_TODAY, sql, flags=re.I)
     sql = re.sub(r"\bILIKE\b", "LIKE", sql, flags=re.I)
     return sql.replace("%s", "?")
 

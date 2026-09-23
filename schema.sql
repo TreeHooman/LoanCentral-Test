@@ -290,3 +290,47 @@ CREATE INDEX IF NOT EXISTS idx_banned_users_username ON banned_users(lower(usern
 -- rather than piling up rows that all have to be cleared to unban.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_banned_users_active
     ON banned_users (lower(username)) WHERE active;
+
+-- Borrower OTP login sessions (migration 006). Present here too so the SQLite
+-- dev/test database can exercise borrower login, which it previously could not.
+CREATE TABLE IF NOT EXISTS borrower_otp_sessions (
+    id           SERIAL PRIMARY KEY,
+    username     TEXT        NOT NULL,
+    otp_hash     TEXT        NOT NULL,
+    contact      TEXT        NOT NULL,
+    contact_type TEXT        NOT NULL,
+    expires_at   TIMESTAMP   NOT NULL,
+    used         BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at   TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_otp_username ON borrower_otp_sessions (username, used, expires_at);
+
+-- Borrower read-only magic links (migration 007).
+CREATE TABLE IF NOT EXISTS borrower_magic_links (
+    id          SERIAL PRIMARY KEY,
+    username    TEXT        NOT NULL,
+    token_hash  TEXT        NOT NULL UNIQUE,
+    expires_at  TIMESTAMP   NOT NULL,
+    used        BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMP   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_magic_link_token ON borrower_magic_links (token_hash, used, expires_at);
+
+-- Lender API keys (migration 005). Present here too so the SQLite dev/test
+-- database can exercise key management, which it previously could not.
+CREATE TABLE IF NOT EXISTS lender_keys (
+    id          SERIAL PRIMARY KEY,
+    username    TEXT NOT NULL,
+    key_hash    TEXT NOT NULL UNIQUE,
+    label       TEXT,
+    active      BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by  TEXT NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_used   TIMESTAMP,
+    revoked_at  TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lender_keys_username ON lender_keys(username);
+CREATE INDEX IF NOT EXISTS idx_lender_keys_hash     ON lender_keys(key_hash);
