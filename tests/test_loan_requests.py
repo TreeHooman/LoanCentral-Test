@@ -1,5 +1,7 @@
 """Tests for Loan Request Sprint: service functions and API endpoints."""
 import unittest
+
+from tests.support.dbcase import RealDBTestCase
 from unittest.mock import patch, MagicMock
 from datetime import date, datetime
 import sys
@@ -52,34 +54,27 @@ class LRStatusesTests(unittest.TestCase):
 # create_loan_request
 # ---------------------------------------------------------------------------
 
-class CreateLoanRequestTests(unittest.TestCase):
+class CreateLoanRequestTests(RealDBTestCase):
+    """Runs against a real database.
 
-    def _make_conn(self):
-        conn = MagicMock()
-        cur  = MagicMock()
-        # fetchone used for uniqueness check (returns None = no collision) + RETURNING id
-        cur.fetchone.side_effect = [None, (1,)]
-        conn.cursor.return_value  = cur
-        return conn, cur
+    These were MagicMock tests. They passed throughout the period in which
+    create_loan_request could not insert a row into the live table (a legacy
+    post_date NOT NULL column it never set) — a mock cursor accepts any INSERT.
+    See tests/test_legacy_schema.py for the legacy-shape coverage.
+    """
 
-    @patch("services._get_db")
-    @patch("services.log_event")
-    def test_create_minimal(self, mock_log, mock_db):
+    def test_create_minimal(self):
         from services import create_loan_request
-        conn, cur = self._make_conn()
-        mock_db.return_value = conn
         req_id, err = create_loan_request("alice")
         self.assertIsNone(err)
         self.assertIsNotNone(req_id)
         self.assertTrue(req_id.startswith("REQ-"))
-        conn.commit.assert_called()
+        rows = self.query("SELECT borrower_username, request_status FROM loan_requests "
+                          "WHERE request_id = %s", (req_id,))
+        self.assertEqual(rows, [("alice", "open")])
 
-    @patch("services._get_db")
-    @patch("services.log_event")
-    def test_create_with_all_fields(self, mock_log, mock_db):
+    def test_create_with_all_fields(self):
         from services import create_loan_request
-        conn, cur = self._make_conn()
-        mock_db.return_value = conn
         req_id, err = create_loan_request(
             borrower_username="bob",
             reddit_username="bob_reddit",
@@ -93,6 +88,9 @@ class CreateLoanRequestTests(unittest.TestCase):
         )
         self.assertIsNone(err)
         self.assertIsNotNone(req_id)
+        row = self.query("SELECT reddit_username, reddit_post_id, reddit_comment_id "
+                         "FROM loan_requests WHERE request_id = %s", (req_id,))[0]
+        self.assertEqual(row, ("bob_reddit", "abc123", "xyz456"))
 
     @patch("services._get_db")
     def test_db_failure_returns_error(self, mock_db):

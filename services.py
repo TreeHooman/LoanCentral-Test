@@ -57,6 +57,50 @@ def _looks_like_missing_column(error):
     return "does not exist" in msg and "column" in msg
 
 
+def _table_columns(conn, table):
+    """Column names actually present on a table, on either backend.
+
+    The live `loan_requests` table is not the one `_ensure_loan_requests_table`
+    creates: it was renamed in place from the original bot schema by
+    migrations/migrate_loan_requests.py and kept legacy columns such as
+    `post_date NOT NULL`. Inserts therefore have to be built from what the
+    table really has, not from what the code assumes.
+
+    `table` is always an internal constant — never user input.
+    """
+    cur = conn.cursor()
+    try:
+        if getattr(conn, "is_sqlite", False):
+            cur.execute(f"PRAGMA table_info({table})")
+            return {row[1] for row in cur.fetchall() or []}
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+            (table,))
+        return {row[0] for row in cur.fetchall() or []}
+    except Exception as e:
+        logger.warning(f"_table_columns({table}) failed: {e}")
+        return set()
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+
+def _insert_available(cur, table, values: dict, available: set):
+    """INSERT only the columns this table actually has, returning its id."""
+    usable = {name: value for name, value in values.items() if name in available}
+    if not usable:
+        raise ValueError(f"No known columns to insert into {table}")
+    columns = ", ".join(usable)
+    placeholders = ", ".join(["%s"] * len(usable))
+    cur.execute(
+        f"INSERT INTO {table} ({columns}) VALUES ({placeholders}) RETURNING id",
+        list(usable.values()))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def _is_unique_violation(error, *column_hints):
     """True when an insert lost a race against a unique index.
 
@@ -1560,17 +1604,26 @@ def save_loan_request(borrower: str, title: str, thread_link: str, post_date, re
         if expires_at:
             notes_parts.append(f"expires:{expires_at.date().isoformat()}")
         notes = "; ".join(notes_parts) or None
-        cur.execute('''
-            INSERT INTO loan_requests
-            (request_id, borrower_username, requested_amount,
-             requested_repayment_amount, requested_due_date,
-             thread_url, reddit_post_id, request_status, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s)
-        ''', (
-            request_id, borrower.lower(),
-            parsed["amount"], parsed["repay_amount"], parsed["repay_date"],
-            thread_link, reddit_post_id, notes
-        ))
+        # Built from the table's real columns. The live table keeps legacy
+        # columns from the original bot schema — notably `post_date NOT NULL`,
+        # which this function has always received as an argument and never
+        # stored, so every insert failed there with a NOT NULL violation.
+        _insert_available(cur, "loan_requests", {
+            "request_id": request_id,
+            "borrower_username": borrower.lower(),
+            "requested_amount": parsed["amount"],
+            "requested_repayment_amount": parsed["repay_amount"],
+            "requested_due_date": parsed["repay_date"],
+            "thread_url": thread_link or "",
+            "reddit_post_id": reddit_post_id,
+            "request_status": "open",
+            "notes": notes,
+            # Legacy columns, populated when the table has them.
+            "post_date": post_date or datetime.now(),
+            "currency": parsed.get("currency") or "USD",
+            "payment_method": parsed.get("payment_method"),
+            "expires_at": expires_at,
+        }, _table_columns(conn, "loan_requests"))
         conn.commit()
         logger.info(f"Loan request saved: {request_id} from u/{borrower} ({parsed['amount']} {parsed['currency']})")
         log_event(
@@ -5461,27 +5514,25 @@ def create_loan_request(
                 break
             request_id = _generate_request_id()
 
-        cur.execute("""
-            INSERT INTO loan_requests
-              (request_id, borrower_username, reddit_username, thread_url,
-               reddit_post_id, reddit_comment_id, requested_amount,
-               requested_repayment_amount, requested_due_date, notes,
-               request_status)
-            VALUES (%s, lower(%s), %s, %s, %s, %s, %s, %s, %s, %s, 'open')
-            RETURNING id
-        """, (
-            request_id,
-            borrower_username,
-            reddit_username,
-            thread_url,
-            reddit_post_id,
-            reddit_comment_id,
-            requested_amount,
-            requested_repayment_amount,
-            requested_due_date,
-            notes,
-        ))
-        db_id = cur.fetchone()[0]
+        # Built from the table's real columns — see _table_columns. The live
+        # table carries legacy NOT NULL columns (post_date, thread_url) that
+        # this insert never set, so it could not create a request there at all.
+        db_id = _insert_available(cur, "loan_requests", {
+            "request_id": request_id,
+            "borrower_username": borrower_username.lower(),
+            "reddit_username": reddit_username,
+            "thread_url": thread_url or "",
+            "reddit_post_id": reddit_post_id,
+            "reddit_comment_id": reddit_comment_id,
+            "requested_amount": requested_amount,
+            "requested_repayment_amount": requested_repayment_amount,
+            "requested_due_date": requested_due_date,
+            "notes": notes,
+            "request_status": "open",
+            # Legacy columns, populated when the table has them.
+            "post_date": datetime.now(),
+            "currency": "USD",
+        }, _table_columns(conn, "loan_requests"))
         conn.commit()
         log_event("loan_request_created", target_user=borrower_username.lower(),
                   source="system",
