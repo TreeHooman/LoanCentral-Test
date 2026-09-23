@@ -215,6 +215,19 @@ else:
         ratelimit_seconds=300,
     )
 
+_LOCAL_DB_HOSTS = ("localhost", "127.0.0.1", "::1", "")
+
+
+def db_ssl_mode(host):
+    """SSL is required for every database that is not on this machine.
+
+    This used to require it only for a list of known providers and "prefer" it
+    elsewhere. Neon (*.neon.tech) was not on the list, and "prefer" quietly
+    falls back to an unencrypted connection, database password included.
+    """
+    return "prefer" if (host or "").strip().lower() in _LOCAL_DB_HOSTS else "require"
+
+
 # PostgreSQL connection
 def get_db_connection():
     """Get database connection"""
@@ -227,9 +240,8 @@ def get_db_connection():
         if database_url:
             return psycopg2.connect(database_url, sslmode="require")
 
-        # Determine SSL mode based on host
         host = os.getenv("DB_HOST", "localhost")
-        ssl_mode = "require" if "render.com" in host or "amazonaws.com" in host or "heroku.com" in host else "prefer"
+        ssl_mode = db_ssl_mode(host)
         
         return psycopg2.connect(
             host=host,

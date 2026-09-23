@@ -43,7 +43,8 @@ def assert_safe_database(allow_non_test=False):
 def get_connection(allow_non_test=False):
     assert_safe_database(allow_non_test=allow_non_test)
     host = os.getenv("DB_HOST", "localhost")
-    ssl_mode = "require" if any(name in host for name in ("render.com", "amazonaws.com", "heroku.com")) else "prefer"
+    # Same rule as utils.db_ssl_mode (not imported: utils builds a Reddit client).
+    ssl_mode = "prefer" if host.strip().lower() in ("localhost", "127.0.0.1", "::1", "") else "require"
     return psycopg2.connect(
         host=host,
         port=os.getenv("DB_PORT"),

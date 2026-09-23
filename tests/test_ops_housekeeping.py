@@ -57,3 +57,16 @@ class PruneAnalyticsTests(RealDBTestCase):
         self.assertEqual(deleted, 0)
         self.assertIsNotNone(error)
         self.assertEqual(len(self.remaining()), 4)
+
+
+class DatabaseSslModeTests(RealDBTestCase):
+    def test_remote_hosts_require_ssl(self):
+        from utils import db_ssl_mode
+        for host in ("ep-muddy-art-arbjwwtp.c-4.us-west-2.aws.neon.tech",
+                     "dpg-x.oregon-postgres.render.com", "db.example.org", "10.0.0.5"):
+            self.assertEqual(db_ssl_mode(host), "require", host)
+
+    def test_local_hosts_may_skip_ssl(self):
+        from utils import db_ssl_mode
+        for host in ("localhost", "127.0.0.1", "::1", " LOCALHOST "):
+            self.assertEqual(db_ssl_mode(host), "prefer", host)
