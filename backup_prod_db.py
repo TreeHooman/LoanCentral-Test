@@ -31,6 +31,7 @@ log = logging.getLogger("backup")
 
 BACKUP_DIR = Path(__file__).parent / "backups"
 KEEP_LAST  = 14  # days of backups to retain
+FAILED_MARKER = BACKUP_DIR / "LAST_BACKUP_FAILED.txt"
 
 DB_HOST = os.getenv("DB_HOST", "")
 DB_PORT = os.getenv("DB_PORT", "5432")
@@ -98,6 +99,7 @@ def run_backup():
 
     size_kb = out_path.stat().st_size // 1024
     log.info("Backup saved: %s (%d KB)", out_path.name, size_kb)
+    FAILED_MARKER.unlink(missing_ok=True)
 
     # Prune old backups
     existing = sorted(glob.glob(str(BACKUP_DIR / "loancentral_*.sql.gz")))
@@ -106,7 +108,23 @@ def run_backup():
         log.info("Pruned old backup: %s", Path(old).name)
 
     log.info("Done. %d backup(s) retained.", min(len(existing), KEEP_LAST))
+    prune_analytics()
     return out_path
+
+
+def prune_analytics():
+    """Trim analytics_events to the retention window, only after a good backup."""
+    try:
+        from services import prune_analytics_events, ANALYTICS_RETENTION_DAYS
+        deleted, error = prune_analytics_events()
+    except Exception as exc:  # never let housekeeping fail the backup job
+        log.warning("Analytics prune skipped: %s", exc)
+        return
+    if error:
+        log.warning("Analytics prune failed: %s", error)
+    else:
+        log.info("Pruned %d analytics event(s) older than %d days.",
+                 deleted, ANALYTICS_RETENTION_DAYS)
 
 
 if __name__ == "__main__":

@@ -11,33 +11,30 @@ PostgreSQL database, with Reddit faked. Every step below passed there
 itself and your live data since June, and that's what your launch-day test is
 for.
 
-Code: branch `refactor/dashboard-authoritative`.
+Code: branch `refactor/dashboard-authoritative` (Render deploys `upgrade/tested-bot-core`; see E).
 
 ---
 
 ## Before launch day
 
-### A. One decision: where the dashboard runs  ⚠️
+### A. Where the database lives — decided: Neon  ✅
 
 **The bot and the dashboard must use the same database.** That's what
 "the database is the source of truth" means in practice: a loan funded on the
 dashboard has to be the same row the bot sees.
 
-Right now they don't:
+Decided 2026-09-22: both use a **Neon** Postgres database (free tier, AWS
+us-west-2, next to Render). The old Render database expired in July; Neon's
+free tier does not expire.
 
-- your main database is the one the bot uses, on the bot computer;
-- `render.yaml` points the dashboard at a **separate Render database**
-  (`loancentral-db`), the one you said isn't the main one.
-
-So before launch day, pick one:
-
-| Option | What it means |
-|---|---|
-| **1. Dashboard on the bot computer** | Both run on the same machine against the same local database. The dashboard needs a way to be reached from the internet (for example a Cloudflare Tunnel, which you've tried before). |
-| **2. Move the main database to a host both can reach** | For example Render Postgres. The bot connects to it remotely and the dashboard stays on Render. That's a one-time data move, done on launch day after the backup. |
-
-Tell me which and I'll prepare that part too. Everything else below is the
-same either way.
+- The dashboard (`loancentral-dashboard` on Render) already points at Neon
+  through `DATABASE_URL`, and `/health` reports `"db": "ok"`.
+- Neon currently holds **test data only**. On launch day the main database is
+  copied from the bot computer into Neon (step 3 below), replacing it.
+- The bot connects to Neon with the same `DB_*` lines as `.env` on the build
+  machine (step C).
+- Point any uptime monitor at `/ping`, **not** `/health`. `/health` queries the
+  database, and polling it keeps Neon awake and uses up the free compute hours.
 
 ### B. Put the new code next to the old bot — not over it
 
@@ -61,18 +58,18 @@ database lines are the same values. Then check each line below:
 | `REDDIT_MODE` | `live` | `dry_run` means "don't touch Reddit" |
 | `SUBREDDITS` | `loancentral` (no `r/`) | which subreddit the bot watches |
 | `PRIMARY_SUBREDDIT` | `loancentral` | where "funded" updates are posted |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | same as the old bot | the **main** database |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | the **Neon** values, copied from `.env` on the build machine (not the old bot's) | the shared database; the old bot keeps its own |
 | `LOANCENTRAL_ENV` | `prod` | turns off the developer shortcuts |
-| `DASHBOARD_URL` | the dashboard's web address | bot comments link to it; if it's wrong, every link in every comment is wrong |
+| `DASHBOARD_URL` | `https://loancentral-dashboard.onrender.com` | bot comments link to it; 2.0 refuses to start without it |
 | `SECRET_KEY` | a long random string, set once, never changed | signs dashboard logins; changing it signs everyone out |
 | `API_KEY` | another long random string | an emergency admin key; `changeme` or blank switches it off |
 | `REQUIRE_LENDER_FLAIR` | `false` | lenders are verified in LoanCentral, not by flair |
 | `REDDIT_FUNDED_FLAIR` | optional, default `FUNDED` | the flair text set on funded posts |
 
 Leave out `DASHBOARD_CLIENT_ID` and `DASHBOARD_CLIENT_SECRET`: Reddit login
-stays off. If the dashboard runs somewhere else (option 2), it needs the same
-`DB_*` (or `DATABASE_URL`), `SECRET_KEY`, `API_KEY`, `LOANCENTRAL_ENV` and
-`DASHBOARD_URL` values.
+stays off. The dashboard on Render has its own copies of `DATABASE_URL`,
+`SECRET_KEY`, `API_KEY`, `LOANCENTRAL_ENV` and `DASHBOARD_URL`; the bot only
+needs the database to be the same one.
 
 To make a random string: `python -c "import secrets; print(secrets.token_hex(32))"`
 
@@ -95,6 +92,24 @@ python scripts/bootstrap_roles.py --list-lenders
 Put the verified lenders in a text file, one username per line, for example
 `verified.txt`.
 
+### E. Put the 2.0 dashboard on Render, and tidy its settings
+
+Render deploys the branch `upgrade/tested-bot-core`; 2.0 is on
+`refactor/dashboard-authoritative`. Until that branch is merged and pushed,
+the live dashboard runs the older code. This is safe to do **before** launch
+day: Neon already has every 2.0 table, and the old bot never talks to Neon.
+
+1. Merge `refactor/dashboard-authoritative` into `upgrade/tested-bot-core` and
+   push. Render redeploys; wait for **Live**, then check `/health`.
+2. In Render → `loancentral-dashboard` → **Environment**:
+   - `API_KEY`: replace with a long random string. It is an admin key, and the
+     current value is guessable.
+   - `DASHBOARD_URL`: `https://loancentral-dashboard.onrender.com`.
+   - `DATABASE_URL`: after resetting the Neon password (Neon → Connect →
+     Reset password), paste the new connection string here and put the new
+     password in `.env` on the build machine.
+3. If you use an uptime monitor, point it at `/ping`.
+
 ---
 
 ## Launch day
@@ -103,49 +118,58 @@ Put the verified lenders in a text file, one username per line, for example
 
 Stop the old bot **first** so two bots never answer the same post.
 
-### 2. Back up the main database
+### 2. Dump the main database (on the bot computer)
 
-This is your safety net if you need to undo more than the bot switch. With the
-old bot's database settings, use `pg_dump` or `backup_prod_db.py` pointed at
-the main database, and check that a new file appears.
-
-### 3. Look before changing (reads only)
+The old bot is stopped, so this dump is final: nothing can be recorded after
+it. It is also your safety net. With the old bot's database settings:
 
 ```
-python scripts/run_migrations.py --status
-python scripts/check_db_integrity.py
+pg_dump -h localhost -U <old bot's DB_USER> -d <old bot's DB_NAME> -F c -f main_launch.dump
 ```
 
-`--status` should list all 15 migrations as "pending". The integrity check
-lists odd rows. The June data had one loan where lender and borrower were the
-same person. Nothing it lists stops the launch; it just tells you what's there.
+(or pgAdmin → right-click the database → Backup…, format "Custom"). Check the
+file is not empty, then copy `main_launch.dump` to the build machine's
+`backups\` folder. **Keep the original on the bot computer too.**
 
-### 4. Upgrade the database (the old step 3, explained)
+### 3. Load it into Neon and upgrade it (build machine)
 
-The old bot's database has two tables: `loans` and `users`. 2.0 also needs
-tables for requests, roles, bans, audit history and so on, plus some extra
-columns on `loans`. A **migration** is a small script that adds them. The 15
-in `scripts/migrations/` run in order, and each one is recorded so it never
-runs twice.
+One script does the old steps 3 and 4: it backs up what Neon holds now, empties
+Neon, restores the dump, checks every table's row count against the dump,
+applies the 16 migrations (which only **add** tables and columns), checks the
+counts again, and runs the read-only integrity check.
 
-They only **add** things. None of them deletes, rewrites or changes an
-existing loan or user, and the tests fail the build if one ever tries. The old
-bot's own SQL was rehearsed against the upgraded database and still works,
-which is what makes the rollback below possible.
+Preview first. This changes nothing and shows the dump's row counts:
 
 ```
-set ALLOW_PROD_MIGRATIONS=yes
-python scripts/run_migrations.py
+python scripts/load_main_db.py backups\main_launch.dump
 ```
 
-(In PowerShell the first line is `$env:ALLOW_PROD_MIGRATIONS="yes"`.)
+Check the loan and user counts look like your data, then:
 
-Expected result: `Applied 15 migration(s).` Run it again and it should say
-`Database is up to date.`
+```
+python scripts/load_main_db.py backups\main_launch.dump --apply --target-host <DB_HOST from .env>
+```
 
-If it prints a NOTICE saying a unique index was not created, the old data has
-two loans sharing a number (the old bot numbered loans by the second). That
-index is skipped, everything else still applies, and the launch can go ahead.
+`--target-host` must repeat `DB_HOST` exactly, so a wrong `.env` can't empty
+the wrong database. Expected: two `OK every table matches the dump` lines and
+`Applied 16 migration(s).` It stops at the first mismatch or error; the backup
+it took is in `backups\`.
+
+The integrity check lists odd rows. The June data had one loan where lender and
+borrower were the same person. Nothing it lists stops the launch.
+
+If a NOTICE says a unique index was not created, the old data has two loans
+sharing a number (the old bot numbered loans by the second). That index is
+skipped, everything else still applies, and the launch can go ahead.
+
+Rehearsed 2026-09-22 against the June dump (551 loans, 166 users) on a local
+Postgres, both dump formats. Not yet run against Neon itself; if Neon refuses
+the "Emptying the target" step, stop and send me the error.
+
+### 4. Check the dashboard sees it
+
+Open `https://loancentral-dashboard.onrender.com/health` → `"db": "ok"`.
+The dashboard reads Neon directly, so there is nothing to redeploy.
 
 ### 5. Give people their roles
 
@@ -170,7 +194,7 @@ keys to lenders and mods, and verify or revoke lenders later.
 - the bot: `python main.py`. Its first log lines should include "Database
   check finished". If they say statements were skipped, note them; the bot
   still runs.
-- the dashboard, wherever you decided in A.
+- the dashboard is already running on Render against Neon.
 
 ### 7. Test it yourself (sub still closed)
 
@@ -215,13 +239,13 @@ Reddit commands still work, and they get their login key from a mod.
 2. Start the old bot from its untouched folder.
 3. Reopen the subreddit.
 
-**You don't need to undo the database upgrade.** It only added tables and
-columns, and the old bot's writes were rehearsed against the upgraded schema.
-Loans recorded during your 2.0 test stay in the `loans` table, and the old bot
-can see them.
+**The old bot's database was never touched.** Launch copied it into Neon; the
+original on the bot computer is exactly as it was at step 2. Start the old bot
+against it as before.
 
-Restore the step-2 backup **only** if data was actually damaged. That would
-also lose anything recorded after the backup.
+Anything recorded in 2.0 (test loans, or real ones if you roll back later)
+exists only in Neon. Before rolling back after real use, note those loans so
+they can be re-entered.
 
 Then send me what went wrong: the bot's console output or `LoanCentral.log`,
 the last lines of `run_migrations.py`, and anything under "needs attention".

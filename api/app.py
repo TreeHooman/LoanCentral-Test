@@ -190,7 +190,7 @@ def validate_key_session():
 
 #: Paths a banned user may still reach — otherwise they cannot even read why
 #: they were banned or sign out.
-_BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms",
+_BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms", "/ping",
                      "/health", "/favicon.ico")
 
 
@@ -2938,6 +2938,18 @@ def health_check():
         "env": "dev" if IS_DEV else "prod",
         "build": BUILD_ID,
     }, 200 if db_ok else 503)
+
+
+@app.route("/ping")
+def ping():
+    """Liveness only: never touches the database.
+
+    Point uptime monitors here, not at /health. The database is on Neon's free
+    tier, which suspends when idle and bills compute hours while awake; a
+    monitor polling /health every few minutes would keep it awake around the
+    clock and use up the monthly allowance.
+    """
+    return _json({"status": "ok", "build": BUILD_ID})
 
 
 # ---------------------------------------------------------------------------

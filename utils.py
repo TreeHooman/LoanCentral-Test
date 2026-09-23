@@ -182,6 +182,14 @@ def reddit_config_problems():
         problems.append("Neither SUBREDDITS nor SUBREDDIT is set — nothing to monitor.")
     problems.extend(user_agent_problems(
         os.getenv("REDDIT_USER_AGENT"), os.getenv("REDDIT_USERNAME") or ""))
+    # Every bot reply links to the dashboard. Unset, bot_messages falls back to
+    # a default address, and every link in every comment would be wrong.
+    dashboard_url = (os.getenv("DASHBOARD_URL") or "").strip()
+    if not dashboard_url:
+        problems.append("DASHBOARD_URL is not set — bot replies link to the dashboard "
+                        "(e.g. https://loancentral-dashboard.onrender.com).")
+    elif not dashboard_url.startswith("https://"):
+        problems.append(f"DASHBOARD_URL must be an https:// address ({dashboard_url!r}).")
     return problems
 
 

@@ -42,6 +42,7 @@ class ConfigPreflightTests(unittest.TestCase):
         "REDDIT_PASSWORD": "hunter2",
         "SUBREDDITS": "LoanCentral",
         "REDDIT_USER_AGENT": "python:loancentral-bot:1.0 (by /u/LoanCentralBot)",
+        "DASHBOARD_URL": "https://loancentral-dashboard.onrender.com",
     }
 
     def test_complete_config_has_no_problems(self):
@@ -60,6 +61,18 @@ class ConfigPreflightTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=False):
             problems = reddit_config_problems()
         self.assertTrue(any("SUBREDDITS" in p for p in problems))
+
+    def test_missing_dashboard_url_is_reported(self):
+        env = dict(self.GOOD, DASHBOARD_URL="")
+        with patch.dict(os.environ, env, clear=False):
+            problems = reddit_config_problems()
+        self.assertTrue(any("DASHBOARD_URL" in p for p in problems))
+
+    def test_plain_http_dashboard_url_is_reported(self):
+        env = dict(self.GOOD, DASHBOARD_URL="http://loancentral-dashboard.onrender.com")
+        with patch.dict(os.environ, env, clear=False):
+            problems = reddit_config_problems()
+        self.assertTrue(any("https://" in p for p in problems))
 
 
 class ServerBudgetBackoffTests(unittest.TestCase):

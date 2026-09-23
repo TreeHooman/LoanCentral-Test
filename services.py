@@ -4317,6 +4317,42 @@ def log_analytics_event(username: str, event_type: str, page: str = None,
             pass
 
 
+ANALYTICS_RETENTION_DAYS = 90
+
+
+def prune_analytics_events(days: int = ANALYTICS_RETENTION_DAYS):
+    """
+    Delete analytics_events older than `days`.
+
+    Analytics is the only table that grows with every page view, and nothing
+    else references it, so old rows carry no history worth keeping. Audit logs,
+    loans and notifications are deliberately not touched here.
+    Returns (deleted_count, error).
+    """
+    days = int(days)
+    if days < 1:
+        return 0, "days must be at least 1"
+    conn = _get_db()
+    if not conn:
+        return 0, "Database connection failed"
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM analytics_events
+            WHERE created_at < NOW() - (%s || ' days')::INTERVAL
+        """, (str(days),))
+        deleted = cur.rowcount or 0
+        conn.commit()
+        return deleted, None
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"prune_analytics_events error: {e}", exc_info=True)
+        return 0, str(e)
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_analytics_summary(days: int = 30):
     """
     Return operational analytics summary for the admin dashboard.
