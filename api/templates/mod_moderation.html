@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Bans &amp; Reddit Sync - LoanCentral{% endblock %}
+
+{% block content %}
+<div class="section-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title" style="font-size:20px">Bans &amp; Reddit Sync</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }} — {{ role }}</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn-secondary" type="button" id="refreshAll">Refresh</button>
+    <button class="btn-primary" type="button" id="openBan">Ban a user</button>
+  </div>
+</div>
+
+<div class="callout" style="margin-bottom:18px">
+  A ban here is the <strong>LoanCentral</strong> record: the account is refused by the dashboard,
+  the API and the bot at once, including any linked Reddit name. It does not ban anyone from the
+  subreddit — do that on Reddit if it is warranted. Every ban and unban is written to the audit log.
+</div>
+
+<!-- Active bans ------------------------------------------------------------ -->
+<div class="section-header" style="margin:8px 0 10px">
+  <div class="section-title">Banned accounts</div>
+  <label style="font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center">
+    <input type="checkbox" id="showHistory" /> Include lifted bans
+  </label>
+</div>
+<div class="table-wrap" style="margin-bottom:28px">
+  <table class="mobile-cards">
+    <thead>
+      <tr>
+        <th>User</th><th>Reason</th><th>Banned by</th><th>Banned</th>
+        <th>Loan</th><th>Status</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="bansBody"><tr><td colspan="7" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Reddit sync ------------------------------------------------------------ -->
+<div class="section-header" style="margin:8px 0 10px">
+  <div class="section-title">Reddit sync — waiting to send</div>
+</div>
+<div class="callout" style="margin-bottom:12px">
+  When a request is funded, LoanCentral queues a flair change and a "Funded by" comment. The
+  database is already correct; these only update Reddit to match. Nothing is sent from this page —
+  run <code>python scripts/reddit_sync_worker.py --live</code> to send them.
+</div>
+<div class="table-wrap" style="margin-bottom:28px">
+  <table class="mobile-cards">
+    <thead><tr><th>#</th><th>Action</th><th>Request</th><th>Loan</th></tr></thead>
+    <tbody id="pendingBody"><tr><td colspan="4" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="section-header" style="margin:8px 0 10px">
+  <div class="section-title">Reddit sync — needs attention</div>
+</div>
+<div class="table-wrap">
+  <table class="mobile-cards">
+    <thead>
+      <tr><th>#</th><th>Action</th><th>Status</th><th>Request</th><th>Loan</th>
+          <th>Attempts</th><th>Last error</th><th>Updated</th></tr>
+    </thead>
+    <tbody id="failuresBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Ban modal -->
+<div class="modal-overlay" id="banModal">
+  <div class="modal">
+    <h3>Ban a user</h3>
+    <div class="modal-error" id="banError"></div>
+    <label for="banUsername">Username <span style="color:var(--red)">*</span></label>
+    <input type="text" id="banUsername" placeholder="e.g. some_user" autocomplete="off" />
+    <label for="banReason">Reason <span style="color:var(--red)">*</span></label>
+    <textarea id="banReason" rows="3" placeholder="Shown to the user and kept in the audit log"></textarea>
+    <label for="banLoan">Related loan ID <span style="color:var(--muted);font-weight:400;font-size:11px">optional</span></label>
+    <input type="text" id="banLoan" placeholder="e.g. 1790141458118" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn-cancel" type="button" data-close="banModal">Cancel</button>
+      <button class="btn-confirm" type="button" id="submitBan">Ban</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unban modal -->
+<div class="modal-overlay" id="unbanModal">
+  <div class="modal">
+    <h3>Lift ban on <span id="unbanName"></span></h3>
+    <div class="modal-error" id="unbanError"></div>
+    <label for="unbanReason">Reason</label>
+    <textarea id="unbanReason" rows="3" placeholder="e.g. appeal accepted, loan repaid"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" type="button" data-close="unbanModal">Cancel</button>
+      <button class="btn-confirm" type="button" id="submitUnban">Lift ban</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Usernames never go into onclick strings: rows carry them as data-*
+  // attributes and one delegated listener reads them back.
+  let pendingUnban = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('refreshAll').addEventListener('click', loadAll);
+    document.getElementById('openBan').addEventListener('click', openBanModal);
+    document.getElementById('submitBan').addEventListener('click', submitBan);
+    document.getElementById('submitUnban').addEventListener('click', submitUnban);
+    document.getElementById('showHistory').addEventListener('change', loadBans);
+    document.querySelectorAll('[data-close]').forEach(b =>
+      b.addEventListener('click', () => closeModal(b.dataset.close)));
+    document.getElementById('bansBody').addEventListener('click', e => {
+      const btn = e.target.closest('[data-unban]');
+      if (btn) openUnbanModal(btn.dataset.unban);
+    });
+    loadAll();
+  });
+
+  function loadAll() { loadBans(); loadPending(); loadFailures(); }
+
+  function cell(label, html) { return `<td data-label="${label}">${html}</td>`; }
+  function placeholder(tbody, cols, html) {
+    tbody.innerHTML = `<tr><td colspan="${cols}" class="table-placeholder">${html}</td></tr>`;
+  }
+
+  async function loadBans() {
+    const tbody = document.getElementById('bansBody');
+    const history = document.getElementById('showHistory').checked;
+    try {
+      const data = await apiFetch(`/api/admin/bans?active=${history ? 0 : 1}`);
+      if (!data.bans.length) {
+        placeholder(tbody, 7, '<div class="empty-state"><h3>No banned accounts</h3></div>');
+        return;
+      }
+      tbody.innerHTML = data.bans.map(b => `
+        <tr style="${b.active ? '' : 'opacity:0.5'}">
+          ${cell('User', `<a class="profile-link" href="/dashboard/users/${encodeURIComponent(b.username)}">u/${escapeHtml(b.username)}</a>`)}
+          ${cell('Reason', escapeHtml(b.reason || '—'))}
+          ${cell('Banned by', 'u/' + escapeHtml(b.banned_by))}
+          ${cell('Banned', escapeHtml(fmtDate(b.banned_at)))}
+          ${cell('Loan', escapeHtml(b.loan_id || '—'))}
+          ${cell('Status', b.active
+              ? '<span class="badge badge-unpaid">Banned</span>'
+              : `<span class="badge badge-repaid">Lifted</span><div style="font-size:11px;color:var(--muted)">by u/${escapeHtml(b.unbanned_by || '?')} ${escapeHtml(fmtDate(b.unbanned_at))}</div>`)}
+          ${cell('Actions', b.active
+              ? `<button class="btn-action" type="button" data-unban="${escapeHtml(b.username)}">Lift ban</button>`
+              : '')}
+        </tr>`).join('');
+    } catch (e) {
+      placeholder(tbody, 7, `<span style="color:var(--red)">Error: ${escapeHtml(e.message)}</span>`);
+    }
+  }
+
+  async function loadPending() {
+    const tbody = document.getElementById('pendingBody');
+    try {
+      const data = await apiFetch('/api/admin/reddit-sync/pending');
+      if (!data.planned.length) {
+        placeholder(tbody, 4, '<div class="empty-state"><h3>Nothing waiting</h3><p>Reddit is up to date.</p></div>');
+        return;
+      }
+      tbody.innerHTML = data.planned.map(a => `
+        <tr>
+          ${cell('#', '#' + escapeHtml(a.id))}
+          ${cell('Action', escapeHtml(a.action_type))}
+          ${cell('Request', a.request_id ? `<a href="/dashboard/requests/${encodeURIComponent(a.request_id)}">${escapeHtml(a.request_id)}</a>` : '—')}
+          ${cell('Loan', escapeHtml(a.loan_id || '—'))}
+        </tr>`).join('');
+    } catch (e) {
+      placeholder(tbody, 4, `<span style="color:var(--red)">Error: ${escapeHtml(e.message)}</span>`);
+    }
+  }
+
+  async function loadFailures() {
+    const tbody = document.getElementById('failuresBody');
+    try {
+      const data = await apiFetch('/api/admin/reddit-sync/failures');
+      if (!data.failures.length) {
+        placeholder(tbody, 8, '<div class="empty-state"><h3>No sync problems</h3></div>');
+        return;
+      }
+      const badge = s => s === 'failed' ? 'badge-unpaid' : (s === 'skipped' ? 'badge-refunded' : 'badge-active');
+      tbody.innerHTML = data.failures.map(f => `
+        <tr>
+          ${cell('#', '#' + escapeHtml(f.id))}
+          ${cell('Action', escapeHtml(f.action_type))}
+          ${cell('Status', `<span class="badge ${badge(f.status)}">${escapeHtml(f.status)}</span>`)}
+          ${cell('Request', escapeHtml(f.request_id || '—'))}
+          ${cell('Loan', escapeHtml(f.loan_id || '—'))}
+          ${cell('Attempts', escapeHtml(f.attempts))}
+          ${cell('Last error', `<span style="font-size:12px;color:var(--muted)">${escapeHtml(f.last_error || '—')}</span>`)}
+          ${cell('Updated', escapeHtml(fmtDate(f.updated_at)))}
+        </tr>`).join('');
+    } catch (e) {
+      placeholder(tbody, 8, `<span style="color:var(--red)">Error: ${escapeHtml(e.message)}</span>`);
+    }
+  }
+
+  function openBanModal() {
+    ['banUsername', 'banReason', 'banLoan'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('banError').style.display = 'none';
+    document.getElementById('banModal').classList.add('open');
+    setTimeout(() => document.getElementById('banUsername').focus(), 100);
+  }
+
+  async function submitBan() {
+    const username = document.getElementById('banUsername').value.trim().toLowerCase().replace(/^u\//, '');
+    const reason = document.getElementById('banReason').value.trim();
+    const loan_id = document.getElementById('banLoan').value.trim() || null;
+    const errEl = document.getElementById('banError');
+    const btn = document.getElementById('submitBan');
+    if (!username || !reason) {
+      errEl.textContent = 'A username and a reason are both required.';
+      errEl.style.display = 'block';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const result = await apiFetch(`/api/admin/bans/${encodeURIComponent(username)}`, {
+        method: 'POST', body: JSON.stringify({ reason, loan_id }) });
+      closeModal('banModal');
+      toast(result.already_banned ? `u/${username} was already banned.` : `u/${username} banned.`, 'success');
+      loadBans();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function openUnbanModal(username) {
+    pendingUnban = username;
+    document.getElementById('unbanName').textContent = 'u/' + username;
+    document.getElementById('unbanReason').value = '';
+    document.getElementById('unbanError').style.display = 'none';
+    document.getElementById('unbanModal').classList.add('open');
+  }
+
+  async function submitUnban() {
+    if (!pendingUnban) return;
+    const errEl = document.getElementById('unbanError');
+    const btn = document.getElementById('submitUnban');
+    btn.disabled = true;
+    try {
+      await apiFetch(`/api/admin/bans/${encodeURIComponent(pendingUnban)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ reason: document.getElementById('unbanReason').value.trim() }) });
+      closeModal('unbanModal');
+      toast(`Ban on u/${pendingUnban} lifted.`, 'success');
+      pendingUnban = null;
+      loadBans();
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+{% endblock %}

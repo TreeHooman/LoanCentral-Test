@@ -3860,6 +3860,14 @@ def api_backfill_requests():
 # Admin: bans
 # ---------------------------------------------------------------------------
 
+@app.route("/dashboard/mod/moderation")
+@role_required("mod", "admin")
+def mod_moderation_page():
+    """Bans and Reddit sync health, on one page."""
+    return render_template("mod_moderation.html",
+                           username=session["username"],
+                           role=session["role"])
+
 @app.route("/api/admin/bans", methods=["GET"])
 @require_mod_api
 def api_list_bans():

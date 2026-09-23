@@ -48,7 +48,11 @@
 
   <div class="card">
     <h2>Welcome back</h2>
+    {% if oauth_ready %}
     <p>Sign in with your Reddit account to access your dashboard. We only request permission to read your username — nothing else.</p>
+    {% else %}
+    <p>Lenders sign in with the key a moderator gave them. Borrowers sign in with a one-time code sent by email or text.</p>
+    {% endif %}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
@@ -63,13 +67,16 @@
         </svg>
         Continue with Reddit
       </a>
-    {% else %}
+    {% elif is_dev %}
+      {# Setup hint for developers only: in production this told every visitor
+         the names of our environment variables, and Reddit OAuth is off by
+         policy (docs/SECURITY.md rule 1) so it is not a missing step there. #}
       <div class="not-configured">
-        ⚠️ Reddit OAuth is not configured yet. Set <code>DASHBOARD_CLIENT_ID</code> and <code>DASHBOARD_CLIENT_SECRET</code> in your <code>.env</code> file.
+        ⚠️ Reddit OAuth is not configured (off by policy). Dev notice only.
       </div>
     {% endif %}
 
-    <div class="divider"><hr><span>or</span><hr></div>
+    {% if oauth_ready %}<div class="divider"><hr><span>or</span><hr></div>{% endif %}
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
       <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"

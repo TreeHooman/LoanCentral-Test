@@ -254,3 +254,35 @@ class SchemaParityTests(RealDBTestCase):
 
     def test_migration_discovery_works(self):
         self.assertGreater(len(self._migration_tables()), 5)
+
+
+class LoginPageTests(RealDBTestCase):
+    """The public login page must be accurate and must not leak configuration.
+
+    With Reddit OAuth off by policy, production showed every visitor "Sign in
+    with your Reddit account" plus the names of our environment variables.
+    """
+
+    def _render(self, is_dev):
+        original = self.web.IS_DEV
+        self.web.IS_DEV = is_dev
+        try:
+            self.logout()
+            return self.client.get("/login").get_data(as_text=True)
+        finally:
+            self.web.IS_DEV = original
+
+    def test_production_login_does_not_name_env_vars(self):
+        html = self._render(is_dev=False)
+        for secret_name in ("DASHBOARD_CLIENT_ID", "DASHBOARD_CLIENT_SECRET", ".env"):
+            self.assertNotIn(secret_name, html)
+
+    def test_production_login_does_not_promise_reddit_sign_in(self):
+        html = self._render(is_dev=False)
+        self.assertNotIn("Sign in with your Reddit account", html)
+        self.assertIn("Lenders sign in with the key", html)
+
+    def test_production_login_offers_the_real_methods(self):
+        html = self._render(is_dev=False)
+        self.assertIn("Login with Key", html)
+        self.assertIn("/login/borrower", html)
