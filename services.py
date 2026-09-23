@@ -1485,6 +1485,10 @@ def get_active_loans(username: str):
 
 import re as _re
 
+#: Words that introduce the repayment amount in a [REQ] title.
+_REPAY_KEYWORD = r'\b(?:repay(?:ment)?|pay\s*back|payback|return)\b'
+
+
 def _parse_req_title(title: str) -> dict:
     """
     Extract loan fields from a [REQ] post title.
@@ -1505,9 +1509,28 @@ def _parse_req_title(title: str) -> dict:
         result["amount"] = float(m.group("amount").replace(",", ""))
         currency = (m.group("suffix") or m.group("prefix") or "USD").upper()
         result["currency"] = {"$": "USD", "\u20ac": "EUR", "\u00a3": "GBP"}.get(currency, currency)
+    else:
+        # Bare principal: "[REQ] $150 - Denver ..." with no parentheses. Without
+        # this the amount parsed as None and save_loan_request refused the post
+        # outright, so the request never existed. Only a token carrying a
+        # currency marker counts \u2014 a bare number could be a ZIP code or a date \u2014
+        # and one preceded by a repayment keyword is the repay amount instead.
+        for money in _re.finditer(
+                r'(?P<prefix>USD|CAD|EUR|GBP|AUD|NZD|\$|\u20ac|\u00a3)\s*'
+                r'(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)'
+                r'|(?P<amount2>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?P<suffix>USD|CAD|EUR|GBP|AUD|NZD)\b',
+                title, _re.IGNORECASE):
+            lead_in = title[max(0, money.start() - 14):money.start()]
+            if _re.search(_REPAY_KEYWORD, lead_in, _re.IGNORECASE):
+                continue
+            value = money.group("amount") or money.group("amount2")
+            result["amount"] = float(value.replace(",", ""))
+            currency = (money.group("suffix") or money.group("prefix") or "USD").upper()
+            result["currency"] = {"$": "USD", "\u20ac": "EUR", "\u00a3": "GBP"}.get(currency, currency)
+            break
 
-    # Repay amount: (Repay $210) or (Repay $210.50)
-    m = _re.search(r'\brepay\s+(?:(?:USD|CAD|EUR|GBP|AUD|NZD|\$|\u20ac|\u00a3)\s*)?([0-9,]+(?:\.[0-9]{1,2})?)(?![0-9/\-])', title, _re.IGNORECASE)
+    # Repay amount: (Repay $210), (Payback $210), (Pay back $210), Return $210
+    m = _re.search(_REPAY_KEYWORD + r'\s*:?\s*(?:(?:USD|CAD|EUR|GBP|AUD|NZD|\$|\u20ac|\u00a3)\s*)?([0-9,]+(?:\.[0-9]{1,2})?)(?![0-9/\-])', title, _re.IGNORECASE)
     if m:
         result["repay_amount"] = float(m.group(1).replace(",", ""))
 

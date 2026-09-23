@@ -15,7 +15,7 @@ def process_help_command(comment):
     help_text = f"""
 # LoanCentral Bot Commands
 
-The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})** - sign in with Reddit.
+The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})**.
 
 ---
 
@@ -25,13 +25,13 @@ The bot tracks loans. Everything else (history, health scores, stats, mod tools)
 ```
 $loan [amount] [currency] u/[borrower]
 ```
-*Requires LoanCentral verified lender approval and the Reddit Verified Lender flair. Loan is recorded immediately.*
+*Requires LoanCentral verified lender approval. Loan is recorded immediately.*
 
 **Fund a REQ code**
 ```
 $fund REQ-0001 [repay_amount] [currency] [YYYY-MM-DD]
 ```
-*Requires LoanCentral verified lender approval and the Reddit Verified Lender flair.*
+*Requires LoanCentral verified lender approval.*
 
 **Record a repayment received**
 ```
