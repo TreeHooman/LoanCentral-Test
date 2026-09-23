@@ -70,3 +70,29 @@ class DatabaseSslModeTests(RealDBTestCase):
         from utils import db_ssl_mode
         for host in ("localhost", "127.0.0.1", "::1", " LOCALHOST "):
             self.assertEqual(db_ssl_mode(host), "prefer", host)
+
+
+class AttachmentSwitchTests(RealDBTestCase):
+    def test_off_by_default_in_production(self):
+        with patch.object(self.web, "IS_DEV", False), patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("ATTACHMENTS_ENABLED", None)
+            self.assertFalse(self.web.attachments_enabled())
+
+    def test_on_by_default_in_dev_and_when_opted_in(self):
+        import os
+        with patch.object(self.web, "IS_DEV", True):
+            os.environ.pop("ATTACHMENTS_ENABLED", None)
+            self.assertTrue(self.web.attachments_enabled())
+        with patch.object(self.web, "IS_DEV", False), patch.dict("os.environ", {"ATTACHMENTS_ENABLED": "true"}):
+            self.assertTrue(self.web.attachments_enabled())
+
+    def test_upload_is_refused_with_a_readable_message_when_off(self):
+        with patch.object(self.web, "attachments_enabled", return_value=False), \
+             patch.object(self.web, "_private_loan_access", return_value=("L1", None)):
+            with self.client.session_transaction() as sess:
+                sess["username"] = "lender1"
+                sess["role"] = "lender"
+            response = self.client.post("/api/loans/L1/attachments", data={})
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("turned off", response.get_json()["error"])

@@ -8,6 +8,7 @@ A fake Reddit client stands in for PRAW. Nothing here touches the network, and
 run_once() is dry-run unless a test explicitly passes live=True.
 """
 
+import unittest
 from datetime import datetime
 from decimal import Decimal
 
@@ -300,3 +301,34 @@ class CommentBodyTests(RealDBTestCase):
 
 def reddit_sync_flair():
     return services.FUNDED_FLAIR_TEXT
+
+
+class LiveLockTests(unittest.TestCase):
+    """Two live passes at once would send the same comment twice."""
+
+    def _fake_conn(self, acquired):
+        from unittest.mock import MagicMock
+        conn = MagicMock()
+        conn.is_sqlite = False
+        conn.cursor.return_value.fetchone.return_value = (acquired,)
+        return conn
+
+    def test_live_pass_is_skipped_while_another_holds_the_lock(self):
+        from unittest.mock import MagicMock, patch
+        conn = self._fake_conn(False)
+        reddit = MagicMock()
+        with patch("services._get_db", return_value=conn), \
+             patch.object(reddit_sync, "due_actions", side_effect=AssertionError("queue read")):
+            summary, error = reddit_sync.run_once(live=True, reddit=reddit)
+        self.assertIsNone(summary)
+        self.assertIn("already running", error)
+        reddit.assert_not_called()
+        conn.close.assert_called_once()
+
+    def test_dry_run_never_takes_the_lock(self):
+        from unittest.mock import patch
+        with patch.object(reddit_sync, "_acquire_live_lock", side_effect=AssertionError("locked")), \
+             patch.object(reddit_sync, "due_actions", return_value=([], None)):
+            summary, error = reddit_sync.run_once()
+        self.assertIsNone(error)
+        self.assertEqual(summary["considered"], 0)

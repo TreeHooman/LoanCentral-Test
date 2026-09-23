@@ -210,6 +210,31 @@ HANDLERS = {
 }
 
 
+#: pg_advisory_lock key held by a live pass ("LCsy" as an int).
+_LIVE_LOCK_KEY = 0x4C437379
+
+
+def _acquire_live_lock():
+    """Hold a database-wide lock for one live pass. Returns (conn, acquired).
+
+    Actions are not claimed row by row, so two live passes at once (a manual
+    run during a scheduled one, or two machines) would both send the same
+    comment. The advisory lock lives in Postgres, so it covers every machine
+    using the database, and it is released automatically if the process dies.
+    SQLite (dev and tests) has one writer anyway, so no lock is taken there.
+    """
+    from services import _get_db
+    conn = _get_db()
+    if not conn or getattr(conn, "is_sqlite", False):
+        return conn, True
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (_LIVE_LOCK_KEY,))
+        return conn, bool(cur.fetchone()[0])
+    finally:
+        cur.close()
+
+
 def run_once(limit=25, live=False, reddit=None):
     """Drain up to `limit` due actions.
 
@@ -218,6 +243,19 @@ def run_once(limit=25, live=False, reddit=None):
 
     Returns (summary_dict, error).
     """
+    if not live:
+        return _run_once(limit, live, reddit)
+    lock_conn, acquired = _acquire_live_lock()
+    try:
+        if not acquired:
+            return None, "Another live sync pass is already running; skipped this one."
+        return _run_once(limit, live, reddit)
+    finally:
+        if lock_conn is not None:
+            lock_conn.close()  # closing the session releases the advisory lock
+
+
+def _run_once(limit, live, reddit):
     actions, error = due_actions(limit=limit)
     if error:
         return None, error

@@ -51,6 +51,17 @@ IS_DEV  = os.getenv("LOANCENTRAL_ENV", "prod") != "prod"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(PROJECT_ROOT, "uploads"))
 
+
+def attachments_enabled():
+    """Uploads are off in production unless ATTACHMENTS_ENABLED=true.
+
+    Files are written to UPLOAD_DIR on local disk. On Render's free plan that
+    disk is wiped on every restart and deploy, so a lender's proof of payment
+    would silently disappear. Turn this on only once UPLOAD_DIR is durable.
+    """
+    default = "true" if IS_DEV else "false"
+    return os.getenv("ATTACHMENTS_ENABLED", default).strip().lower() in ("1", "true", "yes", "on")
+
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -2360,6 +2371,8 @@ def upload_attachment(loan_id):
     loan_id, denied = _private_loan_access(loan_id)
     if denied is not None:
         return denied
+    if not attachments_enabled():
+        return _json({"error": "File uploads are turned off for now. Add a note to the loan instead."}, 503)
     if "file" not in request.files:
         return _json({"error": "No file provided"}, 400)
     f = request.files["file"]

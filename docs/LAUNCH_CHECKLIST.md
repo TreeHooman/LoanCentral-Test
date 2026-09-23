@@ -223,8 +223,21 @@ Then mark any test loans **Refunded** so they don't count in anyone's history.
 ### 8. Decide how Reddit updates keep flowing
 
 Nothing is posted to Reddit unless `reddit_sync_worker.py --live` runs. Either
-run it by hand now and then, or schedule it every 5–10 minutes (Windows Task
-Scheduler, the same way as the nightly backup).
+run it by hand now and then, or schedule it every 5 minutes on the bot
+computer. In a Command Prompt, from the 2.0 folder (the path is filled in by
+`%CD%`):
+
+```
+schtasks /Create /TN "LoanCentral Reddit Sync" /SC MINUTE /MO 5 /F /TR "\"python\" \"%CD%\scripts\reddit_sync_worker.py\" --live"
+eddit_sync_worker.py\" --live"
+```
+
+Check it with `schtasks /Query /TN "LoanCentral Reddit Sync"`, and stop it with
+`schtasks /Change /TN "LoanCentral Reddit Sync" /DISABLE`.
+
+Only one live pass can run at a time, on any machine: a second one (a manual
+run during a scheduled one, say) sees "Another live sync pass is already
+running" and exits without sending anything.
 
 ### 9. Reopen the subreddit and tell lenders
 
