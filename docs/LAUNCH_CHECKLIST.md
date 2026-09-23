@@ -100,8 +100,11 @@ Put the verified lenders in a text file, one username per line, for example
 
 Render deploys the branch `upgrade/tested-bot-core`; 2.0 is on
 `refactor/dashboard-authoritative`. Until that branch is merged and pushed,
-the live dashboard runs the older code. This is safe to do **before** launch
-day: Neon already has every 2.0 table, and the old bot never talks to Neon.
+the live dashboard runs the older code. **Decided: deploy on launch day**, right
+after step 3 (the bot computer's Reddit settings are needed for the bot anyway).
+
+Done 2026-09-23: `API_KEY` replaced (old one rejected), Neon compute capped at
+0.25 CU. Still to do: step 1 below, on launch day.
 
 1. Merge `refactor/dashboard-authoritative` into `upgrade/tested-bot-core` and
    push. Render redeploys; wait for **Live**, then check `/health`.
