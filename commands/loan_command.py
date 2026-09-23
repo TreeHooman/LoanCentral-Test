@@ -92,6 +92,6 @@ def process_loan_command(comment):
         f"- Mark unpaid: `$unpaid {db_id}`\n"
         f"- Cancel loan: `$refunded {db_id}`\n\n"
         f"---\n"
-        f"*Track loans, view history & manage everything at [{DASHBOARD_URL}]({DASHBOARD_URL}) - sign in with Reddit.*"
+        f"*Track loans, view history & manage everything at [{DASHBOARD_URL}]({DASHBOARD_URL}).*"
     ))
     logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (db_id={db_id})")

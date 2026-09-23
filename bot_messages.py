@@ -4,8 +4,8 @@ from urllib.parse import quote
 
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://loancentral.app")
 DASHBOARD_FOOTER = (
-    f"*Dashboard: [{DASHBOARD_URL}]({DASHBOARD_URL}) - sign in with Reddit "
-    "to view history and manage loans.*"
+    f"*Dashboard: [{DASHBOARD_URL}]({DASHBOARD_URL}) - view history and manage loans. "
+    "LoanCentral is a record-keeping tool and is not a party to any loan.*"
 )
 
 

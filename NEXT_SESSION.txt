@@ -50,7 +50,22 @@ Second pass (2026-09-22) - made it verifiable, then verified it:
   - Tests: 811, including route sweep (no GET route 500s for any role),
     schema parity, legacy table shape, and the bot driven through main.py.
 
-WHAT IS LEFT IS OWNER-ONLY: docs/LAUNCH_CHECKLIST.md
+Third pass (2026-09-22) - launch rehearsal on real Postgres:
+  - Owner rules: NEVER log in to / act on Reddit from this machine; it is not
+    connected to the live bot or live DB. Launch = one day, sub closed, owner
+    tests live, rollback = restart old bot from its untouched folder.
+  - Restored the June 8 backup of the LoanCentral DB (old bot: loans + users
+    only) into a throwaway local Postgres and rehearsed launch. Fixed four
+    blockers: bot 2.0 crashed on startup (schema loader), migration 001 failed
+    in either order, 5 columns existed in no Postgres migration (lender perms
+    + payments broken), and no way to create the first admin
+    (scripts/bootstrap_roles.py). scripts/rehearse_launch.py: 9/9 incl. the OLD
+    bot's SQL working on the migrated schema.
+  - OPEN DECISION: render.yaml points the dashboard at a Render DB that is NOT
+    the main DB. Bot and dashboard must share one DB - owner to choose
+    (dashboard on bot computer, or move main DB to a shared host).
+
+WHAT IS LEFT IS OWNER-ONLY: docs/LAUNCH_CHECKLIST.md (launch-day runbook)
 
 --------------------------------------------------------------------------
 
