@@ -33,30 +33,24 @@ Done (8 commits on refactor/dashboard-authoritative, 620 -> 757 tests):
      ever a queued note for a human. Enforced in one before_request hook and
      in the bot; follows linked Reddit aliases.
 
-NOT done / still open:
-- Migrations 012/013/014 have NOT been run against any database. The dev
-  SQLite DB gets the equivalent schema from local_db automatically. Before
-  touching the live DB: back up, run scripts/check_db_integrity.py, then
-  python scripts/run_migrations.py --status.
-- No admin HTML pages for bans or sync health yet - the API endpoints exist
-  (/api/admin/bans, /api/admin/reddit-sync/{pending,failures}) but nothing in
-  api/templates/ calls them.
-- The Reddit sync worker is never scheduled. It only acts with
-  `python scripts/reddit_sync_worker.py --live`. Decide how to run it before
-  relying on flair/comment sync.
-- api/auth.py (Reddit OAuth) is dead by SECURITY rule 1 but still wired to
-  /auth/reddit and /auth/callback. Left in place - removing it touches login.
-- The two request route families (/api/requests/* and /api/loan-requests/*)
-  still overlap on one table. See AUDIT section 4.1.
-- services.py and api/app.py are still monoliths. Splitting them is the last
-  step, deliberately.
-- Dev DB has one pre-existing self-loan row (id 317) that blocks VALIDATEing
-  ck_loans_parties_differ. Left alone - it is dev data.
-- $help still tells users lender commands need the Reddit Verified Lender
-  flair. REQUIRE_LENDER_FLAIR is off by default, so that text is wrong.
+Second pass (2026-09-22) - made it verifiable, then verified it:
+  - SQLite translation now covers INTERVAL / DATE_TRUNC / EXTRACT / casts;
+    12 of 30 service functions previously could not run in dev at all.
+  - 3 tables existed only in migrations (lender_keys, borrower_otp_sessions,
+    borrower_magic_links) - added to schema.sql.
+  - FOUND BY RUNNING THE APP: request creation (bot AND dashboard) failed on
+    the real loan_requests table (legacy post_date NOT NULL). Inserts now
+    adapt to the table's real columns.
+  - Title parser: bare "$150" posts were dropped entirely; "Payback" lost the
+    repay amount. Both fixed.
+  - Bans & Reddit Sync admin page (/dashboard/mod/moderation).
+  - Login page no longer shows prod visitors env-var names or a fake
+    "Sign in with Reddit".
+  - Browser walkthrough of the full flow with zero server errors; mobile ok.
+  - Tests: 811, including route sweep (no GET route 500s for any role),
+    schema parity, legacy table shape, and the bot driven through main.py.
 
-Run the suite with system python, not venv/ (the venv has no pytest):
-  python -m pytest tests/ -q
+WHAT IS LEFT IS OWNER-ONLY: docs/LAUNCH_CHECKLIST.md
 
 --------------------------------------------------------------------------
 
