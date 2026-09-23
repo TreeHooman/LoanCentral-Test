@@ -141,10 +141,12 @@ class MigrationRunnerTests(unittest.TestCase):
         sql = (self.migrations / "013_integrity_constraints.sql").read_text(encoding="utf-8")
         statements = self.runner.split_sql(sql)
         do_blocks = [s for s in statements if s.lstrip().upper().startswith("DO")]
-        self.assertEqual(len(do_blocks), 1)
-        self.assertEqual(do_blocks[0].count("$$"), 2,
-                         "the DO block was split across statements")
-        self.assertIn("ck_lr_status", do_blocks[0])
+        # Three guarded unique indexes plus the CHECK-constraint block.
+        self.assertEqual(len(do_blocks), 4)
+        for block in do_blocks:
+            self.assertEqual(block.count("$$"), 2,
+                             "a DO block was split across statements")
+        self.assertTrue(any("ck_lr_status" in block for block in do_blocks))
 
     def test_semicolons_inside_string_literals_do_not_split(self):
         statements = self.runner.split_sql("SELECT 'a;b'; SELECT 2;")

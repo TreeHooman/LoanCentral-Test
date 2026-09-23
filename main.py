@@ -38,85 +38,75 @@ else:
     subreddit_str = os.getenv("SUBREDDIT", "")
 
 def load_schema():
-    """Load and parse SQL schema from schema.sql file"""
-    schema_file = Path("schema.sql")
-    
+    """Return the statements in schema.sql, or None if it cannot be read.
+
+    Uses the shared splitter (sqlscript.py). The hand-rolled splitter that was
+    here dropped every statement with a comment above it — 17 of 19 tables —
+    and turned two comments containing semicolons into statements of their
+    own, which made init_database() fail and the bot exit on startup.
+    """
+    from sqlscript import split_sql
+
+    schema_file = Path(__file__).resolve().parent / "schema.sql"
     if not schema_file.exists():
         logger.error("schema.sql file not found")
         return None
-    
     try:
-        with open(schema_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Extract SQL statements - look for statements ending with semicolon
-        sql_statements = []
-        
-        # Split by semicolons and clean up each statement
-        raw_statements = content.split(';')
-        
-        for statement in raw_statements:
-            # Clean up the statement
-            cleaned = statement.strip()
-            
-            # Skip empty statements and comments
-            if not cleaned or cleaned.startswith('--') or cleaned.startswith('#'):
-                continue
-            
-            # Remove comment lines from the statement
-            lines = []
-            for line in cleaned.split('\n'):
-                line = line.strip()
-                if line and not line.startswith('--') and not line.startswith('#'):
-                    lines.append(line)
-            
-            if lines:
-                final_statement = ' '.join(lines)
-                if final_statement:
-                    sql_statements.append(final_statement + ';')
-        
-        logger.info(f"Loaded {len(sql_statements)} SQL statements from schema.sql")
-        return sql_statements
-        
+        statements = split_sql(schema_file.read_text(encoding="utf-8"))
     except Exception as e:
         logger.error(f"Error loading schema.sql: {e}")
         logger.error(traceback.format_exc())
         return None
+    logger.info(f"Loaded {len(statements)} SQL statements from schema.sql")
+    return statements
+
 
 # Initialize database tables if they don't exist
 def init_database():
-    """Initialize database using schema.sql file"""
+    """Make sure the tables the bot needs exist.
+
+    Every statement in schema.sql is CREATE ... IF NOT EXISTS, so against the
+    live database this is almost entirely a no-op. Each statement runs and
+    commits on its own: one that fails (an index on a column an older table
+    lacks, say) is logged and skipped rather than aborting startup, because the
+    live tables already exist and a missing optional index is not a reason to
+    take the bot offline.
+
+    Returns False only when the database cannot be reached at all.
+    """
     from utils import get_db_connection
     conn = get_db_connection()
     if not conn:
         return False
-    
-    # Load schema from file
-    sql_statements = load_schema()
-    if not sql_statements:
+
+    statements = load_schema()
+    if not statements:
         logger.error("Failed to load schema, falling back to hardcoded schema")
         return init_database_fallback(conn)
-    
-    cur = conn.cursor()
+
+    skipped = 0
     try:
-        # Execute each SQL statement from schema
-        for statement in sql_statements:
-            if statement.strip():
-                logger.debug(f"Executing: {statement[:100]}...")
+        for statement in statements:
+            cur = conn.cursor()
+            try:
                 cur.execute(statement)
-        
-        conn.commit()
-        logger.info("Database initialized successfully using schema.sql")
-        return True
-        
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Database initialization error: {e}")
-        logger.error(traceback.format_exc())
-        return False
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                skipped += 1
+                logger.warning(f"Schema statement skipped ({e}): {statement[:100]}")
+            finally:
+                cur.close()
     finally:
-        cur.close()
         conn.close()
+
+    if skipped:
+        logger.warning(f"Database check finished with {skipped} of {len(statements)} "
+                       "statements skipped; see warnings above.")
+    else:
+        logger.info(f"Database check finished: {len(statements)} statements applied.")
+    return True
+
 
 def init_database_fallback(conn):
     """Fallback database initialization with hardcoded schema"""

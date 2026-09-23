@@ -4,8 +4,13 @@
 -- "enforced in services.py, not DB constraints"). A missed code path therefore
 -- wrote a bad row silently. These constraints make the worst ones impossible.
 --
--- Data safety: every CHECK is added NOT VALID, so it applies to new and updated
--- rows but does not scan or reject existing data. Run
+-- Data safety: this migration cannot fail on existing data.
+--   * Every CHECK is added NOT VALID: it applies to new and updated rows but
+--     does not scan or reject existing data.
+--   * Each unique index is created inside its own block. If existing rows
+--     already share a value — likely for loans.loan_id, because the original
+--     bot numbered loans by the current second — that one index is skipped
+--     with a NOTICE and the rest of the migration still applies. Run
 -- `python scripts/check_db_integrity.py` to find pre-existing violations, fix
 -- them, then run migration 014 to VALIDATE. Nothing here rewrites or deletes
 -- data, and every statement is safe to re-run.
@@ -16,22 +21,40 @@
 
 -- save_loan_request dedupes by SELECT-then-INSERT, which is racy: two
 -- near-simultaneous imports of the same post both see "not found" and insert.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_reddit_post_id
-    ON loan_requests (reddit_post_id)
-    WHERE reddit_post_id IS NOT NULL;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_reddit_post_id
+        ON loan_requests (reddit_post_id)
+        WHERE reddit_post_id IS NOT NULL;
+EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'uq_lr_reddit_post_id not created: existing rows share a value. Run scripts/check_db_integrity.py, resolve them, then create it by hand.';
+END
+$$;
 
 -- Stops two requests claiming the same loan record.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_funded_loan_id
-    ON loan_requests (funded_loan_id)
-    WHERE funded_loan_id IS NOT NULL;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_lr_funded_loan_id
+        ON loan_requests (funded_loan_id)
+        WHERE funded_loan_id IS NOT NULL;
+EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'uq_lr_funded_loan_id not created: existing rows share a value. Run scripts/check_db_integrity.py, resolve them, then create it by hand.';
+END
+$$;
 
 -- --------------------------------------------------------------------------
 -- loans: public ID uniqueness and money sanity
 -- --------------------------------------------------------------------------
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_loans_loan_id
-    ON loans (loan_id)
-    WHERE loan_id IS NOT NULL;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_loans_loan_id
+        ON loans (loan_id)
+        WHERE loan_id IS NOT NULL;
+EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'uq_loans_loan_id not created: existing rows share a value. Run scripts/check_db_integrity.py, resolve them, then create it by hand.';
+END
+$$;
 
 DO $$
 BEGIN

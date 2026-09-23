@@ -38,29 +38,38 @@ CREATE TABLE IF NOT EXISTS loan_attachments (
 
 CREATE INDEX IF NOT EXISTS idx_attachments_loan_id ON loan_attachments(loan_id);
 
+-- loan_requests uses the current column names (borrower_username,
+-- request_status, thread_url, ...). This migration originally created the
+-- table with the pre-rename names (borrower, status, thread_link) and indexed
+-- them; migrations/migrate_loan_requests.py renamed them later. Against a
+-- database that never had the table — the original bot's database, which has
+-- only loans and users — that meant either order failed: after the bot's
+-- startup schema check created the current table, the index on "status" did
+-- not exist; before it, this created the old shape and everything newer
+-- (migration 013, the services) failed on it.
+--
+-- Databases that already ran this file keep their table and their index names
+-- (IF NOT EXISTS matches by name), so this is a no-op for them.
 CREATE TABLE IF NOT EXISTS loan_requests (
     id SERIAL PRIMARY KEY,
-    request_id TEXT UNIQUE NOT NULL,
-    borrower TEXT NOT NULL,
-    amount NUMERIC NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'USD',
-    repay_amount NUMERIC,
-    repay_date DATE,
-    lender_note TEXT,
-    expires_at TIMESTAMP,
-    payment_method TEXT,
-    post_date TIMESTAMP NOT NULL,
-    thread_link TEXT NOT NULL,
-    reddit_post_id TEXT,
-    status TEXT NOT NULL DEFAULT 'open',
-    funded_by TEXT,
-    funded_date TIMESTAMP,
-    loan_id TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    request_id VARCHAR(20) NOT NULL UNIQUE,
+    borrower_username VARCHAR(100) NOT NULL,
+    reddit_username VARCHAR(100),
+    requested_amount NUMERIC(12,2),
+    requested_repayment_amount NUMERIC(12,2),
+    requested_due_date DATE,
+    request_status VARCHAR(30) NOT NULL DEFAULT 'open',
+    thread_url TEXT,
+    reddit_post_id VARCHAR(30),
+    reddit_comment_id VARCHAR(30),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    funded_loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL,
+    notes TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_loan_requests_status ON loan_requests(status);
-CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower ON loan_requests(borrower);
+CREATE INDEX IF NOT EXISTS idx_loan_requests_status ON loan_requests(request_status);
+CREATE INDEX IF NOT EXISTS idx_loan_requests_borrower ON loan_requests(borrower_username);
 CREATE INDEX IF NOT EXISTS idx_loan_requests_request_id ON loan_requests(request_id);
 
 ALTER TABLE loan_requests
