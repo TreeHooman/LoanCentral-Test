@@ -337,7 +337,8 @@ def handle_new_post(post):
                     f"{request_dashboard_link(request_id)} to review the request and record funding, "
                     "or use the Reddit command below.\n\n"
                     "After lender and borrower agree to terms on Reddit, a verified lender can fund it with:\n\n"
-                    f"`$fund {request_id} [repay_amount] [currency] [YYYY-MM-DD]`\n\n"
+                    f"`$fund {request_id}`\n\n"
+                    f"(or `$fund {request_id} 300USD` if the amount or currency changed)\n\n"
                     "Funding returns a Paid ID for `$paid_with_id`, `$unpaid`, and `$refunded`. "
                     "LoanCentral is a record-keeping tool and does not handle funds."
                 )

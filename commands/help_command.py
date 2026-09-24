@@ -21,17 +21,20 @@ The bot tracks loans. Everything else (history, health scores, stats, mod tools)
 
 ## Lender Commands
 
+*Lender commands need the subreddit's Verified Lender flair.*
+
 **Record a new loan**
 ```
 $loan [amount] [currency] u/[borrower]
 ```
-*Requires LoanCentral verified lender approval. Loan is recorded immediately.*
+*Loan is recorded immediately.*
 
 **Fund a REQ code**
 ```
-$fund REQ-0001 [repay_amount] [currency] [YYYY-MM-DD]
+$fund REQ-0001
+$fund REQ-0001 [amount][currency]
 ```
-*Requires LoanCentral verified lender approval.*
+*Records the requested amount, or the amount/currency you give (e.g. `300USD`, `CAD`).*
 
 **Record a repayment received**
 ```

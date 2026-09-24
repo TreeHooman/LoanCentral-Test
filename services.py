@@ -492,9 +492,15 @@ def update_reddit_action_status(action_id: int, status: str, actor: str = None, 
 def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str,
                 repay_amount: Decimal = None, repay_date: str = None, payment_method: str = None,
                 interest_amount: Decimal = None, interest_rate: Decimal = None,
-                request_id: str = None):
+                request_id: str = None, keep_given_terms: bool = False):
     """
     Confirm and save a new loan to the database.
+
+    Funding a request normally records the request's own amount and currency,
+    whatever the caller passed, so a tampered form cannot change them.
+    keep_given_terms=True keeps the caller's amount and currency instead; only
+    `$fund` with an explicit amount/currency sets it, since lender and borrower
+    agree the terms in the Reddit thread.
     Returns (loan_db_id, error_message).
     On success: (int, None)
     On failure: (None, str)
@@ -529,9 +535,11 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             claimed = cur.fetchone()
             if not claimed:
                 return None, "Request is no longer open. Refresh before recording a loan."
-            borrower, amount = claimed[0], Decimal(str(claimed[1]))
+            borrower = claimed[0]
             metadata = _request_metadata(claimed[2])
-            currency = metadata.get("currency", "USD")
+            if not keep_given_terms:
+                amount = Decimal(str(claimed[1]))
+                currency = metadata.get("currency", "USD")
             payment_method = metadata.get("method")
             thread_url = claimed[3] or ""
             # Kept for the post-commit Reddit sync enqueue below.
@@ -644,7 +652,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                 VALUES ('request_funded', %s, 'lender', %s, %s, %s, 'service', %s)
             ''', (lender, borrower, loan_id, request_id, json.dumps({
                 "amount": str(amount), "currency": currency,
-                "repay_amount": str(repay_amount), "repay_date": repay_date,
+                "repay_amount": str(repay_amount) if repay_amount is not None else None,
+                "repay_date": repay_date,
             })))
             # The request timeline's most important entry. It lives here rather
             # than in the route so $fund, the dashboard, and any future caller
@@ -652,8 +661,8 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             # all, whichever interface did it.
             _log_request_event_with_cursor(
                 cur, request_id, "funded", actor=lender,
-                note=f"Funded by u/{lender} — loan {loan_id} "
-                     f"({amount} {currency}, repay {repay_amount} by {repay_date})")
+                note=f"Funded by u/{lender} — loan {loan_id} ({amount} {currency}"
+                     + (f", repay {repay_amount} by {repay_date})" if repay_amount else ")"))
         conn.commit()
         logger.info(f"Loan created: {lender} -> {borrower} {amount} {currency} (id={db_id}, loan_id={loan_id})")
         log_event("loan_created", actor=lender, actor_role="lender", target_user=borrower,
@@ -1785,10 +1794,15 @@ def get_request_summary(request_id: str):
         conn.close()
 
 
-def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_date: str):
+def fund_loan_request(request_id: str, lender: str, repay_amount=None, repay_date: str = None,
+                      amount=None, currency: str = None):
     """
-    Lender confirms a loan request from the dashboard.
-    Creates a live loan and marks the request as funded.
+    Fund an open loan request: create the loan and mark the request funded.
+
+    The dashboard passes the agreed repay amount and due date. The bot's
+    `$fund` passes neither (loans recorded on Reddit keep just the amount),
+    but may override the amount or currency the request asked for, since
+    lender and borrower settle terms in the thread.
     Returns (loan_id, error)
     """
     request_id = normalize_request_id(request_id)
@@ -1801,14 +1815,26 @@ def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_d
         return None, err
     if req["status"] != "open":
         return None, f"Request {request_id} is already {req['status']}."
+
+    repayment = None
+    if repay_amount is not None or repay_date:
+        try:
+            repayment = Decimal(str(repay_amount))
+            if not repayment.is_finite() or repayment <= 0:
+                return None, "Repay amount must be a positive number."
+            from datetime import date
+            date.fromisoformat(repay_date)
+        except (ValueError, TypeError, ArithmeticError):
+            return None, "Enter a valid repay amount and date (YYYY-MM-DD)."
+
     try:
-        repayment = Decimal(str(repay_amount))
-        if not repayment.is_finite() or repayment <= 0:
-            return None, "Repay amount must be a positive number."
-        from datetime import date
-        date.fromisoformat(repay_date)
+        principal = Decimal(str(amount if amount is not None else req["amount"]))
+        if not principal.is_finite() or principal <= 0:
+            return None, "Loan amount must be greater than zero."
     except (ValueError, TypeError, ArithmeticError):
-        return None, "Enter a valid repay amount and date (YYYY-MM-DD)."
+        return None, "Enter a valid loan amount."
+    loan_currency = (currency or req["currency"] or "USD").upper()
+
     identity, identity_error = resolve_user_identity(lender)
     if identity_error:
         return None, identity_error
@@ -1816,10 +1842,11 @@ def fund_loan_request(request_id: str, lender: str, repay_amount: float, repay_d
         return None, "You cannot loan to yourself."
 
     return create_loan(
+        keep_given_terms=amount is not None or bool(currency),
         lender=lender,
         borrower=req["borrower"],
-        amount=Decimal(str(req["amount"])),
-        currency=req["currency"],
+        amount=principal,
+        currency=loan_currency,
         thread_url=req["thread_link"] or "",
         repay_amount=repayment,
         repay_date=repay_date,
