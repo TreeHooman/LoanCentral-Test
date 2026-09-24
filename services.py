@@ -1195,6 +1195,7 @@ def create_lender_key(username: str, created_by: str, label: str = ""):
             INSERT INTO lender_keys (username, key_hash, label, created_by)
             VALUES (%s, %s, %s, %s) RETURNING id
         """, (username.lower(), hashed, label or None, created_by.lower()))
+        cur.fetchone()  # SQLite refuses to commit with the RETURNING row unread
         conn.commit()
         cur.close()
         return plaintext, None
@@ -1242,13 +1243,17 @@ def list_lender_keys(username: str = None):
         cur = conn.cursor()
         if username:
             cur.execute("""
-                SELECT id, username, label, active, created_by, created_at, last_used, revoked_at
-                FROM lender_keys WHERE username = %s ORDER BY created_at DESC
+                SELECT k.id, k.username, k.label, k.active, k.created_by, k.created_at,
+                       k.last_used, k.revoked_at, r.reddit_username, r.role
+                FROM lender_keys k LEFT JOIN user_roles r ON lower(r.username) = lower(k.username)
+                WHERE k.username = %s ORDER BY k.created_at DESC
             """, (username.lower(),))
         else:
             cur.execute("""
-                SELECT id, username, label, active, created_by, created_at, last_used, revoked_at
-                FROM lender_keys ORDER BY created_at DESC
+                SELECT k.id, k.username, k.label, k.active, k.created_by, k.created_at,
+                       k.last_used, k.revoked_at, r.reddit_username, r.role
+                FROM lender_keys k LEFT JOIN user_roles r ON lower(r.username) = lower(k.username)
+                ORDER BY k.created_at DESC
             """)
         rows = cur.fetchall()
         cur.close()
@@ -1259,6 +1264,8 @@ def list_lender_keys(username: str = None):
                 "created_at": r[5].isoformat() if r[5] else None,
                 "last_used": r[6].isoformat() if r[6] else None,
                 "revoked_at": r[7].isoformat() if r[7] else None,
+                "reddit_username": r[8],
+                "role": r[9],
             }
             for r in rows
         ], None
@@ -3519,11 +3526,14 @@ def link_reddit_username(target_username: str, reddit_username: str, linked_by: 
         return False, "Database connection failed"
     try:
         cur = db.cursor()
-        # Normalise
-        reddit_username = (reddit_username or "").strip().lower().lstrip("u/")
+        # Strip a leading u/ or /u/. (This used lstrip("u/"), which strips any
+        # leading u and / characters: u/ultralender became "ltralender".)
+        reddit_username = normalize_username(reddit_username)
         if not reddit_username:
             return False, "reddit_username is required"
-        # Check for duplicate — another user already has this reddit_username
+        # One name, one account: not linked to someone else, and not someone
+        # else's dashboard username either, or the bot's loans for that name
+        # would belong to two accounts at once.
         cur.execute(
             "SELECT username FROM user_roles WHERE lower(reddit_username)=lower(%s) AND lower(username)!=lower(%s)",
             (reddit_username, target_username)
@@ -3531,6 +3541,13 @@ def link_reddit_username(target_username: str, reddit_username: str, linked_by: 
         conflict = cur.fetchone()
         if conflict:
             return False, f"Reddit username u/{reddit_username} is already linked to u/{conflict[0]}"
+        cur.execute(
+            "SELECT username FROM user_roles WHERE lower(username)=lower(%s) AND lower(username)!=lower(%s)",
+            (reddit_username, target_username)
+        )
+        if cur.fetchone():
+            return False, (f"u/{reddit_username} is already a separate dashboard account. "
+                           "Create the key for that account instead.")
         cur.execute("""
             UPDATE user_roles
             SET reddit_username = %s,

@@ -14,8 +14,9 @@
 </div>
 
 <div class="callout" style="margin-bottom:18px">
-  <strong>How keys work:</strong> Create a key for a lender's Reddit username. The key is shown <strong>once</strong> — copy it and send it to them via Reddit DM. They visit
-  <code>/login</code> to log in with their key. Keys can be revoked any time.
+  <strong>How keys work:</strong> Create a key for a lender's Reddit username. That links the account to their Reddit name, so loans the bot recorded
+  for them show on their dashboard. The key is shown <strong>once</strong> — use <em>Copy DM message</em> and send it to them by Reddit DM.
+  They sign in at <code>/login</code> with <em>Login with Key</em>. Keys can be revoked any time.
 </div>
 
 <div class="table-wrap">
@@ -24,6 +25,7 @@
       <tr>
         <th>ID</th>
         <th>Username</th>
+        <th>Reddit</th>
         <th>Label</th>
         <th>Status</th>
         <th>Created By</th>
@@ -32,7 +34,7 @@
         <th>Actions</th>
       </tr>
     </thead>
-    <tbody id="keysBody"><tr><td colspan="8" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+    <tbody id="keysBody"><tr><td colspan="9" class="table-placeholder"><div class="spinner"></div><br>Loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -43,7 +45,9 @@
     <p style="color:var(--muted);font-size:12px;margin-bottom:12px">The key will be shown <strong>once</strong>. Copy it immediately — it cannot be retrieved again.</p>
     <div class="modal-error" id="createKeyError"></div>
     <label>Reddit Username <span style="color:var(--red)">*</span></label>
-    <input type="text" id="ckUsername" placeholder="e.g. logistix1" autocomplete="off" />
+    <input type="text" id="ckReddit" placeholder="e.g. logistix1" autocomplete="off" />
+    <label>Dashboard Username <span style="color:var(--muted);font-weight:400;font-size:11px">optional — defaults to the Reddit username</span></label>
+    <input type="text" id="ckUsername" placeholder="same as Reddit username" autocomplete="off" />
     <label>Label <span style="color:var(--muted);font-weight:400;font-size:11px">optional — helps you remember who this is for</span></label>
     <input type="text" id="ckLabel" placeholder="e.g. Primary lender key" />
     <div class="modal-actions">
@@ -66,7 +70,22 @@
     <div id="newKeyLoginUrl" style="color:var(--muted);font-size:12px;word-break:break-all;margin-bottom:16px"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="copyNewKey()">Copy Key</button>
+      <button class="btn-secondary" onclick="copyDmMessage()">Copy DM message</button>
       <button class="btn-confirm" onclick="closeModal('showKeyModal');loadKeys()">Done</button>
+    </div>
+  </div>
+</div>
+<!-- Link / change Reddit username modal -->
+<div class="modal-overlay" id="linkModal">
+  <div class="modal">
+    <h3>Link Reddit Username</h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Loans the bot recorded under this Reddit name will show on <strong id="linkTarget"></strong>'s dashboard.</p>
+    <div class="modal-error" id="linkError"></div>
+    <label>Reddit Username <span style="color:var(--red)">*</span></label>
+    <input type="text" id="linkReddit" placeholder="e.g. logistix1" autocomplete="off" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('linkModal')">Cancel</button>
+      <button class="btn-confirm" id="linkBtn" onclick="submitLink()">Save Link</button>
     </div>
   </div>
 </div>
@@ -83,13 +102,18 @@
     try {
       const keys = await apiFetch('/api/admin/keys');
       if (!keys.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>No keys yet</h3><p>Create a key to give a lender dashboard access.</p></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><h3>No keys yet</h3><p>Create a key to give a lender dashboard access.</p></div></td></tr>';
         return;
       }
       tbody.innerHTML = keys.map(k => `
         <tr style="${!k.active ? 'opacity:0.45' : ''}">
           <td data-label="ID" style="color:var(--muted);font-size:12px">#${k.id}</td>
-          <td data-label="Username" class="username"><a class="profile-link" href="/dashboard/users/${encodeURIComponent(k.username)}">u/${escapeHtml(k.username)}</a></td>
+          <td data-label="Username" class="username"><a class="profile-link" href="/dashboard/users/${encodeURIComponent(k.username)}">${escapeHtml(k.username)}</a></td>
+          <td data-label="Reddit" style="font-size:13px">
+            ${k.reddit_username ? 'u/' + escapeHtml(k.reddit_username) : '<span style="color:var(--muted)">not linked</span>'}
+            <button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h);margin-left:4px" data-user="${escapeHtml(k.username)}" data-reddit="${escapeHtml(k.reddit_username || '')}"
+              onclick="openLinkModal(this.dataset.user, this.dataset.reddit)">${k.reddit_username ? 'Change' : 'Link'}</button>
+          </td>
           <td data-label="Label" style="color:var(--muted);font-size:13px">${escapeHtml(k.label || '—')}</td>
           <td data-label="Status"><span class="badge ${k.active ? 'badge-repaid' : 'badge-unpaid'}">${k.active ? 'Active' : 'Revoked'}</span></td>
           <td data-label="Created By" style="font-size:12px;color:var(--muted)">u/${escapeHtml(k.created_by)}</td>
@@ -103,36 +127,39 @@
           </td>
         </tr>`).join('');
     } catch(e) {
-      tbody.innerHTML = `<tr><td colspan="8" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="table-placeholder" style="color:var(--red)">Error: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
   function openCreateModal() {
+    document.getElementById('ckReddit').value = '';
     document.getElementById('ckUsername').value = '';
     document.getElementById('ckLabel').value = '';
     document.getElementById('createKeyError').style.display = 'none';
     document.getElementById('createKeyModal').classList.add('open');
-    setTimeout(() => document.getElementById('ckUsername').focus(), 100);
+    setTimeout(() => document.getElementById('ckReddit').focus(), 100);
   }
 
   async function submitCreateKey() {
-    const username = document.getElementById('ckUsername').value.trim().toLowerCase();
+    const reddit_username = document.getElementById('ckReddit').value.trim();
+    const username = document.getElementById('ckUsername').value.trim();
     const label = document.getElementById('ckLabel').value.trim();
     const errEl = document.getElementById('createKeyError');
     const btn = document.getElementById('createKeyBtn');
-    if (!username) { errEl.textContent = 'Username is required.'; errEl.style.display = 'block'; return; }
+    if (!reddit_username) { errEl.textContent = 'Reddit username is required.'; errEl.style.display = 'block'; return; }
     btn.disabled = true; btn.textContent = 'Generating…';
     errEl.style.display = 'none';
     try {
       const result = await apiFetch('/api/admin/keys', {
         method: 'POST',
-        body: JSON.stringify({ username, label })
+        body: JSON.stringify({ reddit_username, username, label })
       });
       closeModal('createKeyModal');
       document.getElementById('newKeyDisplay').textContent = result.key;
+      newKeyFor = result.reddit_username || result.username;
       const loginUrl = `${BASE_URL}/login`;
       document.getElementById('newKeyLoginUrl').innerHTML =
-        `Login URL for u/${escapeHtml(result.username)}:<br><strong>${escapeHtml(loginUrl)}</strong>`;
+        `For u/${escapeHtml(newKeyFor)} (dashboard account <strong>${escapeHtml(result.username)}</strong>) — login page:<br><strong>${escapeHtml(loginUrl)}</strong>`;
       document.getElementById('showKeyModal').classList.add('open');
     } catch(e) {
       errEl.textContent = e.message;
@@ -140,6 +167,44 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Generate Key';
     }
+  }
+
+  let newKeyFor = '';
+  let linkFor = '';
+
+  function copyDmMessage() {
+    const key = document.getElementById('newKeyDisplay').textContent;
+    const msg = `Hi u/${newKeyFor}, here is your LoanCentral login key:\n\n${key}\n\n`
+      + `Sign in at ${BASE_URL}/login and choose "Login with Key". `
+      + `Keep it private: anyone with this key can act as you. If it leaks, ask a mod to revoke it.`;
+    navigator.clipboard.writeText(msg).then(() => toast('DM message copied.', 'success'));
+  }
+
+  function openLinkModal(username, current) {
+    linkFor = username;
+    document.getElementById('linkTarget').textContent = username;
+    document.getElementById('linkReddit').value = current || '';
+    document.getElementById('linkError').style.display = 'none';
+    document.getElementById('linkModal').classList.add('open');
+    setTimeout(() => document.getElementById('linkReddit').focus(), 100);
+  }
+
+  async function submitLink() {
+    const reddit_username = document.getElementById('linkReddit').value.trim();
+    const errEl = document.getElementById('linkError');
+    const btn = document.getElementById('linkBtn');
+    if (!reddit_username) { errEl.textContent = 'Reddit username is required.'; errEl.style.display = 'block'; return; }
+    btn.disabled = true;
+    try {
+      await apiFetch(`/api/admin/users/${encodeURIComponent(linkFor)}/reddit-link`, {
+        method: 'POST', body: JSON.stringify({ reddit_username })
+      });
+      closeModal('linkModal');
+      toast('Reddit username linked.', 'success');
+      loadKeys();
+    } catch(e) {
+      errEl.textContent = e.message; errEl.style.display = 'block';
+    } finally { btn.disabled = false; }
   }
 
   function copyNewKey() {

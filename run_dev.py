@@ -18,7 +18,7 @@ from api.app import app
 
 if __name__ == "__main__":
     host = os.getenv("FLASK_HOST", "127.0.0.1")
-    port = int(os.getenv("FLASK_PORT", "5000"))
+    port = int(os.getenv("FLASK_PORT") or os.getenv("PORT") or "5000")
     print("Starting LoanCentral dev server...")
     print(f"Dev login: http://{host}:{port}/auth/dev-login")
     print(f"Login page: http://{host}:{port}")

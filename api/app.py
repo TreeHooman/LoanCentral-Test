@@ -723,31 +723,54 @@ def api_list_keys():
 @app.route("/api/admin/keys", methods=["POST"])
 @role_required("admin")
 def api_create_key():
-    from services import create_lender_key, set_user_role
+    """Issue a login key, optionally for a Reddit name that the account is linked to.
+
+    The dashboard username defaults to the Reddit name. Linking it is what puts
+    the loans the bot recorded under that Reddit name into this account.
+    """
+    from services import (create_lender_key, get_user_role, link_reddit_username,
+                          log_audit, normalize_username, set_user_role)
     data = request.get_json() or {}
-    username = (data.get("username") or "").strip().lower()
+    reddit_username = normalize_username(data.get("reddit_username"))
+    username = normalize_username(data.get("username")) or reddit_username
     label = (data.get("label") or "").strip()
+    actor = session.get("username", "admin")
     if not username:
-        return _json({"error": "username is required"}, 400)
-    # Ensure user has at least lender role
-    set_user_role(username, "lender")
-    plaintext, error = create_lender_key(
-        username=username,
-        created_by=session.get("username", "admin"),
-        label=label
-    )
+        return _json({"error": "A Reddit username is required."}, 400)
+
+    if reddit_username:
+        # Before the key exists, so a name conflict leaves nothing half-done.
+        ok, err = link_reddit_username(username, reddit_username, actor)
+        if not ok:
+            return _json({"error": err}, 400)
+        log_audit(actor, session.get("role", "admin"), "reddit_username_linked",
+                  "user", username, new_value={"reddit_username": reddit_username})
+
+    # A key is a login, not a demotion: only lift borrowers and new accounts
+    # to lender. (This used to set "lender" unconditionally, so issuing a key
+    # to a mod or admin took their role away.)
+    role, _ = get_user_role(username)
+    if role not in ("lender", "mod", "admin"):
+        set_user_role(username, "lender", actor=actor, actor_role=session.get("role", "admin"))
+
+    plaintext, error = create_lender_key(username=username, created_by=actor, label=label)
     if error:
         return _json({"error": error}, 500)
-    return _json({"ok": True, "key": plaintext, "username": username})
+    log_audit(actor, session.get("role", "admin"), "lender_key_created", "user", username,
+              new_value={"label": label or None, "reddit_username": reddit_username or None})
+    return _json({"ok": True, "key": plaintext, "username": username,
+                  "reddit_username": reddit_username or None})
 
 
 @app.route("/api/admin/keys/<int:key_id>/revoke", methods=["POST"])
 @role_required("admin")
 def api_revoke_key(key_id):
-    from services import revoke_lender_key
+    from services import log_audit, revoke_lender_key
     ok, error = revoke_lender_key(key_id)
     if error:
         return _json({"error": error}, 500)
+    log_audit(session.get("username", "admin"), session.get("role", "admin"),
+              "lender_key_revoked", "lender_key", str(key_id))
     return _json({"ok": True})
 
 

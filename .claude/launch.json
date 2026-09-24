@@ -4,8 +4,11 @@
     {
       "name": "loancentral",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["run_dev.py"],
-      "port": 5000
+      "runtimeArgs": [
+        "run_dev.py"
+      ],
+      "port": 5000,
+      "autoPort": true
     }
   ]
 }
