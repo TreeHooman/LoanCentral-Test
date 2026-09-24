@@ -655,7 +655,7 @@
 <body>
 
 <nav>
-  <a class="nav-brand" href="/">LoanCentral</a>
+  <a class="nav-brand" href="{{ url_for('home') }}">LoanCentral</a>
   {% if role in ['mod', 'admin'] %}
   {# The everyday pages. Everything else lives under More, so nothing is lost. #}
   <div class="nav-main">

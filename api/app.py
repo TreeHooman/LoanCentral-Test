@@ -663,12 +663,62 @@ def _can_view_user_profile(target_username):
 # Page routes
 # ---------------------------------------------------------------------------
 
+_PUBLIC_STATS = {"at": 0.0, "value": None}
+
+
+def _public_stats():
+    """Site-wide totals for the front page — counts and sums only, no names.
+
+    Cached for ten minutes: the front page is public, and every uncached visit
+    would wake the (free-tier, sleep-when-idle) database.
+    """
+    if _PUBLIC_STATS["value"] is not None and time.time() - _PUBLIC_STATS["at"] < 600:
+        return _PUBLIC_STATS["value"]
+    stats = None
+    try:
+        from services import _get_db
+        conn = _get_db()
+        if conn:
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT COUNT(*),
+                           COALESCE(SUM(amount), 0),
+                           COALESCE(SUM(CASE WHEN status = 'repaid' THEN 1 ELSE 0 END), 0),
+                           COALESCE(SUM(CASE WHEN status IN ('repaid','unpaid') THEN 1 ELSE 0 END), 0),
+                           COUNT(DISTINCT lower(lender))
+                    FROM loans WHERE status != 'refunded'
+                """)
+                total, lent, repaid, settled, lenders = cur.fetchone()
+                stats = {
+                    "loans": int(total or 0),
+                    "lent": float(lent or 0),
+                    "repaid": int(repaid or 0),
+                    # Of loans that reached an outcome, the share repaid.
+                    "repaid_rate": round(100.0 * int(repaid or 0) / int(settled), 1) if settled else None,
+                    "lenders": int(lenders or 0),
+                }
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning(f"public stats unavailable: {e}")
+    _PUBLIC_STATS.update(at=time.time(), value=stats)
+    return stats
+
+
 @app.route("/")
+def index():
+    """The public website. Signed-in members see it too, with a dashboard button."""
+    return render_template("home.html", subreddit=_primary_subreddit(),
+                           signed_in=bool(session.get("username")),
+                           stats=_public_stats())
+
+
+@app.route("/dashboard")
 def home():
+    """Send a signed-in member to their own dashboard (every sign-in lands here)."""
     if not session.get("username"):
-        # Public front door: explains the site and sends lenders and borrowers
-        # to their own sign-in, instead of dropping everyone on the key form.
-        return render_template("home.html", subreddit=_primary_subreddit())
+        return redirect(url_for("login"))
     role = session.get("role", "borrower")
     if role == "admin":
         return redirect(url_for("dashboard_admin"))

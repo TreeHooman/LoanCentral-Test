@@ -318,3 +318,37 @@ class LoginWithoutGoogleTests(RealDBTestCase):
             html = self.client.get("/login").get_data(as_text=True)
         self.assertIn('<details class="key-login" >', html)
         self.assertIn("Have a lender key?", html)
+
+
+class WebsiteTests(RealDBTestCase):
+    """/ is the public website for everyone; /dashboard sends members to theirs."""
+
+    def test_signed_out_visitors_get_the_website(self):
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Bot commands", html)
+        self.assertIn(">Sign in<", html)
+
+    def test_signed_in_members_see_it_with_a_dashboard_button(self):
+        self.make_user("lender1", role="lender", verified_lender=True)
+        self.login("lender1", role="lender")
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Go to dashboard", response.get_data(as_text=True))
+
+    def test_dashboard_routes_by_role(self):
+        self.make_user("lender1", role="lender", verified_lender=True)
+        self.login("lender1", role="lender")
+        self.assertIn("/dashboard/lender", self.client.get("/dashboard").headers["Location"])
+
+    def test_dashboard_signed_out_goes_to_login(self):
+        self.assertIn("/login", self.client.get("/dashboard").headers["Location"])
+
+    def test_the_public_numbers_are_totals_only(self):
+        self.execute("INSERT INTO loans (loan_id, lender, borrower, amount, amount_repaid, currency, "
+                     "status, date_created, original_thread) VALUES ('P1', 'secretlender', 'secretborrower', "
+                     "40, 40, 'USD', 'repaid', CURRENT_TIMESTAMP, 'x')")
+        self.web._PUBLIC_STATS.update(at=0.0, value=None)
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertNotIn("secretlender", html)
+        self.assertNotIn("secretborrower", html)
+        self.assertIn("100.0%", html)
