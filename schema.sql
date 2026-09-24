@@ -363,7 +363,7 @@ CREATE TABLE IF NOT EXISTS loan_offers (
     currency TEXT NOT NULL,
     thread_url TEXT,
     status TEXT NOT NULL DEFAULT 'open',
-    loan_db_id INTEGER,
+    loan_db_id TEXT,              -- the loan's public ID (loans.loan_id)
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMP NOT NULL,
     confirmed_at TIMESTAMP

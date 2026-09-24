@@ -194,11 +194,15 @@ class CommandManager:
         self.cooldown_seconds = int(os.getenv("BOT_COMMAND_COOLDOWN_SECONDS", "15"))
         self.load_commands()
 
-    def _is_rate_limited(self, username, trigger):
+    def _is_rate_limited(self, username, trigger, text=""):
+        """True for the same command, word for word, from the same person
+        within the cooldown: a double post. A different command (another
+        loan's payment, say) always goes through; dropping it silently lost
+        real payments recorded back to back."""
         if self.cooldown_seconds <= 0:
             return False
         now = time.time()
-        key = (username.lower(), trigger)
+        key = (username.lower(), trigger, " ".join((text or "").lower().split()))
         last = self.recent_commands.get(key, 0)
         if now - last < self.cooldown_seconds:
             return True
@@ -319,7 +323,7 @@ class CommandManager:
         for trigger, command_func in self.commands.items():
             if self._has_trigger(trigger, body_lower):
                 try:
-                    if self._is_rate_limited(comment.author.name, trigger):
+                    if self._is_rate_limited(comment.author.name, trigger, body_lower):
                         logger.info(f"Rate limited command {trigger} from user {comment.author.name}")
                         return
                     # A platform ban applies to both interfaces. Checked before

@@ -26,6 +26,12 @@ class TierThresholdTests(RealDBTestCase):
         self.assertEqual(tiers.next_tier(30), ("Silver", 20))
         self.assertEqual(tiers.next_tier(500), (None, 0))
 
+    def test_borrower_thresholds(self):
+        cases = {0: None, 1: "Iron", 4: "Iron", 5: "Bronze", 10: "Silver", 20: "Gold",
+                 40: "Platinum", 75: "Diamond"}
+        for count, name in cases.items():
+            self.assertEqual(tiers.tier_for(count, "borrower"), name, count)
+
     def test_borrower_thresholds_are_a_separate_setting(self):
         with patch.dict(os.environ, {"BORROWER_TIERS": "Gold:10,Iron:1"}):
             self.assertEqual(tiers.tier_for(10, "borrower"), "Gold")

@@ -650,8 +650,9 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
     keep_given_terms=True keeps the caller's amount and currency instead; only
     `$fund` with an explicit amount/currency sets it, since lender and borrower
     agree the terms in the Reddit thread.
-    Returns (loan_db_id, error_message).
-    On success: (int, None)
+    Returns (loan_id, error_message): the loan's public ID, a numeric
+    string like "1790292191862" (text, and too big for an INTEGER column).
+    On success: (str, None)
     On failure: (None, str)
     """
     if amount <= 0:
@@ -4507,12 +4508,12 @@ def get_user_activity_timeline(username: str, limit: int = 50):
             SELECT 'audit' AS source, action_type AS event_type,
                    actor_username AS actor, created_at,
                    COALESCE(target_id, '') AS ref,
-                   COALESCE(new_value_json, '') AS detail
+                   COALESCE(CAST(new_value_json AS TEXT), '') AS detail
             FROM audit_logs
             WHERE actor_username = %s OR target_id = %s
             UNION ALL
             SELECT 'loan_event', event_type, actor_username, created_at,
-                   loan_id, COALESCE(details, '')
+                   loan_id, COALESCE(CAST(details AS TEXT), '')
             FROM loan_events
             WHERE actor_username = %s
             UNION ALL

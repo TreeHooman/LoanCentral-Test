@@ -8,15 +8,19 @@ dashboard username), like the rest of the record.
 Legacy Lender is separate: a role an admin grants by hand (founders). It sits
 alongside the earned tier and takes priority in flair.
 
-Thresholds (repaid loans -> tier), highest first. Borrowers have their own
-list, which starts the same; set BORROWER_TIERS to change it, e.g.
-"Diamond:60,Platinum:30,Gold:15,Silver:8,Bronze:4,Iron:1".
+Thresholds (repaid loans -> tier), highest first. Borrowers repay far fewer
+loans than lenders make (in the real data nobody had repaid 25, so everyone
+was Iron), so they have their own, lower list (owner decision 2026-09-24).
+Set BORROWER_TIERS to change it, e.g. "Diamond:60,Platinum:30,Gold:15,Silver:8,Bronze:4,Iron:1".
 """
 
 import os
 
 LENDER_TIERS = (("Diamond", 500), ("Platinum", 200), ("Gold", 100),
                 ("Silver", 50), ("Bronze", 25), ("Iron", 1))
+
+BORROWER_TIERS = (("Diamond", 75), ("Platinum", 40), ("Gold", 20),
+                  ("Silver", 10), ("Bronze", 5), ("Iron", 1))
 
 LEGACY = "Legacy"
 
@@ -32,7 +36,7 @@ def _parse(spec):
 
 def thresholds(role):
     if role == "borrower":
-        return _parse(os.getenv("BORROWER_TIERS")) or LENDER_TIERS
+        return _parse(os.getenv("BORROWER_TIERS")) or BORROWER_TIERS
     return LENDER_TIERS
 
 
