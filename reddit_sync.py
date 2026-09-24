@@ -298,7 +298,13 @@ def _acquire_live_lock():
     SQLite (dev and tests) has one writer anyway, so no lock is taken there.
     """
     from services import _get_db
+    import utils
     conn = _get_db()
+    if isinstance(conn, utils.PooledConnection):
+        # The lock is released by really closing the session, so this
+        # connection must not go back to the pool (utils.get_db_connection).
+        conn.close()
+        conn = utils.get_db_connection(pooled=False)
     if not conn or getattr(conn, "is_sqlite", False):
         return conn, True
     cur = conn.cursor()

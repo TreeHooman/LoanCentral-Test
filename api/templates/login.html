@@ -106,10 +106,14 @@
     <details class="key-login" {% if not google_ready %}open{% endif %}>
     <summary>{% if google_ready %}Have a lender key?{% else %}Sign in with your lender key{% endif %}</summary>
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
-      <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
-        style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
-        autocomplete="off" spellcheck="false" />
-      <button type="submit"
+      <div style="position:relative">
+        <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 64px 11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
+          autocomplete="off" spellcheck="false" />
+        <button type="button" id="keyToggle" onclick="toggleKey()" aria-controls="keyInput" aria-pressed="false"
+          style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;padding:6px 8px">Show</button>
+      </div>
+      <button type="submit" id="keySubmit"
         style="width:100%;padding:11px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);border-radius:8px;color:var(--accent-h);font-size:14px;font-weight:600;cursor:pointer">
         Login with Key
       </button>
@@ -133,12 +137,25 @@
   </div>
 </div>
 <script>
+  function toggleKey() {
+    const input = document.getElementById('keyInput');
+    const btn = document.getElementById('keyToggle');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.textContent = show ? 'Hide' : 'Show';
+    btn.setAttribute('aria-pressed', String(show));
+  }
+
   async function submitKey(e) {
     e.preventDefault();
     const key = document.getElementById('keyInput').value.trim();
     const errEl = document.getElementById('keyError');
     if (!key) { errEl.textContent = 'Enter your key.'; errEl.style.display = 'block'; return; }
     errEl.style.display = 'none';
+    const submit = document.getElementById('keySubmit');
+    const label = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = 'Signing in…';
     try {
       const response = await fetch('/auth/key', {method: 'POST', headers: {'X-API-Key': key}, credentials: 'same-origin'});
       const result = await response.json();
@@ -148,6 +165,8 @@
     } catch (error) {
       errEl.textContent = error.message;
       errEl.style.display = 'block';
+      submit.disabled = false;
+      submit.textContent = label;
     }
   }
 </script>

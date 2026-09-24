@@ -229,12 +229,171 @@ def db_ssl_mode(host):
 
 
 # PostgreSQL connection
-def get_db_connection():
-    """Get database connection"""
+# ---------------------------------------------------------------------------
+# Postgres connection reuse
+#
+# Every caller opens a connection, uses it and closes it; one dashboard page
+# does that a dozen times (auth hooks, rank badge, the page's own queries).
+# A fresh connection to Neon is a TLS + auth handshake, ~0.1 s each, so pages
+# took seconds. Instead, close() hands the connection back here and the next
+# caller reuses it.
+#
+# - close() rolls back anything uncommitted, exactly as a real close would.
+# - Connections idle for more than _POOL_MAX_IDLE seconds are closed (a reaper
+#   thread checks), so an unused site lets Neon suspend and save compute.
+# - Session state does NOT reset. Anything that relies on close() ending the
+#   session (the Reddit sync's advisory lock) must use pooled=False.
+# - DB_POOL=0 turns it off.
+# ---------------------------------------------------------------------------
+
+_POOL_SIZE = 4
+_POOL_MAX_IDLE = 60.0
+_pool = []            # [(raw psycopg2 connection, time it was returned)]
+_pool_lock = threading.Lock()
+_pool_pid = None
+_reaper_pid = None
+
+
+class PooledConnection:
+    """A psycopg2 connection whose close() returns it to the pool."""
+
+    def __init__(self, raw):
+        object.__setattr__(self, "_raw", raw)
+        object.__setattr__(self, "_released", False)
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._raw, name, value)
+
+    def __enter__(self):
+        self._raw.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._raw.__exit__(*exc)
+
+    @property
+    def closed(self):
+        return 1 if self._released else self._raw.closed
+
+    def close(self):
+        if self._released:
+            return
+        object.__setattr__(self, "_released", True)
+        _release(self._raw)
+
+    def __del__(self):
+        # A caller that forgot close(): don't leak the connection.
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
+def _pool_enabled():
+    return os.getenv("DB_POOL", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _check_fork():
+    """Connections can't cross a fork (gunicorn workers); start clean."""
+    global _pool_pid, _pool
+    if _pool_pid != os.getpid():
+        _pool = []
+        _pool_pid = os.getpid()
+
+
+def _release(raw):
+    try:
+        if raw.closed:
+            return
+        from psycopg2.extensions import TRANSACTION_STATUS_IDLE
+        if raw.get_transaction_status() != TRANSACTION_STATUS_IDLE:
+            raw.rollback()
+    except Exception:
+        try:
+            raw.close()
+        except Exception:
+            pass
+        return
+    with _pool_lock:
+        _check_fork()
+        if len(_pool) < _POOL_SIZE:
+            _pool.append((raw, time.monotonic()))
+            return
+    raw.close()
+
+
+def _take_pooled():
+    """A live pooled connection, or None."""
+    now = time.monotonic()
+    stale = []
+    found = None
+    with _pool_lock:
+        _check_fork()
+        while _pool:
+            raw, since = _pool.pop()          # most recently used first
+            if raw.closed or now - since > _POOL_MAX_IDLE:
+                stale.append(raw)
+                continue
+            found = raw
+            break
+    for raw in stale:
+        try:
+            raw.close()
+        except Exception:
+            pass
+    return found
+
+
+def _reap_idle():
+    while True:
+        time.sleep(_POOL_MAX_IDLE / 2)
+        now = time.monotonic()
+        with _pool_lock:
+            _check_fork()
+            keep = [(r, t) for r, t in _pool if not r.closed and now - t <= _POOL_MAX_IDLE]
+            stale = [r for r, t in _pool if (r, t) not in keep]
+            _pool[:] = keep
+        for raw in stale:
+            try:
+                raw.close()
+            except Exception:
+                pass
+
+
+def _start_reaper():
+    global _reaper_pid
+    with _pool_lock:
+        if _reaper_pid == os.getpid():
+            return
+        _reaper_pid = os.getpid()
+    threading.Thread(target=_reap_idle, name="db-pool-reaper", daemon=True).start()
+
+
+def get_db_connection(pooled=True):
+    """Get a database connection. close() it when done, as always.
+
+    Postgres connections are reused (see above); pass pooled=False when closing
+    must really end the session.
+    """
     if os.getenv("DB_BACKEND", "").lower() == "sqlite":
         from local_db import get_sqlite_connection
         return get_sqlite_connection()
 
+    if pooled and _pool_enabled():
+        raw = _take_pooled()
+        if raw is None:
+            raw = _connect_postgres()
+            if raw is None or getattr(raw, "is_sqlite", False):
+                return raw                    # dev fallback to SQLite: not pooled
+        _start_reaper()
+        return PooledConnection(raw)
+    return _connect_postgres()
+
+
+def _connect_postgres():
     try:
         database_url = os.getenv("DATABASE_URL", "").strip()
         if database_url:
