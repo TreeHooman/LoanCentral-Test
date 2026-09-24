@@ -352,3 +352,18 @@ class WebsiteTests(RealDBTestCase):
         self.assertNotIn("secretlender", html)
         self.assertNotIn("secretborrower", html)
         self.assertIn("100.0%", html)
+
+
+class NavOnEveryPageTests(RealDBTestCase):
+    """Every mod/admin page shows the menu, even when its route passes no role."""
+
+    def test_pages_without_a_role_argument_still_show_the_menu(self):
+        self.make_user("boss", role="admin")
+        self.login("boss", role="admin")
+        for path in ("/dashboard/admin/keys", "/dashboard/admin/audit-log", "/dashboard/admin/search"):
+            response = self.client.get(path)
+            if response.status_code == 404:
+                continue
+            html = response.get_data(as_text=True)
+            self.assertIn("Bans &amp; Sync", html, path)
+            self.assertIn("u/boss", html, path)
