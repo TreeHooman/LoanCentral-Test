@@ -233,6 +233,46 @@ def apply_status_comment(action, reddit):
         return False, str(e), _is_gone(e)
 
 
+def apply_lender_flair(action, reddit):
+    """Show a lender's rank in their flair: "Verified Lender · Gold" / "· Legacy".
+
+    Only ever *rewrites* an existing lender flair — anyone whose current flair
+    isn't the lender flair is skipped, so a rank can never hand out lender
+    access (the flair is what grants it; commands/lender_gate.py). The text is
+    computed now, so it reflects the rank at sending time. Two API calls: read
+    the flair, set it (skipped if already right).
+    """
+    import os
+    import tiers
+    from commands.lender_gate import _flair_matches, base_flair_text
+
+    data = _payload(action)
+    name = data.get("reddit_username") or action.get("target_user")
+    sub_name = action.get("subreddit") or os.getenv("PRIMARY_SUBREDDIT") \
+        or (os.getenv("SUBREDDITS", "").split(",")[0].strip())
+    if not (name and sub_name):
+        return False, "lender_flair needs a username and a subreddit", True
+    try:
+        subreddit = reddit.subreddit(sub_name)
+        rows = list(subreddit.flair(redditor=name) or [])
+        current = rows[0] if rows else {}
+        text, css = current.get("flair_text"), current.get("flair_css_class")
+        template = current.get("flair_template_id")
+        if not _flair_matches(text, template):
+            return True, None, False            # not a flaired lender: nothing to do
+        wanted = tiers.flair_text(name, base=base_flair_text())
+        if (text or "").strip() == wanted:
+            return True, None, False
+        template_id = (os.getenv("LENDER_FLAIR_TEMPLATE_ID") or "").strip() or template
+        if template_id:
+            subreddit.flair.set(name, text=wanted, flair_template_id=template_id)
+        else:
+            subreddit.flair.set(name, text=wanted, css_class=css or "")
+        return True, None, False
+    except Exception as e:
+        return False, str(e), _is_gone(e)
+
+
 #: Kept for callers and tests that use the old name.
 apply_funded_comment = apply_status_comment
 
@@ -240,6 +280,7 @@ HANDLERS = {
     "flair_sync": apply_flair_sync,
     "funded_comment": apply_status_comment,
     "repaid_comment": apply_status_comment,
+    "lender_flair": apply_lender_flair,
 }
 
 

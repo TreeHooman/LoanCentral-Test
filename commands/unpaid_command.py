@@ -43,7 +43,7 @@ def process_unpaid_command(comment):
         f"|{result['amount_repaid']:.2f} {result['currency']}|\n\n"
         f"[Submit unpaid post](https://www.reddit.com/r/{current_subreddit}/submit?selftext=true"
         f"&title=UNPAID:%20/u/{borrower}%20{result['loan_amount']}%20{result['currency']})\n\n"
-        f"If this is in error, u/{borrower} can comment `$dispute {loan_id}` to flag for mod review.\n\n"
+        f"If this is in error, u/{borrower} can contact the moderators.\n\n"
         f"*Manage this at [{DASHBOARD_URL}]({DASHBOARD_URL})*"
     )
 

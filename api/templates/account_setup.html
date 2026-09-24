@@ -8,8 +8,8 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
-      --accent: #5b6ef5; --accent-h: #7b8cff; --red: #e74c3c; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+      --bg: #0a0b0a; --surface: #121512; --surface2: #1a1f1a; --border: #243024;
+      --accent: #22c55e; --accent-h: #4ade80; --red: #e74c3c; --muted: #8a948a; --text: #e8ece8; --text2: #b4bdb4;
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     .container { width: 100%; max-width: 440px; padding: 24px; }
@@ -37,7 +37,7 @@
       <h1>This link can't be used</h1>
       <div class="error">{{ error }}</div>
       <p>Links from <code>$login</code> work once and expire after a short time. Comment <code>$login</code>
-        {% if subreddit %}on <a class="link" href="https://www.reddit.com/r/{{ subreddit }}">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}
+        {% if subreddit %}on <a class="link" href="https://www.reddit.com/r/{{ subreddit }}" target="_blank" rel="noopener">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}
         and the bot will DM you a new one.</p>
       <p><a class="link" href="{{ url_for('login') }}">Already set up? Sign in</a></p>
     {% else %}

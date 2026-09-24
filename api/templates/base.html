@@ -42,6 +42,10 @@
     .role-admin    { background: rgba(231,76,60,0.15);  color: var(--red); }
     .role-lender   { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
     .role-borrower { background: rgba(46,204,113,0.15); color: var(--green); }
+    .rank-badge    { background: rgba(255,255,255,0.06); color: var(--text2); }
+    .rank-bronze   { color: #cd7f32; } .rank-silver { color: #c0c0c0; }
+    .rank-gold     { color: #f1c40f; } .rank-platinum { color: #9fd8df; }
+    .rank-diamond  { color: #7fd3ff; } .rank-legacy { color: #e0b0ff; }
     .nav-user { font-size: 13px; color: var(--text2); }
     .btn-logout { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; text-decoration: none; transition: all 0.15s; }
     .btn-logout:hover { border-color: var(--red); color: var(--red); }
@@ -691,6 +695,8 @@
   {% endif %}
   <div class="nav-right">
     <span class="role-badge role-{{ role }}">{{ role }}</span>
+    {% set _rank = nav_rank() if nav_rank is defined else None %}
+    {% if _rank %}<span class="role-badge rank-badge rank-{{ _rank|lower }}" title="Rank">{{ _rank }}</span>{% endif %}
     <span class="nav-user">u/{{ username }}</span>
     <!-- Notification bell -->
     <div style="position:relative;display:inline-flex;align-items:center">

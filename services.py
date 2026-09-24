@@ -240,7 +240,8 @@ def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: st
     adding another. Pass False for an action that is distinct by content, such
     as a REPAID flair change queued while the FUNDED one is still waiting.
     """
-    allowed = {"reminder_comment", "lender_dm", "ban_user", "flair_sync", "funded_comment", "repaid_comment"}
+    allowed = {"reminder_comment", "lender_dm", "ban_user", "flair_sync", "funded_comment",
+               "repaid_comment", "lender_flair"}
     action_type = (action_type or "").strip().lower()
     if action_type not in allowed:
         return None, f"Unsupported reddit action type: {action_type}."
@@ -330,8 +331,13 @@ def funded_comment_body(lender: str, loan_id: str) -> str:
     Kept here rather than in the worker so the wording is testable without a
     Reddit client, and identical whichever interface triggered the funding.
     """
+    try:
+        import tiers
+        label = tiers.lender_label(lender)
+    except Exception:
+        label = None
     return (
-        f"Funded by u/{lender}.\n\n"
+        f"Funded by u/{lender}" + (f" ({label})" if label else "") + ".\n\n"
         f"Loan ID: `{loan_id}`\n\n"
         "This request is now recorded as funded in LoanCentral. "
         "LoanCentral is a record-keeping tool and is not a party to this loan."
@@ -406,6 +412,40 @@ def repaid_comment_body(lender: str, borrower: str, loan_id: str, amount, curren
         f"Loan ID: `{loan_id}` ({Decimal(str(amount)):.2f} {currency})\n\n"
         "This loan is now recorded as repaid in LoanCentral."
     )
+
+
+def queue_lender_flair_sync(username, reason=None):
+    """Stage an update of a lender's subreddit flair to show their tier/Legacy.
+
+    Never calls Reddit, and never grants anything: the worker only rewrites the
+    flair of someone who already has the lender flair (reddit_sync). The text
+    is worked out when it is sent, so a queued update always shows the latest
+    rank; one waiting update per lender is enough (deduplicated).
+    """
+    identity, _ = resolve_user_identity(username)
+    reddit_name = (identity or {}).get("reddit_username") or (identity or {}).get("username") or username
+    subreddit = (os.getenv("PRIMARY_SUBREDDIT")
+                 or (os.getenv("SUBREDDITS", "").split(",")[0].strip() or None))
+    result, error = enqueue_reddit_action(
+        "lender_flair", target_user=normalize_username(reddit_name), subreddit=subreddit,
+        payload={"reddit_username": normalize_username(reddit_name)},
+        reason=reason or "Lender rank changed; update their flair.", created_by="system")
+    if error:
+        logger.error(f"queue_lender_flair_sync failed for {username}: {error}")
+    return result
+
+
+def _queue_flair_if_tier_changed(lender):
+    """After a loan is repaid: the lender's count went up by one; flair only
+    changes when that crosses into a new tier."""
+    try:
+        import tiers
+        lent, _ = tiers.repaid_counts(lender)
+        if tiers.tier_for(lent, "lender") != tiers.tier_for(lent - 1, "lender"):
+            queue_lender_flair_sync(lender, reason=f"Reached {tiers.tier_for(lent, 'lender')} "
+                                                   f"({lent} repaid loans).")
+    except Exception as e:
+        logger.error(f"tier flair check failed for {lender}: {e}", exc_info=True)
 
 
 def queue_loan_repaid_sync(db_id):
@@ -943,6 +983,7 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
         create_notification(lender, "payment_received", "Payment received", payment_msg)
         if new_status == "repaid":
             queue_loan_repaid_sync(db_id)
+            _queue_flair_if_tier_changed(lender)
 
         return {
             "db_id": db_id,
@@ -1181,10 +1222,14 @@ def _key_hash(plaintext: str) -> str:
     return hashlib.sha256(plaintext.encode()).hexdigest()
 
 
-def create_lender_key(username: str, created_by: str, label: str = ""):
-    """Generate a new lender key. Returns (plaintext_key, error). Plaintext shown once — only hash stored."""
+def create_lender_key(username: str, created_by: str, label: str = "", plaintext: str = None):
+    """Generate a new lender key. Returns (plaintext_key, error). Plaintext shown once — only hash stored.
+
+    `plaintext` lets an owner choose their own key (bootstrap_roles
+    --set-admin-key, typed at a hidden prompt). Otherwise a random one is made.
+    """
     import secrets as _secrets
-    plaintext = "LC-" + _secrets.token_hex(24)
+    plaintext = plaintext or ("LC-" + _secrets.token_hex(24))
     hashed = _key_hash(plaintext)
     conn = _get_db()
     if not conn:
@@ -3131,6 +3176,48 @@ def set_verified_lender(username: str, verified: bool, granted_by: str,
     finally:
         cur.close()
         conn.close()
+
+
+def set_legacy_lender(username: str, legacy: bool, granted_by: str):
+    """Grant or remove the Legacy Lender role (founders, granted by hand).
+
+    Stored on the account's dashboard name, so it follows the person whichever
+    name they are looked up by. Returns (ok, error); the caller audits.
+    """
+    identity, _ = resolve_user_identity(username)
+    name = (identity or {}).get("username") or normalize_username(username)
+    conn = _get_db()
+    if not conn:
+        return False, "Database connection failed"
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO user_roles (username, role)
+            VALUES (lower(%s), 'lender')
+            ON CONFLICT (username) DO NOTHING
+        """, (name,))
+        if legacy:
+            cur.execute("""
+                UPDATE user_roles
+                SET legacy_lender=TRUE, legacy_granted_by=%s, legacy_granted_at=NOW()
+                WHERE lower(username)=lower(%s)
+            """, (granted_by, name))
+        else:
+            cur.execute("""
+                UPDATE user_roles
+                SET legacy_lender=FALSE, legacy_granted_by=%s, legacy_granted_at=NOW()
+                WHERE lower(username)=lower(%s)
+            """, (granted_by, name))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"set_legacy_lender error: {e}", exc_info=True)
+        return False, str(e)
+    finally:
+        cur.close()
+        conn.close()
+    queue_lender_flair_sync(name, reason=("Legacy Lender granted." if legacy
+                                          else "Legacy Lender removed."))
+    return True, None
 
 
 # ---------------------------------------------------------------------------

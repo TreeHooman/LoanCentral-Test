@@ -103,6 +103,9 @@ def main():
     parser.add_argument("--apply", action="store_true", help="make the changes (default: preview)")
     parser.add_argument("--issue-admin-key", action="store_true",
                         help="with --apply: print a one-time login key for each admin")
+    parser.add_argument("--set-admin-key", action="store_true",
+                        help="with --apply and one --admin: type your own key at a hidden "
+                             "prompt; revokes that admin's other keys")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -166,6 +169,31 @@ def main():
     for name in everyone:
         role, verified = after[name]
         print(f"  u/{name:26s} role={role or '(none)':9s} verified_lender={'yes' if verified else 'no'}")
+
+    if args.set_admin_key:
+        if len(admins) != 1:
+            print("\n  --set-admin-key needs exactly one --admin.")
+            return 2
+        import getpass
+        from services import list_lender_keys, revoke_lender_key
+        name = admins[0]
+        key = getpass.getpass(f"\n  New key for u/{name} (typing is hidden): ").strip()
+        if len(key) < 10:
+            print("  Refusing: use at least 10 characters.")
+            return 2
+        if getpass.getpass("  Type it again: ").strip() != key:
+            print("  Refusing: the two entries didn't match.")
+            return 2
+        rows, _ = list_lender_keys(username=name)
+        for row in rows or []:
+            if row.get("active"):
+                revoke_lender_key(row["id"])
+        _, error = create_lender_key(name, ACTOR, label="set by owner", plaintext=key)
+        if error:
+            print(f"\n  FAILED to set the key: {error}")
+            return 1
+        print(f"\n  Key set for u/{name}; their other keys are revoked.")
+        print("  Sign in at /login with 'Login with Key'.")
 
     if args.issue_admin_key:
         for name in admins:

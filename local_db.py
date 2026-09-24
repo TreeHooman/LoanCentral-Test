@@ -268,6 +268,9 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "google_sub", "TEXT")
     _ensure_column(conn, "user_roles", "google_email", "TEXT")
     _ensure_column(conn, "user_roles", "google_linked_at", "TIMESTAMP")
+    _ensure_column(conn, "user_roles", "legacy_lender", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "user_roles", "legacy_granted_by", "TEXT")
+    _ensure_column(conn, "user_roles", "legacy_granted_at", "TIMESTAMP")
     # Retry bookkeeping for the Reddit sync worker. Postgres gets these from
     # scripts/migrations/013_integrity_constraints.sql.
     _ensure_column(conn, "reddit_actions", "attempts", "INTEGER NOT NULL DEFAULT 0")

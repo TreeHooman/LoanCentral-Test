@@ -199,6 +199,32 @@ def validate_key_session():
     session["role"] = row[1]
 
 
+_RANK_TTL = 600  # seconds; the nav badge re-reads the count at most every 10 min
+
+
+@app.context_processor
+def inject_nav_rank():
+    """The signed-in user's rank for the nav badge, cached in the session so
+    page views don't each count loans (Neon compute is metered)."""
+    def nav_rank():
+        name = session.get("username")
+        if not name:
+            return None
+        cached = session.get("nav_rank")
+        if cached and cached.get("u") == name and time.time() - cached.get("t", 0) < _RANK_TTL:
+            return cached.get("label")
+        try:
+            import tiers
+            s = tiers.standing(name)
+            label = tiers.lender_label(name, s) or s["borrower_tier"]
+        except Exception:
+            logger.warning("nav rank lookup failed", exc_info=True)
+            label = None
+        session["nav_rank"] = {"u": name, "t": time.time(), "label": label}
+        return label
+    return {"nav_rank": nav_rank}
+
+
 #: Paths a banned user may still reach — otherwise they cannot even read why
 #: they were banned or sign out.
 _BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms", "/privacy", "/ping",
@@ -2256,6 +2282,8 @@ def get_lender_stats(lender):
     stats, error = get_lender_stats(lender)
     if error:
         return _json({"error": error}, 500)
+    import tiers
+    stats["standing"] = tiers.standing(lender)
     if session.get("role") == "mod" and lender.lower() != session.get("username", "").lower():
         stats["total_lent"] = None
         stats["total_recovered"] = None
@@ -3053,7 +3081,29 @@ def api_admin_lender_profile(username):
         return _json({"error": error}, 500)
     loans, _ = get_loan_history(username, role="lender", limit=100)
     profile["loans"] = loans or []
+    import tiers
+    profile["standing"] = tiers.standing(username)
     return _json(profile)
+
+
+@app.route("/api/admin/users/<username>/legacy", methods=["POST"])
+@require_admin_api
+def api_set_legacy_lender(username):
+    """Grant or remove Legacy Lender (founders). Admin only, audited."""
+    from services import set_legacy_lender, log_audit
+    import tiers
+    data   = request.get_json() or {}
+    legacy = bool(data.get("legacy", True))
+    actor  = session.get("username", "system")
+    was    = tiers.is_legacy(username)
+    ok, error = set_legacy_lender(username, legacy, actor)
+    if error:
+        return _json({"error": error}, 500)
+    log_audit(actor, session.get("role", "admin"),
+              "legacy_lender_granted" if legacy else "legacy_lender_removed",
+              "user", username.lower(),
+              old_value={"legacy": was}, new_value={"legacy": legacy})
+    return _json({"ok": True, "legacy": legacy})
 
 
 @app.route("/dashboard/admin/lenders/<username>")

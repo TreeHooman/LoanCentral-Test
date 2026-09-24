@@ -57,7 +57,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
     reddit_username_linked_by TEXT,
     google_sub TEXT,          -- Google's permanent account ID (sign-in)
     google_email TEXT,        -- display only
-    google_linked_at TIMESTAMP
+    google_linked_at TIMESTAMP,
+    legacy_lender BOOLEAN NOT NULL DEFAULT FALSE,   -- admin-granted (migration 019)
+    legacy_granted_by TEXT,
+    legacy_granted_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);

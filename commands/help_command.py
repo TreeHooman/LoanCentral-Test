@@ -69,11 +69,6 @@ $confirm
 $confirm u/[lender] [amount] [currency]
 ```
 
-**Dispute a loan** (flags for mod review)
-```
-$dispute [paid_id]
-```
-
 ---
 
 ## Everyone
@@ -87,11 +82,6 @@ $login
 **Check a Reddit account** (age, karma, activity)
 ```
 $stats u/[username]
-```
-
-**Ask the moderators to look at a thread**
-```
-$mods [message]
 ```
 
 ---

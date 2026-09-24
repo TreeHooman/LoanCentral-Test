@@ -1,10 +1,9 @@
-"""$stats (Reddit account check) and $mods (modmail), brought back from the original bot."""
+"""$stats (Reddit account check), brought back from the original bot."""
 
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from commands import mods_command
 from commands.stats_command import build_stats
 
 NOW = datetime(2026, 9, 24, tzinfo=timezone.utc)
@@ -36,37 +35,3 @@ class StatsTests(unittest.TestCase):
 
     def test_an_account_with_no_comments(self):
         self.assertIn("No comments found", build_stats("quiet", self.redditor, [], now=NOW))
-
-
-class _Sub:
-    def __init__(self):
-        self.sent = []
-
-    def message(self, subject=None, message=None):
-        self.sent.append((subject, message))
-
-
-class ModsTests(unittest.TestCase):
-    def setUp(self):
-        mods_command._recent.clear()
-
-    def run_mods(self, body="$mods please look, lender isn't answering", name="asker"):
-        sub = _Sub()
-        comment = SimpleNamespace(body=body, author=SimpleNamespace(name=name), subreddit=sub,
-                                  permalink="/r/loancentral/comments/p/x/c1/",
-                                  submission=SimpleNamespace(title="[REQ] ($100)"), replies=[])
-        comment.reply = comment.replies.append
-        mods_command.process_mods_command(comment)
-        return sub, comment
-
-    def test_sends_one_modmail_with_the_thread_and_message(self):
-        sub, comment = self.run_mods()
-        self.assertEqual(len(sub.sent), 1)
-        self.assertIn("u/asker", sub.sent[0][0])
-        self.assertIn("lender isn't answering", sub.sent[0][1])
-        self.assertIn("/r/loancentral/comments/p/x/c1/", sub.sent[0][1])
-        self.assertIn("let the moderators know", comment.replies[0])
-
-    def test_limited_per_person_per_hour(self):
-        sent = sum(len(self.run_mods()[0].sent) for _ in range(5))
-        self.assertEqual(sent, mods_command.MODS_PER_HOUR)

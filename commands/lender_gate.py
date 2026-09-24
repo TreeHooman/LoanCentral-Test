@@ -42,11 +42,30 @@ def _accepted_flair_texts():
     return {_normalize_flair(part) for part in raw.split(",") if part.strip()}
 
 
+def _tier_suffixes():
+    """" · gold", " · legacy"… — the ranks the bot itself writes into flair."""
+    from tiers import LEGACY, LENDER_TIERS
+    return {f" · {name.lower()}" for name, _ in LENDER_TIERS} | {f" · {LEGACY.lower()}"}
+
+
 def _flair_matches(text, template_id):
     wanted_template = (os.getenv("LENDER_FLAIR_TEMPLATE_ID") or "").strip()
     if wanted_template:
         return (template_id or "").strip() == wanted_template
-    return _normalize_flair(text) in _accepted_flair_texts()
+    flair = _normalize_flair(text)
+    for base in _accepted_flair_texts():
+        # The bare lender flair, or the bot's own ranked version of it
+        # ("Verified Lender · Gold"). Only known ranks: an arbitrary suffix
+        # like "Verified Lender · pending" does not count.
+        if flair == base or any(flair == base + s for s in _tier_suffixes()):
+            return True
+    return False
+
+
+def base_flair_text():
+    """The lender flair as it should be written (first of LENDER_FLAIR_TEXT)."""
+    raw = os.getenv("LENDER_FLAIR_TEXT") or "Verified Lender"
+    return raw.split(",")[0].strip() or "Verified Lender"
 
 
 def has_lender_flair(comment):

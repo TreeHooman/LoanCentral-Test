@@ -421,6 +421,14 @@ def generate_user_info(username):
         return f"Could not retrieve information for u/{username}"
 
     response = [f"Here is my information on u/{username}:"]
+    try:
+        import tiers
+        standing = tiers.standing(username)
+        if standing["borrower_tier"]:
+            response.append(f"Borrower rank: **{standing['borrower_tier']}** "
+                            f"({standing['borrower_repaid']} loans repaid)")
+    except Exception as e:
+        logger.warning(f"rank lookup failed for {username}: {e}")
 
     if profile["loans_as_borrower"] == 0 and profile["loans_as_lender"] == 0:
         response.append(f"u/{username} has no loan history.")

@@ -16,10 +16,12 @@ class HelpCommandTests(unittest.TestCase):
         self.assertIn("$unpaid", comment.replies[0])
         self.assertIn("$refunded", comment.replies[0])
         # Brought back from the original bot, plus $login.
-        for command in ("$confirm", "$stats", "$mods", "$login"):
+        for command in ("$confirm", "$stats", "$login"):
             self.assertIn(command, comment.replies[0])
-        # Retired: borrowers can't mark their own loans repaid.
-        self.assertNotIn("$repaid", comment.replies[0])
+        # Retired: borrowers can't mark their own loans repaid; $dispute and
+        # $mods were removed (owner, 2026-09-24).
+        for command in ("$repaid", "$dispute", "$mods"):
+            self.assertNotIn(command, comment.replies[0])
 
     def test_non_help_comment_gets_no_reply(self):
         help_command = importlib.import_module("commands.help_command")

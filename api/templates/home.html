@@ -8,8 +8,8 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f1117; --surface: #171a23; --surface2: #1f2333; --border: #2a2f45;
-      --accent: #5b6ef5; --accent-h: #7b8cff; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+      --bg: #0a0b0a; --surface: #121512; --surface2: #1a1f1a; --border: #243024;
+      --accent: #22c55e; --accent-h: #4ade80; --muted: #8a948a; --text: #e8ece8; --text2: #b4bdb4;
     }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
     a { color: inherit; }
@@ -20,7 +20,7 @@
     header.top .wrap { display: flex; align-items: center; height: 64px; }
     .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; }
     .btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 14px; padding: 9px 18px; border-radius: 8px; }
-    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary { background: var(--accent); color: #051005; }
     .btn-primary:hover { background: var(--accent-h); }
     header.top .btn { margin-left: auto; }
 
@@ -40,25 +40,66 @@
 
     .commands { padding: 72px 0 80px; }
     .commands h2 { font-size: 18px; margin-bottom: 18px; }
-    table.cmds { width: 100%; border-collapse: collapse; font-size: 14px; }
-    table.cmds td { padding: 11px 0; border-top: 1px solid var(--border); vertical-align: top; }
-    table.cmds td:first-child { width: 44%; padding-right: 20px; }
-    table.cmds td:last-child { color: var(--text2); }
-    table.cmds .who { color: var(--muted); font-size: 12px; margin-left: 6px; }
+    .cmd-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
+    .cmd-group { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px;
+      transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+    .cmd-group:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(34,197,94,0.55);
+      box-shadow: 0 14px 38px rgba(0,0,0,0.5); }
+    .cmd-group h3 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tag { font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; }
+    .tag-all      { background: rgba(232,236,232,0.1); color: var(--text); }
+    .tag-lender   { background: var(--accent); color: #051005; }
+    .tag-borrower { background: rgba(34,197,94,0.14); color: var(--accent-h); border: 1px solid rgba(34,197,94,0.4); }
+    .req { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .cmd-group dl { display: flex; flex-direction: column; }
+    .cmd-group dt { margin-top: 12px; }
+    .cmd-group dt:first-child { margin-top: 0; }
+    .cmd-group dd { color: var(--text2); font-size: 14px; margin-top: 4px; }
+    .cmd-group dt:hover code, .cmd-group dt:hover + dd { color: var(--accent-h); }
     .commands .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
 
     footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
     footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
     footer a { color: var(--text2); }
+    footer .links { display: flex; align-items: center; gap: 8px; }
+    footer .reddit-icon { display: inline-flex; opacity: .85; }
+    footer .reddit-icon:hover { opacity: 1; }
+
+
+    /* Effects */
+    html { scroll-behavior: smooth; }
+    body { background:
+      radial-gradient(900px 480px at 85% -10%, rgba(34,197,94,0.14), transparent 60%),
+      radial-gradient(700px 400px at -10% 30%, rgba(34,197,94,0.06), transparent 60%), var(--bg);
+      background-attachment: fixed; }
+    header.top { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
+      background: rgba(10,11,10,0.72); }
+    .brand { transition: color .2s, text-shadow .2s; }
+    .brand:hover { text-shadow: 0 0 18px rgba(74,222,128,0.55); }
+    .btn { transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
+    .btn-primary:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 8px 26px rgba(34,197,94,0.35); }
+    .btn-primary:active { transform: translateY(0) scale(.98); }
+    .intro h1 { background: linear-gradient(90deg, #e8ece8 30%, #4ade80); -webkit-background-clip: text;
+      background-clip: text; color: transparent; }
+    .role { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+    .role:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(34,197,94,0.55);
+      box-shadow: 0 14px 38px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,197,94,0.15); }
+    .role h2 { color: var(--accent-h); }
+    code { transition: border-color .15s, box-shadow .15s; }
+    footer .reddit-icon { transition: transform .2s ease, opacity .2s, filter .2s; }
+    footer .reddit-icon:hover { transform: scale(1.25) rotate(-8deg); filter: drop-shadow(0 0 6px rgba(255,69,0,.6)); }
+    footer a:hover { color: var(--accent-h); }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      *, .reveal { transition: none !important; transform: none !important; opacity: 1 !important; }
+    }
 
     @media (max-width: 720px) {
       .intro { padding: 56px 0 44px; }
       .intro h1 { font-size: 30px; }
-      .roles { grid-template-columns: 1fr; }
-      table.cmds td:first-child { width: auto; }
-      table.cmds tr { display: block; border-top: 1px solid var(--border); padding: 10px 0; }
-      table.cmds td { display: block; border: 0; padding: 2px 0; }
-    }
+      .roles, .cmd-groups { grid-template-columns: 1fr; }
+          }
   </style>
 </head>
 <body>
@@ -75,7 +116,7 @@
 </header>
 
 <main class="wrap">
-  <div class="intro">
+  <div class="intro reveal">
     <h1>Loan records for r/{{ sub }}</h1>
     <p>Lenders keep track of the loans they've made. Borrowers see their history and what they currently owe.</p>
     <div class="actions">
@@ -83,18 +124,18 @@
         <a class="btn btn-primary" href="{{ url_for('home') }}">Go to your dashboard</a>
       {% else %}
         <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
-        <span class="first">First time? Comment <code>$login</code> on <a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> to set up your account.</span>
+        <span class="first">First time? Comment <code>$login</code> on <a href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener">r/{{ sub }}</a> to set up your account.</span>
       {% endif %}
     </div>
   </div>
 
-  <div class="roles">
+  <div class="roles reveal">
     <div class="role">
       <h2>Lenders</h2>
       <ul>
         <li>Record a loan with its request code</li>
         <li>Mark payments and repaid loans</li>
-        <li>See every loan you've made, from Reddit and the dashboard</li>
+        <li>See every loan you've made in the dashboard</li>
         <li>Due dates and unpaid loans at a glance</li>
       </ul>
     </div>
@@ -104,33 +145,58 @@
         <li>Your borrowing history</li>
         <li>Current loans: amount, lender and what's left to repay</li>
         <li>Repayment terms and due dates</li>
-        <li>Flag a loan that's wrong for the moderators</li>
       </ul>
     </div>
   </div>
 
-  <div class="commands">
+  <div class="commands reveal">
     <h2>Bot commands on r/{{ sub }}</h2>
-    <table class="cmds">
-      <tr><td><code>$login</code></td><td>Set up or recover your account. The bot DMs you a link.</td></tr>
-      <tr><td><code>$fund REQ-0042</code><span class="who">lender</span></td><td>Fund a request.</td></tr>
-      <tr><td><code>$loan 100 USD</code><span class="who">lender</span></td><td>Offer a loan. The borrower confirms with <code>$confirm</code>.</td></tr>
-      <tr><td><code>$paid_with_id ID 50 USD</code><span class="who">lender</span></td><td>Record a repayment.</td></tr>
-      <tr><td><code>$unpaid ID</code> &middot; <code>$refunded ID</code><span class="who">lender</span></td><td>Mark a loan unpaid, or cancel it.</td></tr>
-      <tr><td><code>$confirm</code><span class="who">borrower</span></td><td>Confirm a loan offer once you've received the money.</td></tr>
-      <tr><td><code>$dispute ID</code><span class="who">borrower</span></td><td>Flag a loan for the moderators.</td></tr>
-      <tr><td><code>$stats u/name</code> &middot; <code>$logi u/name</code></td><td>Check a Reddit account, or a lender's record.</td></tr>
-      <tr><td><code>$mods</code> &middot; <code>$help</code></td><td>Call the moderators, or list every command.</td></tr>
-    </table>
-    <p class="note">Lender commands need the Verified Lender flair. <code>!</code> works in place of <code>$</code>.</p>
+    <div class="cmd-groups">
+      <div class="cmd-group">
+        <h3><span class="tag tag-all">Everyone</span></h3>
+        <dl>
+          <dt><code>$login</code></dt><dd>Set up or recover your dashboard account. The bot DMs you a link.</dd>
+          <dt><code>$stats u/name</code></dt><dd>Check a Reddit account's age and activity.</dd>
+          <dt><code>$logi u/name</code></dt><dd>See a lender's record and rank.</dd>
+          <dt><code>$help</code></dt><dd>List every command.</dd>
+        </dl>
+      </div>
+      <div class="cmd-group">
+        <h3><span class="tag tag-lender">Lenders</span> <span class="req">Verified Lender flair</span></h3>
+        <dl>
+          <dt><code>$fund REQ-0042</code></dt><dd>Fund a request.</dd>
+          <dt><code>$loan 100 USD</code></dt><dd>Offer a loan. The borrower confirms it.</dd>
+          <dt><code>$paid_with_id ID 50 USD</code></dt><dd>Record a repayment.</dd>
+          <dt><code>$unpaid ID</code></dt><dd>Mark a loan unpaid.</dd>
+          <dt><code>$refunded ID</code></dt><dd>Cancel a loan.</dd>
+        </dl>
+      </div>
+      <div class="cmd-group">
+        <h3><span class="tag tag-borrower">Borrowers</span></h3>
+        <dl>
+          <dt><code>$confirm</code></dt><dd>Accept a loan offer once you've received the money.</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="note">Every command also works with <code>!</code> instead of <code>$</code>.</p>
   </div>
 </main>
 
 <footer>
   <div class="wrap">
     <div>LoanCentral keeps records only. It doesn't lend, hold or send money.</div>
-    <div><a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a></div>
+    <div class="links"><a class="reddit-icon" href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener" title="r/{{ sub }} on Reddit" aria-label="r/{{ sub }} on Reddit"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#ff4500"/><ellipse cx="10" cy="11.6" rx="5.2" ry="3.6" fill="#fff"/><circle cx="14.6" cy="8.4" r="1.2" fill="#fff"/><circle cx="5.4" cy="8.4" r="1.2" fill="#fff"/><circle cx="13.4" cy="4.6" r="1" fill="#fff"/><path d="M10 8 L11 4.4 L13.4 4.6" stroke="#fff" stroke-width=".8" fill="none"/><circle cx="8.1" cy="11" r=".8" fill="#ff4500"/><circle cx="11.9" cy="11" r=".8" fill="#ff4500"/><path d="M8 13.2 Q10 14.4 12 13.2" stroke="#ff4500" stroke-width=".7" fill="none"/></svg></a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a></div>
   </div>
 </footer>
+<script>
+  (function () {
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(function (e) { io.observe(e); });
+  })();
+</script>
 </body>
 </html>

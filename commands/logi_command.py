@@ -30,10 +30,16 @@ def process_logi_command(comment):
         return
 
     stats = stats or {}
+    import tiers
+    standing = tiers.standing(lender)
+    rank = tiers.lender_label(lender, standing) or "No rank yet"
+    if standing["legacy"] and standing["lender_tier"]:
+        rank = f"Legacy ({standing['lender_tier']})"
     comment.reply(with_dashboard_link(
         f"**Lender Snapshot: u/{lender}**\n\n"
         f"| Metric | Value |\n"
         f"|:--|--:|\n"
+        f"| Rank | {rank} |\n"
         f"| Amount Lent | {_money(stats.get('total_lent'))} |\n"
         f"| Received Back | {_money(stats.get('total_recovered'))} |\n"
         f"| Total Loans | {int(stats.get('total_loans') or 0)} |\n"
