@@ -221,34 +221,28 @@ The dashboard reads Neon directly, so there is nothing to redeploy.
 
 ### 5. Give people their roles
 
-First fix the misspelled name in the old records: the old bot saved 15 loans
-under `embarrassed-throat42` (two r's); the real account is
-`embarassed-throat42` (one r). Preview, then apply:
-
-```
-python scripts/rename_reddit_user.py embarrassed-throat42 embarassed-throat42
-python scripts/rename_reddit_user.py embarrassed-throat42 embarassed-throat42 --apply
-```
-
-(Rehearsed on the June data: 14 loans as lender, 1 as borrower, 1 users row.)
+Your Reddit account is **`embarrassed-throat42` (two r's)**, the name the old
+bot's records already use (15 loans). Use exactly that spelling below. (The
+pre-launch admin account was typed as `embarassed-throat42`, one r; launch day
+replaces the database, so that account goes away and this recreates yours.)
 
 Preview the roles. This changes nothing:
 
 ```
-python scripts/bootstrap_roles.py --admin embarassed-throat42 --mod MODNAME --lenders-file verified.txt
+python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod MODNAME --lenders-file verified.txt
 ```
 
 Then apply, and set your own admin key (you type it at a hidden prompt):
 
 ```
-python scripts/bootstrap_roles.py --admin embarassed-throat42 --mod MODNAME --lenders-file verified.txt --apply --set-admin-key
+python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod MODNAME --lenders-file verified.txt --apply --set-admin-key
 ```
 
 Then grant **Legacy Lender** to the founders: Admin > Lenders > open each one >
 Grant Legacy Lender.
 
-**Copy the `LC-...` key it prints.** It's shown once. Sign in to the dashboard
-at `/login` with **Login with Key**. From the admin area you can then issue
+Sign in to the dashboard at `/login` with **Login with Key** and the key you
+just typed (or, once you have run `!login`, with Google). From the admin area you can then issue
 keys to lenders and mods, and verify or revoke lenders later.
 
 ### 6. Start 2.0

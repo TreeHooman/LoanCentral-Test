@@ -75,8 +75,8 @@ Follow the checklist, launch day steps 1–8:
 3. Load into Neon: `python scripts/load_main_db.py backups\main_launch.dump --apply --target-host <Neon host>`
    (rehearsed on the June data: about 2 seconds, 551 loans / 166 users, all counts match).
 4. Check `https://loancentral.net/health`.
-5. Fix the misspelled name, give roles, set your admin key, grant Legacy
-   (checklist 5: `rename_reddit_user.py`, `bootstrap_roles.py --set-admin-key`).
+5. Give roles (your admin account: `embarrassed-throat42`, two r's), set your
+   admin key, grant Legacy (checklist 5: `bootstrap_roles.py --set-admin-key`).
 6. Bot computer `.env`: `SUBREDDITS=loancentral`, Neon details,
    `REDDIT_SYNC_IN_BOT=true`. Install the bot task
    (`scripts\install_bot_task.ps1`), then check `python scripts\run_bot_forever.py --status`.
