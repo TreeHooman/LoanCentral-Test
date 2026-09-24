@@ -23,17 +23,23 @@ class DryRunStream:
     def __init__(self, display_name):
         self._display_name = display_name
 
-    def comments(self, skip_existing=False):
+    def comments(self, skip_existing=False, pause_after=None):
         logger.info(f"[DRY-RUN] comment stream for r/{self._display_name} requested - idling, no Reddit connection")
         while True:
-            time.sleep(3600)
-            yield from ()
+            # Like PRAW with pause_after set: report "nothing new" now and then,
+            # so the bot's heartbeat keeps going offline too.
+            time.sleep(3600 if pause_after is None else 30)
+            if pause_after is not None:
+                yield None
 
-    def submissions(self, skip_existing=False):
+    def submissions(self, skip_existing=False, pause_after=None):
         logger.info(f"[DRY-RUN] post stream for r/{self._display_name} requested - idling, no Reddit connection")
         while True:
-            time.sleep(3600)
-            yield from ()
+            # Like PRAW with pause_after set: report "nothing new" now and then,
+            # so the bot's heartbeat keeps going offline too.
+            time.sleep(3600 if pause_after is None else 30)
+            if pause_after is not None:
+                yield None
 
 
 class DryRunSubreddit:

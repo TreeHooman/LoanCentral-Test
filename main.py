@@ -20,10 +20,9 @@ load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("LoanCentral.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler("LoanCentral.log")]
+             # No console under pythonw (the scheduled task): log to the file only.
+             + ([logging.StreamHandler()] if sys.stderr else [])
 )
 
 logger = logging.getLogger("LoanCentral")
@@ -490,15 +489,42 @@ def _drain_reddit_queue():
         _drain_running.release()
 
 
-# Function to keep the bot alive
+# Health. Each Reddit stream notes when it last heard from Reddit (streams
+# poll every few seconds and report "nothing new" too). While both are fresh,
+# keep_alive writes bot_heartbeat.txt every minute; scripts/run_bot_forever.py
+# restarts a bot whose heartbeat goes quiet, which catches a frozen connection
+# that never raises an error.
+HEARTBEAT_PATH = Path(__file__).resolve().parent / "bot_heartbeat.txt"
+STREAM_QUIET_AFTER = 10 * 60
+_stream_seen = {"comments": time.time(), "posts": time.time()}
+
+
+def _seen(stream):
+    _stream_seen[stream] = time.time()
+
+
+def streams_healthy(now=None):
+    now = time.time() if now is None else now
+    return all(now - seen < STREAM_QUIET_AFTER for seen in _stream_seen.values())
+
+
 def keep_alive():
+    ticks = 0
     while True:
         try:
-            logger.info("Keep-alive heartbeat")
-            time.sleep(300)  # 5-minute heartbeat
+            if streams_healthy():
+                HEARTBEAT_PATH.write_text(str(int(time.time())))
+            else:
+                quiet = {k: int(time.time() - v) for k, v in _stream_seen.items()}
+                logger.warning(f"Reddit streams quiet (seconds): {quiet}; not writing the heartbeat")
+            if ticks % 5 == 0:
+                logger.info("Keep-alive heartbeat")
+            ticks += 1
+            time.sleep(60)
         except Exception as e:
             logger.error(f"Error in keep_alive: {e}")
             logger.error(traceback.format_exc())
+            time.sleep(60)
 
 # Main bot loop with error handling and reconnection
 def comment_monitor():
@@ -507,7 +533,12 @@ def comment_monitor():
             subreddit = reddit.subreddit(subreddit_str)
             
             logger.info(f"Starting comment stream for subreddits: {subreddit_str}")
-            for comment in subreddit.stream.comments(skip_existing=True):
+            # pause_after=0: the stream also yields None after each poll that
+            # found nothing new, so a working but quiet stream still shows up.
+            for comment in subreddit.stream.comments(skip_existing=True, pause_after=0):
+                _seen("comments")
+                if comment is None:
+                    continue
                 command_manager.process_comment(comment)
                     
         except Exception as e:
@@ -526,7 +557,10 @@ def post_monitor():
             subreddit = reddit.subreddit(subreddit_str)
             
             logger.info(f"Starting post stream for subreddits: {subreddit_str}")
-            for post in subreddit.stream.submissions(skip_existing=True):
+            for post in subreddit.stream.submissions(skip_existing=True, pause_after=0):
+                _seen("posts")
+                if post is None:
+                    continue
                 if post.id in processed_posts:
                     logger.info(f"Skipping already processed post: {post.id}")
                     continue
@@ -573,6 +607,12 @@ def _preflight():
 
 
 if __name__ == "__main__":
+    # One bot per computer, even if its supervisor was killed and restarted.
+    import instance_lock
+    _bot_lock = instance_lock.acquire(
+        Path(__file__).resolve().parent / "bot.lock",
+        "Another LoanCentral bot is already running on this computer (bot.lock is held).")
+
     _preflight()
 
     if not init_database():

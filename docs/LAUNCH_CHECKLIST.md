@@ -240,22 +240,31 @@ keys to lenders and mods, and verify or revoke lenders later.
 ### 6. Start 2.0
 
 - the bot, from the 2.0 folder: `python scripts\run_bot_forever.py`. It
-  starts `main.py` and starts it again if it ever stops (after 30 seconds,
-  waiting longer each time if it keeps failing straight away). A second copy
-  refuses to start. Its first log lines should include "Database check
-  finished". If they say statements were skipped, note them; the bot still
-  runs. What the supervisor did is in `bot_supervisor.log`.
-- to start it by itself whenever you sign in to Windows (Command Prompt, from
-  the 2.0 folder):
+  starts `main.py` and starts it again if it crashes **or freezes** (no
+  heartbeat for 15 minutes), after 30 seconds, waiting longer each time if it
+  keeps failing straight away. A second copy refuses to start. Its first log
+  lines should include "Database check finished". If they say statements were
+  skipped, note them; the bot still runs. What the supervisor did is in
+  `bot_supervisor.log`; the bot's own log is `LoanCentral.log`.
+- **make it restart by itself** (once, from the 2.0 folder, in PowerShell):
 
   ```
-  schtasks /Create /TN "LoanCentral Bot" /SC ONLOGON /F /TR "\"python\" \"%CD%\scripts\run_bot_forever.py\""
+  powershell -ExecutionPolicy Bypass -File scripts\install_bot_task.ps1
   ```
 
-  This needs the bot computer to sign in after a reboot (automatic sign-in,
-  or someone signing in). Remove it with
-  `schtasks /Delete /TN "LoanCentral Bot" /F`, and **never set it up on the
-  old bot's folder**.
+  This adds the "LoanCentral Bot" task: it starts the bot, without a window,
+  at every Windows sign-in, and brings it back within 5 minutes if it is ever
+  closed. If you started the bot by hand above, close that window first (the
+  task takes over). Then:
+  - check it: `python scripts\run_bot_forever.py --status`
+  - stop it (and keep it stopped): `python scripts\run_bot_forever.py --stop`
+  - start it again: `python scripts\run_bot_forever.py --start`
+  - remove the task: add `-Uninstall` to the install command
+
+  Also on the bot computer: never sleep while plugged in
+  (`powercfg /change standby-timeout-ac 0`), and after a reboot Windows has to
+  sign in for the task to run (automatic sign-in, or sign in yourself).
+  **Never set it up on the old bot's folder.**
 - the dashboard is already running on Render against Neon.
 
 ### 7. Test it yourself (sub still closed)
@@ -331,10 +340,10 @@ Reddit commands still work, and they get their login key from a mod.
 
 ## If it goes wrong: rolling back
 
-1. Stop 2.0: close the bot's window (the supervisor restarts it otherwise),
-   and if you set up the sign-in task, run
-   `schtasks /Change /TN "LoanCentral Bot" /DISABLE` so it doesn't come back
-   at the next sign-in. Also disable the sync task:
+1. Stop 2.0: `python scripts\run_bot_forever.py --stop` (it stays stopped,
+   even with the task installed), then remove the task:
+   `powershell -ExecutionPolicy Bypass -File scripts\install_bot_task.ps1 -Uninstall`.
+   Also disable the sync task:
    `schtasks /Change /TN "LoanCentral Reddit Sync" /DISABLE`.
 2. Start the old bot from its untouched folder.
 3. Reopen the subreddit.

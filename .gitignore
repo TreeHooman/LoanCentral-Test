@@ -45,3 +45,7 @@ backups/
 .DS_Store
 Thumbs.db
 bot_supervisor.lock
+bot_supervisor.stop
+bot_supervisor.log
+bot.lock
+bot_heartbeat.txt
