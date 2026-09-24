@@ -60,7 +60,7 @@ database lines are the same values. Then check each line below:
 | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` | same as the old bot | the bot's Reddit login |
 | `REDDIT_USER_AGENT` | `python:loancentral-bot:2.0 (by /u/YOUR_BOT_NAME)` | Reddit requires this exact shape; 2.0 refuses to start with a placeholder |
 | `REDDIT_MODE` | `live` | `dry_run` means "don't touch Reddit" |
-| `SUBREDDITS` | `loancentral` (no `r/`) | which subreddit the bot watches |
+| `SUBREDDITS` | `loancentral` (no `r/`) | which subreddit the bot watches. Only `loancentral`: remove `LoanCentralEU` if the old bot computer's .env still lists it |
 | `PRIMARY_SUBREDDIT` | `loancentral` | where "funded" updates are posted |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | the **Neon** values, copied from `.env` on the build machine (not the old bot's) | the shared database; the old bot keeps its own |
 | `LOANCENTRAL_ENV` | `prod` | turns off the developer shortcuts |
