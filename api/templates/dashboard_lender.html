@@ -32,19 +32,6 @@
   <div class="due-alert-sub" id="reminderQueueMeta" style="margin-top:10px"></div>
 </section>
 
-<div class="panel-grid">
-  <section class="panel">
-    <div class="panel-title">Portfolio Snapshot</div>
-    <p class="panel-copy">Track loans you already agreed to on Reddit. This dashboard records the agreement, due date, payments, notes, and proof files.</p>
-    <div class="mini-grid">
-      <div class="mini-stat"><div class="mini-label">Outstanding</div><div class="mini-value c-orange" id="m-outstanding">-</div></div>
-      <div class="mini-stat"><div class="mini-label">Recovered</div><div class="mini-value c-green" id="m-recovered">-</div></div>
-      <div class="mini-stat"><div class="mini-label">At Risk</div><div class="mini-value c-red" id="m-risk">-</div></div>
-    </div>
-  </section>
-
-</div>
-
 <div class="callout" id="schemaWarning" style="display:none;margin-bottom:16px;border-color:rgba(243,156,18,0.35);background:rgba(243,156,18,0.08)">
   <strong>Database migration needed:</strong> the dashboard is running in compatibility mode. New fields like repay amount, due date, and notes may be limited until migrations run.
 </div>
@@ -280,9 +267,6 @@
       document.getElementById('s-lent').textContent = '$' + fmt(s.total_lent);
       document.getElementById('s-dueback').textContent = '$' + fmt(s.outstanding);
       document.getElementById('s-duecount').textContent = `${s.active_loans || 0} active`;
-      document.getElementById('m-outstanding').textContent = '$' + fmt(s.outstanding);
-      document.getElementById('m-recovered').textContent = '$' + fmt(s.total_recovered);
-      document.getElementById('m-risk').textContent = `${s.unpaid_loans || 0} loans`;
     } catch(e) { console.error(e); }
   }
 
