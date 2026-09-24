@@ -29,6 +29,12 @@ from flask import (Flask, flash, redirect, render_template,
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 app = Flask(__name__)
+
+# Dashboard fundings and repayments reach Reddit within seconds instead of
+# waiting for the scheduled worker (switched on by REDDIT_SYNC_IN_DASHBOARD).
+import reddit_sync as _reddit_sync
+import services as _services
+_services.set_reddit_enqueue_hook(_reddit_sync.drain_soon)
 app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(days=7)
 

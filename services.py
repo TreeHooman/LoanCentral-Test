@@ -229,6 +229,26 @@ def get_recent_activity(limit: int = 50):
 # Reddit Action Queue
 # ---------------------------------------------------------------------------
 
+#: Called after a Reddit action is queued and committed. The dashboard sets it
+#: to reddit_sync.drain_soon so its updates go out at once; the bot drains
+#: after its own commands, and scripts leave it unset.
+_reddit_enqueue_hook = None
+
+
+def set_reddit_enqueue_hook(hook):
+    global _reddit_enqueue_hook
+    _reddit_enqueue_hook = hook
+
+
+def _after_reddit_enqueue():
+    if _reddit_enqueue_hook is None:
+        return
+    try:
+        _reddit_enqueue_hook()
+    except Exception as e:                      # never fail the caller over this
+        logger.error(f"reddit enqueue hook failed: {e}", exc_info=True)
+
+
 def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: str = None,
                           request_id: str = None, subreddit: str = None, payload: dict = None,
                           reason: str = None, created_by: str = None, dedupe: bool = True):
@@ -311,6 +331,7 @@ def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: st
             source="reddit_queue",
             details={"action_type": action_type, "action_id": action_id, "reason": reason},
         )
+        _after_reddit_enqueue()
         return {"ok": True, "id": action_id, "action_type": action_type, "status": "queued"}, None
     except Exception as e:
         conn.rollback()

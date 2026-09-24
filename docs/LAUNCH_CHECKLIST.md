@@ -306,8 +306,17 @@ to 30 minutes; the loan itself is recorded instantly. Run the worker by hand
 when you want an update out sooner.
 
 With `REDDIT_SYNC_IN_BOT=true` (step C), updates from Reddit commands such as
-`$fund` go out within seconds; the schedule is what sends updates for loans
-funded on the dashboard.
+`$fund` go out within seconds.
+
+**Dashboard fundings and repayments within seconds too:** on Render, set
+`REDDIT_SYNC_IN_DASHBOARD` = `true`, and make sure `REDDIT_CLIENT_ID`,
+`REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME` (`loancentral`) and `REDDIT_PASSWORD`
+hold the bot account's login (the same values as the bot computer's `.env`).
+The website then posts the FUNDED / REPAID update right after the loan is saved,
+while the database is awake anyway, so it costs no extra Neon compute. Do this
+only **after** the real data is loaded (step 6): before that, the dashboard
+holds test loans tied to real Reddit threads. Keep the 30-minute schedule as a
+backstop for anything that fails.
 
 Only one live pass can run at a time, on any machine: a second one (a manual
 run during a scheduled one, say) sees "Another live sync pass is already

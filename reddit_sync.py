@@ -413,3 +413,75 @@ def sync_failures(limit=100):
     finally:
         cur.close()
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Send right away from the dashboard
+#
+# A loan funded or repaid on the dashboard used to wait for the scheduled
+# worker (every 30 min, to spare Neon's free compute) before its FUNDED /
+# REPAID update reached Reddit. The dashboard has just written to the
+# database, so Neon is awake anyway: draining the queue at that moment costs
+# no extra compute, and other lenders see the update within seconds.
+#
+# Off unless REDDIT_SYNC_IN_DASHBOARD=true (docs/SECURITY.md rule 4: live
+# Reddit writes are switched on explicitly), and only when the bot's Reddit
+# login is configured. A pass already running here is not doubled; one
+# running elsewhere (the bot, the scheduled worker) is excluded by the
+# advisory lock in run_once. The scheduled worker stays as the backstop for
+# anything that fails or arrives while this is off.
+# ---------------------------------------------------------------------------
+
+import threading
+import time
+
+_TRUE = ("1", "true", "yes", "on")
+_REDDIT_LOGIN = ("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USERNAME", "REDDIT_PASSWORD")
+
+#: Seconds to wait before a pass, so the updates one click queues (flair,
+#: comment, lender flair) go out together.
+SOON_DELAY = float(os.getenv("REDDIT_SYNC_SOON_DELAY", "2"))
+
+_soon_lock = threading.Lock()
+_soon_again = threading.Event()
+
+
+def drain_soon_enabled():
+    if (os.getenv("REDDIT_SYNC_IN_DASHBOARD") or "").strip().lower() not in _TRUE:
+        return False
+    return all((os.getenv(name) or "").strip() for name in _REDDIT_LOGIN)
+
+
+def drain_soon():
+    """Send queued Reddit updates in the background, shortly. Returns the thread
+    it started, or None (switched off, or a pass here will pick this up)."""
+    if not drain_soon_enabled():
+        return None
+    _soon_again.set()
+    if not _soon_lock.acquire(blocking=False):
+        return None                       # the running pass loops once more
+    thread = threading.Thread(target=_drain_soon_loop, name="reddit-sync-soon", daemon=True)
+    thread.start()
+    return thread
+
+
+def _drain_soon_loop():
+    while True:
+        try:
+            while _soon_again.is_set():
+                _soon_again.clear()
+                time.sleep(SOON_DELAY)
+                try:
+                    summary, error = run_once(limit=25, live=True)
+                    if error:
+                        logger.info(f"Reddit queue not drained: {error}")
+                    elif summary["considered"]:
+                        logger.info(f"Reddit queue: {summary['sent']} sent, {summary['failed']} failed, "
+                                    f"{summary['skipped']} skipped")
+                except Exception as e:
+                    logger.error(f"Reddit queue drain failed: {e}", exc_info=True)
+        finally:
+            _soon_lock.release()
+        # Something queued between the last pass and the release: go again.
+        if not _soon_again.is_set() or not _soon_lock.acquire(blocking=False):
+            return
