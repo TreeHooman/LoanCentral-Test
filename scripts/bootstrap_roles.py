@@ -119,6 +119,14 @@ def main():
         return 2
 
     everyone = sorted(set(admins) | set(mods) | set(lenders))
+    # A copied example once created a real admin called "yourredditname" —
+    # which anyone registering that Reddit name could then have claimed.
+    placeholders = [n for n in everyone
+                    if any(p in n for p in ("yourreddit", "yourname", "username", "modname", "example"))]
+    if placeholders:
+        print("Refusing: these look like placeholders, not real Reddit names: "
+              + ", ".join(placeholders))
+        return 2
     before = current_roles(everyone)
 
     print("Planned changes:")
