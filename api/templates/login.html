@@ -35,8 +35,12 @@
     .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; background: #fff; color: #1f1f1f; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
     .btn-google:hover { background: #f1f3f4; }
     .btn-google svg { width: 18px; height: 18px; }
-    .new-here { margin: 18px 0 6px; font-size: 13px; color: var(--text2); line-height: 1.55; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-    .new-here strong { display: block; color: var(--text); margin-bottom: 2px; }
+    .new-here { margin: 18px 0 6px; font-size: 13px; color: var(--text2); line-height: 1.55; background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 10px; padding: 14px 16px; }
+    .new-here strong { display: block; color: var(--text); font-size: 14px; margin-bottom: 8px; }
+    .new-here ol { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .new-here-btn { display: block; text-align: center; margin-top: 12px; padding: 10px; border-radius: 8px; background: var(--accent); color: var(--accent-ink) !important; font-weight: 600; text-decoration: none; }
+    .new-here-btn:hover { background: var(--accent-h); }
+    .new-here-foot { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); text-align: center; }
     .new-here code { background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--accent-h); }
     .new-here a { color: var(--accent-h); }
     .key-login { margin-top: 14px; }
@@ -56,7 +60,7 @@
   </div>
 
   <div class="card">
-    <h2>Welcome back</h2>
+    <h2>Sign in</h2>
     {% if oauth_ready %}
     <p>Sign in with your Reddit account to access your dashboard. We only request permission to read your username — nothing else.</p>
     {% else %}
@@ -93,10 +97,16 @@
       </button>
     </form>
     {% endif %}
+    {% set sub = subreddit or 'loancentral' %}
     <div class="new-here">
-      <strong>New here, or lost your Google account?</strong>
-      Comment <code>!login</code> {% if subreddit %}on <a href="https://www.reddit.com/r/{{ subreddit }}" target="_blank" rel="noopener">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}.
-      The bot will DM you a link to set up your account.
+      <strong>First time here? No account yet?</strong>
+      <ol>
+        <li>Comment <code>!login</code> on any post in r/{{ sub }}.</li>
+        <li>Open the link the bot sends to your Reddit inbox.</li>
+        <li>Connect your Google account. Then sign in here with Google.</li>
+      </ol>
+      <a class="new-here-btn" href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener">Open r/{{ sub }}</a>
+      <span class="new-here-foot">Lost your Google account? Do the same again.</span>
     </div>
 
     {# Until Google sign-in is configured the key is the only way in, so it is

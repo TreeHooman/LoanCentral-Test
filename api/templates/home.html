@@ -39,9 +39,18 @@
     .intro h1 { font-size: 44px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.1; }
     .intro p { color: var(--text2); font-size: 17px; margin-top: 16px; }
     .actions { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .intro .first { margin-top: 18px; font-size: 14px; color: var(--muted); }
-    .first a { color: var(--text2); }
-    .first a:hover { color: var(--text); }
+    html { scroll-behavior: smooth; }
+    .start { scroll-margin-top: 16px; }
+    .start > h2 { font-size: 22px; font-weight: 700; text-transform: none; letter-spacing: -0.4px; color: var(--text); margin-bottom: 8px; }
+    .start-lead { color: var(--text2); max-width: 620px; margin-bottom: 24px; }
+    .steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .steps li { display: flex; gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+    .step-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent-h); font-weight: 700; font-size: 14px; }
+    .steps h3 { font-size: 16px; font-weight: 600; margin: 3px 0 6px; }
+    .steps p { color: var(--text2); font-size: 14px; }
+    .steps p strong { color: var(--text); font-weight: 600; }
+    .steps .btn { margin-top: 14px; }
 
     /* Sections */
     section { padding: 56px 0; border-top: 1px solid var(--border); }
@@ -73,7 +82,7 @@
     footer a:hover { color: var(--text); }
 
     @media (max-width: 820px) {
-      .grid-3 { grid-template-columns: 1fr; }
+      .grid-3, .steps { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
       .wrap { padding: 0 16px; }
@@ -110,15 +119,45 @@
     <div class="actions">
       {% if signed_in %}
         <a class="btn btn-primary btn-lg" href="{{ url_for('home') }}">Go to your dashboard</a>
+        <a class="btn btn-ghost btn-lg" href="{{ sub_url }}" target="_blank" rel="noopener">{{ reddit_icon(18) }}Visit r/{{ sub }}</a>
       {% else %}
-        <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Sign in</a>
+        <a class="btn btn-primary btn-lg" href="#get-started">New here? Get started</a>
+        <a class="btn btn-ghost btn-lg" href="{{ url_for('login') }}">I have an account</a>
       {% endif %}
-      <a class="btn btn-ghost btn-lg" href="{{ sub_url }}" target="_blank" rel="noopener">{{ reddit_icon(18) }}Visit r/{{ sub }}</a>
     </div>
-    {% if not signed_in %}
-      <p class="first">First time? Comment <code>!login</code> on <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a> and the bot will DM you a link to set up your account.</p>
-    {% endif %}
   </div>
+
+  {% if not signed_in %}
+  <section id="get-started" class="start">
+    <h2>New here? Get your account in 2 minutes</h2>
+    <p class="start-lead">No sign-up form. You prove it's you with your Reddit account, then sign in with Google.
+      Works the same for borrowers and lenders.</p>
+    <ol class="steps">
+      <li>
+        <span class="step-num">1</span>
+        <div>
+          <h3>Comment <code>!login</code> on r/{{ sub }}</h3>
+          <p>Reply to any post on the subreddit with just <code>!login</code>.</p>
+          <a class="btn btn-ghost" href="{{ sub_url }}" target="_blank" rel="noopener">{{ reddit_icon() }}Open r/{{ sub }}</a>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <div>
+          <h3>Open the bot's message</h3>
+          <p>The bot sends a link to your Reddit inbox (chat or messages). It works once and expires in 30 minutes.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <div>
+          <h3>Connect your Google account</h3>
+          <p>That's your login from then on: come back and press <strong>Sign in</strong>. Lost access? Just comment <code>!login</code> again.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+  {% endif %}
 
   <section>
     <h2>What you get</h2>

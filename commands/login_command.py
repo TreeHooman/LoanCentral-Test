@@ -35,7 +35,7 @@ def _dm_body(reddit_name, token):
         f"to u/{reddit_name}. After that, sign in on the dashboard with Google.\n\n"
         f"The link works once and expires in {SETUP_LINK_MINUTES} minutes. "
         "Don't share it — it's proof that you are this Reddit account. "
-        "If you didn't comment $login, you can ignore this message."
+        "If you didn't comment !login, you can ignore this message."
     )
 
 
