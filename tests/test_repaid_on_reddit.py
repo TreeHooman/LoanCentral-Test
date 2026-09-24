@@ -135,9 +135,12 @@ class RepaidOnRedditTests(RealDBTestCase):
         self.assertEqual(self.reddit.flair["r5"], services.REPAID_FLAIR_TEXT)
 
     def test_a_loan_recorded_with_loan_command_gets_a_reply_on_its_post(self):
-        comment = FakeCommandComment("$loan 100 USD u/borrower", "lender")
-        comment.submission = FakePost("abc123", "[REQ] ($100)")
-        self.main.command_manager.process_comment(comment)
+        post = FakePost("abc123", "[REQ] ($100)")
+        for body, author in (("$loan 100 USD u/borrower", "lender"), ("$confirm", "borrower")):
+            self.main.command_manager.recent_commands.clear()
+            comment = FakeCommandComment(body, author)
+            comment.submission = post
+            self.main.command_manager.process_comment(comment)
         loan_id = self.query("SELECT loan_id FROM loans WHERE amount = 100")[0][0]
         self.command(f"$paid_with_id {loan_id} 100 USD")
         self.drain()

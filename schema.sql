@@ -349,3 +349,20 @@ CREATE TABLE IF NOT EXISTS account_setup_links (
     used_at TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_setup_links_user ON account_setup_links(reddit_username, created_at);
+
+-- `$loan` offers awaiting the borrower's `$confirm` (migration 018). Not loans:
+-- nothing here reaches loans, stats or history until it is confirmed.
+CREATE TABLE IF NOT EXISTS loan_offers (
+    id SERIAL PRIMARY KEY,
+    lender TEXT NOT NULL,
+    borrower TEXT NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    currency TEXT NOT NULL,
+    thread_url TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    loan_db_id INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    confirmed_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_loan_offers_borrower_open ON loan_offers(borrower, status);

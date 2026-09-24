@@ -15,8 +15,10 @@ class HelpCommandTests(unittest.TestCase):
         self.assertIn("$paid_with_id", comment.replies[0])
         self.assertIn("$unpaid", comment.replies[0])
         self.assertIn("$refunded", comment.replies[0])
-        # Retired commands should no longer appear
-        self.assertNotIn("$confirm", comment.replies[0])
+        # Brought back from the original bot, plus $login.
+        for command in ("$confirm", "$stats", "$mods", "$login"):
+            self.assertIn(command, comment.replies[0])
+        # Retired: borrowers can't mark their own loans repaid.
         self.assertNotIn("$repaid", comment.replies[0])
 
     def test_non_help_comment_gets_no_reply(self):

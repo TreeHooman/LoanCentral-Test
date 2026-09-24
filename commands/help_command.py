@@ -25,11 +25,12 @@ The bot tracks loans. Everything else (history, health scores, stats, mod tools)
 
 *Lender commands need the subreddit's Verified Lender flair.*
 
-**Record a new loan**
+**Offer a loan**
 ```
+$loan [amount] [currency]
 $loan [amount] [currency] u/[borrower]
 ```
-*Loan is recorded immediately.*
+*In a [REQ] thread the offer goes to the poster. It's recorded once the borrower replies `$confirm`.*
 
 **Fund a REQ code**
 ```
@@ -62,6 +63,12 @@ $logi u/[lender]
 
 ## Borrower Commands
 
+**Confirm a loan offer** (once you've received the money)
+```
+$confirm
+$confirm u/[lender] [amount] [currency]
+```
+
 **Dispute a loan** (flags for mod review)
 ```
 $dispute [paid_id]
@@ -76,6 +83,16 @@ $dispute [paid_id]
 $login
 ```
 *The bot DMs you a one-time link. Open it and connect a Google account; after that, sign in with Google.*
+
+**Check a Reddit account** (age, karma, activity)
+```
+$stats u/[username]
+```
+
+**Ask the moderators to look at a thread**
+```
+$mods [message]
+```
 
 ---
 
