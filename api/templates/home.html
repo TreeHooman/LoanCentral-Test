@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoanCentral</title>
+  <meta name="description" content="LoanCentral keeps the record of peer-to-peer loans made on Reddit: who lent, who borrowed, and whether it was repaid." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
+      --accent: #5b6ef5; --accent-h: #7b8cff; --green: #2ecc71;
+      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 56px 20px 40px; }
+    header { text-align: center; margin-bottom: 40px; }
+    header h1 { font-size: 40px; font-weight: 800; color: var(--accent-h); letter-spacing: -1px; }
+    header p { color: var(--text2); font-size: 17px; margin-top: 10px; max-width: 560px; margin-left: auto; margin-right: auto; }
+    .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .door { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; display: flex; flex-direction: column; }
+    .door h2 { font-size: 20px; margin-bottom: 4px; }
+    .door .who { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .door ul { list-style: none; color: var(--text2); font-size: 14px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 22px; flex: 1; }
+    .door li::before { content: "\2713"; color: var(--green); margin-right: 8px; }
+    .btn { display: block; text-align: center; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-h); }
+    .door .hint { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; }
+    section.how { margin-top: 44px; }
+    section.how h3 { font-size: 16px; margin-bottom: 14px; color: var(--text2); text-align: center; font-weight: 600; }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .step { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; font-size: 13px; color: var(--text2); }
+    .step b { display: block; color: var(--text); font-size: 14px; margin-bottom: 4px; }
+    .step code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-size: 12px; color: var(--accent-h); }
+    footer { margin-top: 44px; text-align: center; font-size: 12px; color: var(--muted); }
+    footer a { color: var(--muted); }
+    @media (max-width: 520px) { .wrap { padding-top: 36px; } header h1 { font-size: 32px; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>LoanCentral</h1>
+    <p>The record of loans made on {% if subreddit %}<a href="https://www.reddit.com/r/{{ subreddit }}" style="color:var(--accent-h)">r/{{ subreddit }}</a>{% else %}Reddit{% endif %}: who lent, who borrowed, and whether it was repaid.</p>
+  </header>
+
+  <div class="doors">
+    <div class="door">
+      <h2>Lenders</h2>
+      <div class="who">Verified lenders of the subreddit</div>
+      <ul>
+        <li>Every loan you've made, from the bot and the dashboard</li>
+        <li>Record loans with a request code</li>
+        <li>Track repayments, due dates and unpaid loans</li>
+      </ul>
+      <a class="btn btn-primary" href="{{ url_for('login') }}">Lender sign in</a>
+      <div class="hint">Sign in with the key a moderator gave you.</div>
+    </div>
+    <div class="door">
+      <h2>Borrowers</h2>
+      <div class="who">Anyone who has borrowed through the subreddit</div>
+      <ul>
+        <li>Your loans, balances and history</li>
+        <li>See what lenders see about your record</li>
+        <li>Flag a loan for moderator review</li>
+      </ul>
+      <a class="btn btn-primary" href="{{ url_for('borrower_login_page') }}">Borrower sign in</a>
+      <div class="hint">No account to create. Sign in to see your record.</div>
+    </div>
+  </div>
+
+  <section class="how">
+    <h3>How a loan works</h3>
+    <div class="steps">
+      <div class="step"><b>1. Borrower posts</b>A <code>[REQ]</code> post on the subreddit. The bot replies with their loan history and a request code.</div>
+      <div class="step"><b>2. Lender funds</b>After agreeing terms on Reddit, the lender records it with <code>$fund</code> or on the dashboard.</div>
+      <div class="step"><b>3. Repaid</b>The lender records repayment. The post is marked repaid and both records update.</div>
+    </div>
+  </section>
+
+  <footer>
+    LoanCentral is a record-keeping tool only. Lenders and borrowers make their own agreements on Reddit; LoanCentral does not broker, fund or process loans.
+    &middot; <a href="{{ url_for('terms') }}">Terms of Service</a>
+  </footer>
+</div>
+</body>
+</html>

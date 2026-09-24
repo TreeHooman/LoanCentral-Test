@@ -666,7 +666,11 @@ def _can_view_user_profile(target_username):
 @app.route("/")
 def home():
     if not session.get("username"):
-        return redirect(url_for("login"))
+        # Public front door: explains the site and sends lenders and borrowers
+        # to their own sign-in, instead of dropping everyone on the key form.
+        subreddit = (os.getenv("PRIMARY_SUBREDDIT")
+                     or (os.getenv("SUBREDDITS", "").split(",")[0].strip()))
+        return render_template("home.html", subreddit=subreddit or None)
     role = session.get("role", "borrower")
     if role == "admin":
         return redirect(url_for("dashboard_admin"))
