@@ -3,102 +3,62 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LoanCentral — the loan record for r/{{ subreddit or 'loancentral' }}</title>
-  <meta name="description" content="LoanCentral keeps the record of peer-to-peer loans made on Reddit: who lent, who borrowed, and whether it was repaid." />
+  <title>LoanCentral</title>
+  <meta name="description" content="Loan records for r/{{ subreddit or 'loancentral' }}." />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #0f1117; --surface: #171a23; --surface2: #1f2333; --border: #2a2f45;
-      --accent: #5b6ef5; --accent-h: #7b8cff; --green: #2ecc71; --gold: #f1c40f;
-      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+      --accent: #5b6ef5; --accent-h: #7b8cff; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
     }
-    html { scroll-behavior: smooth; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.55; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
     a { color: inherit; }
-    code { background: var(--surface2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: 0.92em; color: var(--accent-h); }
-    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px; }
+    code { background: var(--surface2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; color: var(--accent-h); white-space: nowrap; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
 
-    /* Top bar */
-    header.top { position: sticky; top: 0; z-index: 10; background: rgba(15,17,23,0.88); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
-    header.top .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
-    .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; letter-spacing: -0.3px; }
-    nav.links { display: flex; gap: 4px; margin-left: 8px; }
-    nav.links a { text-decoration: none; color: var(--text2); font-size: 14px; padding: 6px 10px; border-radius: 6px; }
-    nav.links a:hover { background: var(--surface2); color: var(--text); }
-    .top .cta { margin-left: auto; }
-    .btn { display: inline-block; text-decoration: none; font-weight: 700; font-size: 14px; padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; }
+    header.top { border-bottom: 1px solid var(--border); }
+    header.top .wrap { display: flex; align-items: center; height: 64px; }
+    .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; }
+    .btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 14px; padding: 9px 18px; border-radius: 8px; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: var(--accent-h); }
-    .btn-ghost { border-color: var(--border); color: var(--text); background: var(--surface); }
-    .btn-ghost:hover { border-color: var(--accent); }
+    header.top .btn { margin-left: auto; }
 
-    /* Hero */
-    .hero { padding: 72px 0 40px; text-align: center; }
-    .eyebrow { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-h); background: rgba(91,110,245,0.12); border: 1px solid rgba(91,110,245,0.3); padding: 4px 10px; border-radius: 999px; margin-bottom: 18px; }
-    .hero h1 { font-size: 46px; line-height: 1.1; letter-spacing: -1.2px; max-width: 760px; margin: 0 auto; }
-    .hero h1 span { color: var(--accent-h); }
-    .hero p.lead { color: var(--text2); font-size: 18px; max-width: 620px; margin: 18px auto 0; }
-    .hero .actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
-    .hero .actions .btn { font-size: 15px; padding: 12px 20px; }
-    .hero .hint { margin-top: 14px; font-size: 13px; color: var(--muted); }
+    .intro { padding: 88px 0 64px; }
+    .intro h1 { font-size: 38px; letter-spacing: -0.8px; line-height: 1.15; }
+    .intro p { color: var(--text2); font-size: 17px; margin-top: 12px; max-width: 560px; }
+    .intro .actions { margin-top: 28px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+    .intro .actions .btn { font-size: 15px; padding: 11px 22px; }
+    .intro .first { font-size: 14px; color: var(--muted); }
 
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 44px auto 0; max-width: 860px; }
-    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; text-align: center; }
-    .stat b { display: block; font-size: 26px; letter-spacing: -0.5px; }
-    .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .role { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 30px; }
+    .role h2 { font-size: 18px; margin-bottom: 14px; }
+    .role ul { list-style: none; display: flex; flex-direction: column; gap: 10px; color: var(--text2); font-size: 15px; }
+    .role li { padding-left: 18px; position: relative; }
+    .role li::before { content: ""; position: absolute; left: 0; top: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-h); }
 
-    section { padding: 64px 0; border-top: 1px solid var(--border); }
-    section h2 { font-size: 28px; letter-spacing: -0.5px; margin-bottom: 8px; }
-    section .sub { color: var(--text2); margin-bottom: 30px; max-width: 640px; }
+    .commands { padding: 72px 0 80px; }
+    .commands h2 { font-size: 18px; margin-bottom: 18px; }
+    table.cmds { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.cmds td { padding: 11px 0; border-top: 1px solid var(--border); vertical-align: top; }
+    table.cmds td:first-child { width: 44%; padding-right: 20px; }
+    table.cmds td:last-child { color: var(--text2); }
+    table.cmds .who { color: var(--muted); font-size: 12px; margin-left: 6px; }
+    .commands .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
 
-    /* How it works */
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 26px; }
-    .panel h3 { font-size: 18px; margin-bottom: 16px; }
-    ol.steps { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 14px; }
-    ol.steps li { counter-increment: s; position: relative; padding-left: 40px; color: var(--text2); font-size: 14px; }
-    ol.steps li b { color: var(--text); display: block; }
-    ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; border-radius: 50%; background: rgba(91,110,245,0.18); color: var(--accent-h); font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; }
-
-    /* Commands */
-    .cmds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .cmd-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
-    .cmd { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
-    .cmd code { font-size: 13px; }
-    .cmd p { font-size: 13px; color: var(--text2); margin-top: 6px; }
-    .note { margin-top: 18px; font-size: 13px; color: var(--muted); }
-
-    /* Ranks */
-    .ladder { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-    .rank { border-radius: 14px; padding: 16px 10px; text-align: center; border: 1px solid var(--border); background: var(--surface); }
-    .rank b { display: block; font-size: 16px; }
-    .rank span { font-size: 12px; color: var(--muted); }
-    .r-iron b { color: #9aa3b5; } .r-bronze b { color: #cd7f32; } .r-silver b { color: #c9d1dc; }
-    .r-gold b { color: var(--gold); } .r-platinum b { color: #7fe0d4; } .r-diamond b { color: #8ec9ff; }
-    .r-legacy { background: linear-gradient(135deg, rgba(241,196,15,0.12), rgba(91,110,245,0.14)); border-color: rgba(241,196,15,0.35); }
-    .r-legacy b { color: var(--gold); }
-
-    /* FAQ */
-    .faq { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    details.q { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
-    details.q summary { cursor: pointer; font-weight: 600; list-style: none; }
-    details.q summary::-webkit-details-marker { display: none; }
-    details.q summary::after { content: "+"; float: right; color: var(--muted); }
-    details.q[open] summary::after { content: "\2212"; }
-    details.q p { color: var(--text2); font-size: 14px; margin-top: 10px; }
-
-    footer { border-top: 1px solid var(--border); padding: 32px 0 44px; color: var(--muted); font-size: 13px; }
+    footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
     footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
     footer a { color: var(--text2); }
 
-    @media (max-width: 860px) {
-      nav.links { display: none; }
-      .hero h1 { font-size: 34px; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .two, .cmds, .faq { grid-template-columns: 1fr; }
-      .ladder { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 720px) {
+      .intro { padding: 56px 0 44px; }
+      .intro h1 { font-size: 30px; }
+      .roles { grid-template-columns: 1fr; }
+      table.cmds td:first-child { width: auto; }
+      table.cmds tr { display: block; border-top: 1px solid var(--border); padding: 10px 0; }
+      table.cmds td { display: block; border: 0; padding: 2px 0; }
     }
-    @media (max-width: 480px) { .ladder { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
 <body>
@@ -106,147 +66,70 @@
 <header class="top">
   <div class="wrap">
     <a class="brand" href="/">LoanCentral</a>
-    <nav class="links">
-      <a href="#how">How it works</a>
-      <a href="#commands">Commands</a>
-      <a href="#ranks">Ranks</a>
-      <a href="#faq">FAQ</a>
-    </nav>
-    <div class="cta">
-      {% if signed_in %}
-        <a class="btn btn-primary" href="{{ url_for('home') }}">Go to dashboard</a>
-      {% else %}
-        <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
-      {% endif %}
-    </div>
+    {% if signed_in %}
+      <a class="btn btn-primary" href="{{ url_for('home') }}">Dashboard</a>
+    {% else %}
+      <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
+    {% endif %}
   </div>
 </header>
 
-<main>
-  <div class="hero wrap">
-    <div class="eyebrow">r/{{ sub }}</div>
-    <h1>The trusted record of every loan on <span>r/{{ sub }}</span></h1>
-    <p class="lead">Who lent, who borrowed, and whether it was repaid, kept by the subreddit's bot and visible to the community.</p>
+<main class="wrap">
+  <div class="intro">
+    <h1>Loan records for r/{{ sub }}</h1>
+    <p>Lenders keep track of the loans they've made. Borrowers see their history and what they currently owe.</p>
     <div class="actions">
       {% if signed_in %}
         <a class="btn btn-primary" href="{{ url_for('home') }}">Go to your dashboard</a>
       {% else %}
         <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
+        <span class="first">First time? Comment <code>$login</code> on <a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> to set up your account.</span>
       {% endif %}
-      <a class="btn btn-ghost" href="https://www.reddit.com/r/{{ sub }}">Visit r/{{ sub }}</a>
     </div>
-    {% if not signed_in %}
-    <div class="hint">New here? Comment <code>$login</code> on r/{{ sub }} and the bot will DM you a link to set up your account.</div>
-    {% endif %}
-
-    {% if stats %}
-    <div class="stats">
-      <div class="stat"><b>{{ "{:,}".format(stats.loans) }}</b><span>Loans recorded</span></div>
-      <div class="stat"><b>${{ "{:,.0f}".format(stats.lent) }}</b><span>Amount lent</span></div>
-      <div class="stat"><b>{% if stats.repaid_rate is not none %}{{ stats.repaid_rate }}%{% else %}—{% endif %}</b><span>Repaid</span></div>
-      <div class="stat"><b>{{ "{:,}".format(stats.lenders) }}</b><span>Lenders</span></div>
-    </div>
-    {% endif %}
   </div>
 
-  <section id="how">
-    <div class="wrap">
-      <h2>How it works</h2>
-      <p class="sub">Lenders and borrowers agree terms on Reddit. LoanCentral records what happened, so everyone's history is there for the next loan.</p>
-      <div class="two">
-        <div class="panel">
-          <h3>Borrowing</h3>
-          <ol class="steps">
-            <li><b>Post a [REQ]</b>For example <code>[REQ] ($150) (#City, ST, USA) (Repay $180) (10/15/2026)</code>. The bot replies with your loan history and a request code.</li>
-            <li><b>Agree with a lender</b>Talk it over in the thread. When they offer with <code>$loan</code>, confirm once you've received the money with <code>$confirm</code>.</li>
-            <li><b>Repay</b>Your lender records it, and the post is marked repaid. Your record, and your rank, go up.</li>
-          </ol>
-        </div>
-        <div class="panel">
-          <h3>Lending</h3>
-          <ol class="steps">
-            <li><b>Get verified</b>The moderators give trusted lenders the Verified Lender flair. That unlocks the lender commands.</li>
-            <li><b>Fund a request</b><code>$fund REQ-0042</code> on the post, or record it on the dashboard. The post is marked FUNDED.</li>
-            <li><b>Record repayment</b><code>$paid_with_id</code> or one click on the dashboard. Every loan you've made is in one place.</li>
-          </ol>
-        </div>
-      </div>
+  <div class="roles">
+    <div class="role">
+      <h2>Lenders</h2>
+      <ul>
+        <li>Record a loan with its request code</li>
+        <li>Mark payments and repaid loans</li>
+        <li>See every loan you've made, from Reddit and the dashboard</li>
+        <li>Due dates and unpaid loans at a glance</li>
+      </ul>
     </div>
-  </section>
+    <div class="role">
+      <h2>Borrowers</h2>
+      <ul>
+        <li>Your borrowing history</li>
+        <li>Current loans: amount, lender and what's left to repay</li>
+        <li>Repayment terms and due dates</li>
+        <li>Flag a loan that's wrong for the moderators</li>
+      </ul>
+    </div>
+  </div>
 
-  <section id="commands">
-    <div class="wrap">
-      <h2>Bot commands</h2>
-      <p class="sub">Comment these on r/{{ sub }}. Every command also works with <code>!</code> instead of <code>$</code>.</p>
-      <div class="cmds">
-        <div class="cmd-group">
-          <h3>Everyone</h3>
-          <div class="cmd"><code>$login</code><p>Set up or recover your dashboard account. The bot DMs you a link.</p></div>
-          <div class="cmd"><code>$stats u/name</code><p>Reddit account check: age, karma and activity.</p></div>
-          <div class="cmd"><code>$logi u/lender</code><p>A lender's record: lent, repaid, ongoing.</p></div>
-          <div class="cmd"><code>$mods message</code><p>Ask the moderators to look at a thread.</p></div>
-          <div class="cmd"><code>$help</code><p>The full command list.</p></div>
-        </div>
-        <div class="cmd-group">
-          <h3>Lenders</h3>
-          <div class="cmd"><code>$fund REQ-0042</code><p>Fund a request. Add <code>300USD</code> or <code>CAD</code> if the terms changed.</p></div>
-          <div class="cmd"><code>$loan 100 USD</code><p>Offer a loan in a [REQ] thread. It's recorded when the borrower confirms.</p></div>
-          <div class="cmd"><code>$paid_with_id ID 50 USD</code><p>Record a repayment you received.</p></div>
-          <div class="cmd"><code>$unpaid ID</code> · <code>$refunded ID</code><p>Mark a loan unpaid, or cancel it.</p></div>
-        </div>
-        <div class="cmd-group">
-          <h3>Borrowers</h3>
-          <div class="cmd"><code>$confirm</code><p>Confirm a lender's <code>$loan</code> offer once the money has arrived.</p></div>
-          <div class="cmd"><code>$dispute ID</code><p>Something wrong with a loan? Flag it for the moderators.</p></div>
-        </div>
-      </div>
-      <p class="note">Lender commands need the Verified Lender flair.</p>
-    </div>
-  </section>
-
-  <section id="ranks">
-    <div class="wrap">
-      <h2>Ranks</h2>
-      <p class="sub">Every fully repaid loan counts. Lenders rank by loans they've made that were repaid; borrowers by loans they've repaid. Ranks show on the dashboard, in bot replies and in lender flair.</p>
-      <div class="ladder">
-        <div class="rank r-iron"><b>Iron</b><span>1+</span></div>
-        <div class="rank r-bronze"><b>Bronze</b><span>25+</span></div>
-        <div class="rank r-silver"><b>Silver</b><span>50+</span></div>
-        <div class="rank r-gold"><b>Gold</b><span>100+</span></div>
-        <div class="rank r-platinum"><b>Platinum</b><span>200+</span></div>
-        <div class="rank r-diamond"><b>Diamond</b><span>500+</span></div>
-        <div class="rank r-legacy"><b>Legacy</b><span>Founders</span></div>
-      </div>
-      <p class="note">Legacy is given by the subreddit's owner to its founding lenders.</p>
-    </div>
-  </section>
-
-  <section id="faq">
-    <div class="wrap">
-      <h2>Questions</h2>
-      <p class="sub">The things people ask most.</p>
-      <div class="faq">
-        <details class="q"><summary>Is LoanCentral a lender?</summary>
-          <p>No. LoanCentral only keeps the record. Lenders and borrowers make their own agreements on Reddit; LoanCentral doesn't broker, fund, hold or process money.</p></details>
-        <details class="q"><summary>How do I get an account?</summary>
-          <p>Comment <code>$login</code> on r/{{ sub }}. The bot DMs you a one-time link; open it and connect a Google account. After that, sign in with Google.</p></details>
-        <details class="q"><summary>I lost access to my Google account.</summary>
-          <p>Comment <code>$login</code> again and connect a different Google account. The old one stops working straight away.</p></details>
-        <details class="q"><summary>How do I become a verified lender?</summary>
-          <p>Message the moderators of r/{{ sub }}. Lender commands unlock once they give you the Verified Lender flair.</p></details>
-        <details class="q"><summary>A loan on my record is wrong.</summary>
-          <p>Comment <code>$dispute</code> with the loan's ID. The loan is frozen and the moderators review it.</p></details>
-        <details class="q"><summary>Who can see my loans?</summary>
-          <p>Your history (counts and totals) appears in the bot's replies on Reddit, as it always has. Loan details on the dashboard are visible to you, the other person on the loan, and moderators.</p></details>
-      </div>
-    </div>
-  </section>
+  <div class="commands">
+    <h2>Bot commands on r/{{ sub }}</h2>
+    <table class="cmds">
+      <tr><td><code>$login</code></td><td>Set up or recover your account. The bot DMs you a link.</td></tr>
+      <tr><td><code>$fund REQ-0042</code><span class="who">lender</span></td><td>Fund a request.</td></tr>
+      <tr><td><code>$loan 100 USD</code><span class="who">lender</span></td><td>Offer a loan. The borrower confirms with <code>$confirm</code>.</td></tr>
+      <tr><td><code>$paid_with_id ID 50 USD</code><span class="who">lender</span></td><td>Record a repayment.</td></tr>
+      <tr><td><code>$unpaid ID</code> &middot; <code>$refunded ID</code><span class="who">lender</span></td><td>Mark a loan unpaid, or cancel it.</td></tr>
+      <tr><td><code>$confirm</code><span class="who">borrower</span></td><td>Confirm a loan offer once you've received the money.</td></tr>
+      <tr><td><code>$dispute ID</code><span class="who">borrower</span></td><td>Flag a loan for the moderators.</td></tr>
+      <tr><td><code>$stats u/name</code> &middot; <code>$logi u/name</code></td><td>Check a Reddit account, or a lender's record.</td></tr>
+      <tr><td><code>$mods</code> &middot; <code>$help</code></td><td>Call the moderators, or list every command.</td></tr>
+    </table>
+    <p class="note">Lender commands need the Verified Lender flair. <code>!</code> works in place of <code>$</code>.</p>
+  </div>
 </main>
 
 <footer>
   <div class="wrap">
-    <div>LoanCentral is a record-keeping tool only. It does not broker, fund or process loans.</div>
-    <div><a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> &middot; <a href="{{ url_for('terms') }}">Terms of Service</a></div>
+    <div>LoanCentral keeps records only. It doesn't lend, hold or send money.</div>
+    <div><a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a></div>
   </div>
 </footer>
 </body>

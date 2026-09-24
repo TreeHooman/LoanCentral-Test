@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}LoanCentral{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #171a23; --surface2: #1f2333; --border: #2a2f45;
+      --accent: #5b6ef5; --accent-h: #7b8cff; --gold: #f1c40f; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.65; }
+    a { color: var(--accent-h); }
+    code { background: var(--surface2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; color: var(--accent-h); }
+    .wrap { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+    header.top { border-bottom: 1px solid var(--border); }
+    header.top .wrap { max-width: 980px; display: flex; align-items: center; height: 64px; }
+    .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; }
+    .btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 14px; padding: 9px 18px; border-radius: 8px; background: var(--accent); color: #fff; margin-left: auto; }
+    .btn:hover { background: var(--accent-h); }
+    article { padding: 56px 0 72px; }
+    article h1 { font-size: 32px; letter-spacing: -0.6px; }
+    article .updated { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    article h2 { font-size: 18px; margin: 36px 0 10px; }
+    article p, article li { color: var(--text2); font-size: 15px; }
+    article p + p { margin-top: 10px; }
+    article ul { margin: 8px 0 0 20px; display: flex; flex-direction: column; gap: 6px; }
+    article strong { color: var(--text); }
+    .callout { background: rgba(241,196,15,0.07); border: 1px solid rgba(241,196,15,0.3); border-radius: 12px; padding: 18px 20px; margin-top: 26px; }
+    .callout p { color: var(--text); }
+    table.data { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    table.data th, table.data td { text-align: left; padding: 9px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+    table.data th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    table.data td { color: var(--text2); }
+    table.data td:first-child { color: var(--text); white-space: nowrap; }
+    footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
+    footer .wrap { max-width: 980px; display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+    footer a { color: var(--text2); }
+    @media (max-width: 640px) { article h1 { font-size: 26px; } table.data td:first-child { white-space: normal; } }
+  </style>
+</head>
+<body>
+{% set sub = subreddit or 'loancentral' %}
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">LoanCentral</a>
+    {% if session.get('username') %}
+      <a class="btn" href="{{ url_for('home') }}">Dashboard</a>
+    {% else %}
+      <a class="btn" href="{{ url_for('login') }}">Sign in</a>
+    {% endif %}
+  </div>
+</header>
+<main class="wrap">
+  <article>{% block content %}{% endblock %}</article>
+</main>
+<footer>
+  <div class="wrap">
+    <div>LoanCentral keeps records only. It doesn't lend, hold or send money.</div>
+    <div><a href="https://www.reddit.com/r/{{ sub }}">r/{{ sub }}</a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a></div>
+  </div>
+</footer>
+</body>
+</html>

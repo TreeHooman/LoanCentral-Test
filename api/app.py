@@ -201,7 +201,7 @@ def validate_key_session():
 
 #: Paths a banned user may still reach — otherwise they cannot even read why
 #: they were banned or sign out.
-_BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms", "/ping",
+_BAN_EXEMPT_PATHS = ("/static/", "/auth/logout", "/login", "/terms", "/privacy", "/ping",
                      "/health", "/favicon.ico")
 
 
@@ -663,55 +663,14 @@ def _can_view_user_profile(target_username):
 # Page routes
 # ---------------------------------------------------------------------------
 
-_PUBLIC_STATS = {"at": 0.0, "value": None}
-
-
-def _public_stats():
-    """Site-wide totals for the front page — counts and sums only, no names.
-
-    Cached for ten minutes: the front page is public, and every uncached visit
-    would wake the (free-tier, sleep-when-idle) database.
-    """
-    if _PUBLIC_STATS["value"] is not None and time.time() - _PUBLIC_STATS["at"] < 600:
-        return _PUBLIC_STATS["value"]
-    stats = None
-    try:
-        from services import _get_db
-        conn = _get_db()
-        if conn:
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT COUNT(*),
-                           COALESCE(SUM(amount), 0),
-                           COALESCE(SUM(CASE WHEN status = 'repaid' THEN 1 ELSE 0 END), 0),
-                           COALESCE(SUM(CASE WHEN status IN ('repaid','unpaid') THEN 1 ELSE 0 END), 0),
-                           COUNT(DISTINCT lower(lender))
-                    FROM loans WHERE status != 'refunded'
-                """)
-                total, lent, repaid, settled, lenders = cur.fetchone()
-                stats = {
-                    "loans": int(total or 0),
-                    "lent": float(lent or 0),
-                    "repaid": int(repaid or 0),
-                    # Of loans that reached an outcome, the share repaid.
-                    "repaid_rate": round(100.0 * int(repaid or 0) / int(settled), 1) if settled else None,
-                    "lenders": int(lenders or 0),
-                }
-            finally:
-                conn.close()
-    except Exception as e:
-        logger.warning(f"public stats unavailable: {e}")
-    _PUBLIC_STATS.update(at=time.time(), value=stats)
-    return stats
-
-
 @app.route("/")
 def index():
-    """The public website. Signed-in members see it too, with a dashboard button."""
+    """The public website. Signed-in members see it too, with a dashboard button.
+
+    Static apart from the subreddit name: it never queries the database, so
+    visitors don't wake the (sleep-when-idle) Neon database."""
     return render_template("home.html", subreddit=_primary_subreddit(),
-                           signed_in=bool(session.get("username")),
-                           stats=_public_stats())
+                           signed_in=bool(session.get("username")))
 
 
 @app.route("/dashboard")
@@ -1298,9 +1257,18 @@ def api_integrity_checks():
     return _json(issues)
 
 
+#: Shown as "Last updated" on the Terms and Privacy pages; change it with them.
+LEGAL_UPDATED = "24 September 2026"
+
+
 @app.route("/terms")
 def terms():
-    return render_template("terms.html")
+    return render_template("terms.html", subreddit=_primary_subreddit(), updated=LEGAL_UPDATED)
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html", subreddit=_primary_subreddit(), updated=LEGAL_UPDATED)
 
 
 @app.route("/login")

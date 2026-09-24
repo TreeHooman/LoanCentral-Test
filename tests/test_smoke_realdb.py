@@ -333,7 +333,7 @@ class WebsiteTests(RealDBTestCase):
         self.login("lender1", role="lender")
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Go to dashboard", response.get_data(as_text=True))
+        self.assertIn("Go to your dashboard", response.get_data(as_text=True))
 
     def test_dashboard_routes_by_role(self):
         self.make_user("lender1", role="lender", verified_lender=True)
@@ -343,15 +343,12 @@ class WebsiteTests(RealDBTestCase):
     def test_dashboard_signed_out_goes_to_login(self):
         self.assertIn("/login", self.client.get("/dashboard").headers["Location"])
 
-    def test_the_public_numbers_are_totals_only(self):
-        self.execute("INSERT INTO loans (loan_id, lender, borrower, amount, amount_repaid, currency, "
-                     "status, date_created, original_thread) VALUES ('P1', 'secretlender', 'secretborrower', "
-                     "40, 40, 'USD', 'repaid', CURRENT_TIMESTAMP, 'x')")
-        self.web._PUBLIC_STATS.update(at=0.0, value=None)
-        html = self.client.get("/").get_data(as_text=True)
-        self.assertNotIn("secretlender", html)
-        self.assertNotIn("secretborrower", html)
-        self.assertIn("100.0%", html)
+    def test_the_front_page_never_touches_the_database(self):
+        from unittest.mock import patch
+        import services
+        self.logout()
+        with patch.object(services, "_get_db", side_effect=AssertionError("DB opened")):
+            self.assertEqual(self.client.get("/").status_code, 200)
 
 
 class NavOnEveryPageTests(RealDBTestCase):
@@ -367,3 +364,25 @@ class NavOnEveryPageTests(RealDBTestCase):
             html = response.get_data(as_text=True)
             self.assertIn("Bans &amp; Sync", html, path)
             self.assertIn("u/boss", html, path)
+
+
+class LegalPagesTests(RealDBTestCase):
+    def test_terms_say_we_are_not_a_lender(self):
+        html = self.client.get("/terms").get_data(as_text=True)
+        self.assertIn("record-keeping tool, not a lender", html)
+        self.assertIn("does not report to credit bureaus", html)
+        self.assertIn("/privacy", html)
+
+    def test_privacy_policy_is_public_and_names_what_we_store(self):
+        response = self.client.get("/privacy")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        for fact in ("Google account ID and email address", "90 days", "never your Google password",
+                     "no advertising or analytics cookies"):
+            self.assertIn(fact, html)
+
+    def test_every_public_page_links_both(self):
+        for path in ("/", "/login", "/terms", "/privacy"):
+            html = self.client.get(path).get_data(as_text=True)
+            self.assertIn("/terms", html, path)
+            self.assertIn("/privacy", html, path)

@@ -54,6 +54,8 @@
       </form>
       <p class="note">Only your Google account ID and email address are stored — never a password.
         Already connected a Google account before? Continuing replaces it.</p>
+      <p class="note">By creating an account you agree to the <a class="link" href="{{ url_for('terms') }}">Terms of Service</a>
+        and <a class="link" href="{{ url_for('privacy') }}">Privacy Policy</a>. LoanCentral keeps records only; it isn't a lender.</p>
       {% else %}
       <div class="error">Google sign-in isn't set up on this site yet. Ask a moderator.</div>
       {% endif %}
