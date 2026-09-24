@@ -6,107 +6,108 @@
   <title>LoanCentral</title>
   <meta name="description" content="Loan records for r/{{ subreddit or 'loancentral' }}." />
   <style>
+    @font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+      src: url("{{ url_for('static', filename='fonts/inter-latin-wght.woff2') }}") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap;
+      src: url("{{ url_for('static', filename='fonts/jetbrains-mono-latin-500.woff2') }}") format("woff2"); }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0a0b0a; --surface: #121512; --surface2: #1a1f1a; --border: #243024;
-      --accent: #22c55e; --accent-h: #4ade80; --muted: #8a948a; --text: #e8ece8; --text2: #b4bdb4;
+      --bg: #0b0c0b; --surface: #121412; --surface2: #181b18; --border: #232823; --border-h: #34503a;
+      --accent: #22c55e; --accent-h: #34d46c; --accent-ink: #04140a;
+      --text: #ecefec; --text2: #a9b2a9; --muted: #7c867c;
+      --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+      -webkit-font-smoothing: antialiased; }
     a { color: inherit; }
-    code { background: var(--surface2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; color: var(--accent-h); white-space: nowrap; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+    code { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent-h); white-space: nowrap; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
 
+    /* Header */
     header.top { border-bottom: 1px solid var(--border); }
-    header.top .wrap { display: flex; align-items: center; height: 64px; }
-    .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; }
-    .btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 14px; padding: 9px 18px; border-radius: 8px; }
-    .btn-primary { background: var(--accent); color: #051005; }
+    header.top .wrap { display: flex; align-items: center; gap: 12px; height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.2px;
+      color: var(--text); text-decoration: none; margin-right: auto; }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-ink);
+      display: grid; place-items: center; font-size: 13px; font-weight: 700; letter-spacing: -0.5px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 14px;
+      padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; line-height: 1.2;
+      transition: background-color .15s ease, border-color .15s ease, color .15s ease; }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
     .btn-primary:hover { background: var(--accent-h); }
-    header.top .btn { margin-left: auto; }
+    .btn-ghost { border-color: var(--border); color: var(--text); background: var(--surface); }
+    .btn-ghost:hover { border-color: var(--border-h); background: var(--surface2); }
+    .btn-lg { font-size: 15px; padding: 12px 20px; }
+    .btn svg { flex: none; }
+    .btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    .intro { padding: 88px 0 64px; }
-    .intro h1 { font-size: 38px; letter-spacing: -0.8px; line-height: 1.15; }
-    .intro p { color: var(--text2); font-size: 17px; margin-top: 12px; max-width: 560px; }
-    .intro .actions { margin-top: 28px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-    .intro .actions .btn { font-size: 15px; padding: 11px 22px; }
-    .intro .first { font-size: 14px; color: var(--muted); }
+    /* Intro */
+    .intro { padding: 96px 0 72px; max-width: 640px; }
+    .eyebrow { font-size: 13px; font-weight: 600; color: var(--accent-h); margin-bottom: 14px; }
+    .intro h1 { font-size: 44px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.1; }
+    .intro p { color: var(--text2); font-size: 17px; margin-top: 16px; }
+    .actions { margin-top: 32px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .intro .first { margin-top: 18px; font-size: 14px; color: var(--muted); }
+    .first a { color: var(--text2); }
+    .first a:hover { color: var(--text); }
 
-    .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .role { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 30px; }
-    .role h2 { font-size: 18px; margin-bottom: 14px; }
-    .role ul { list-style: none; display: flex; flex-direction: column; gap: 10px; color: var(--text2); font-size: 15px; }
-    .role li { padding-left: 18px; position: relative; }
-    .role li::before { content: ""; position: absolute; left: 0; top: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-h); }
+    /* Sections */
+    section { padding: 56px 0; border-top: 1px solid var(--border); }
+    section > h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted);
+      margin-bottom: 20px; }
+    .grid { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); align-items: start; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+      transition: border-color .15s ease; }
+    .card:hover { border-color: var(--border-h); }
+    .card h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+    .card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; color: var(--text2); }
+    .card li { padding-left: 20px; position: relative; }
+    .card li::before { content: ""; position: absolute; left: 2px; top: 9px; width: 8px; height: 5px;
+      border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
 
-    .commands { padding: 72px 0 80px; }
-    .commands h2 { font-size: 18px; margin-bottom: 18px; }
-    .cmd-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
-    .cmd-group { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px;
-      transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
-    .cmd-group:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(34,197,94,0.55);
-      box-shadow: 0 14px 38px rgba(0,0,0,0.5); }
-    .cmd-group h3 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .tag { font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; }
-    .tag-all      { background: rgba(232,236,232,0.1); color: var(--text); }
-    .tag-lender   { background: var(--accent); color: #051005; }
-    .tag-borrower { background: rgba(34,197,94,0.14); color: var(--accent-h); border: 1px solid rgba(34,197,94,0.4); }
-    .req { font-size: 12px; color: var(--muted); font-weight: 500; }
-    .cmd-group dl { display: flex; flex-direction: column; }
-    .cmd-group dt { margin-top: 12px; }
-    .cmd-group dt:first-child { margin-top: 0; }
-    .cmd-group dd { color: var(--text2); font-size: 14px; margin-top: 4px; }
-    .cmd-group dt:hover code, .cmd-group dt:hover + dd { color: var(--accent-h); }
-    .commands .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
+    .who { font-size: 12px; font-weight: 500; color: var(--muted); }
+    .cmds { display: flex; flex-direction: column; }
+    .cmd { padding: 10px 0; border-top: 1px solid var(--border); }
+    .cmd:first-child { border-top: 0; padding-top: 0; }
+    .cmd p { color: var(--text2); font-size: 14px; margin-top: 2px; }
+    .note { margin-top: 16px; font-size: 13px; color: var(--muted); }
+    .note code { font-size: 12px; }
 
+    /* Footer */
     footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
-    footer .wrap { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
-    footer a { color: var(--text2); }
-    footer .links { display: flex; align-items: center; gap: 8px; }
-    footer .reddit-icon { display: inline-flex; opacity: .85; }
-    footer .reddit-icon:hover { opacity: 1; }
+    footer .wrap { display: flex; gap: 16px 24px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    footer nav { display: flex; gap: 20px; flex-wrap: wrap; }
+    footer a { color: var(--text2); text-decoration: none; }
+    footer a:hover { color: var(--text); }
 
-
-    /* Effects */
-    html { scroll-behavior: smooth; }
-    body { background:
-      radial-gradient(900px 480px at 85% -10%, rgba(34,197,94,0.14), transparent 60%),
-      radial-gradient(700px 400px at -10% 30%, rgba(34,197,94,0.06), transparent 60%), var(--bg);
-      background-attachment: fixed; }
-    header.top { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
-      background: rgba(10,11,10,0.72); }
-    .brand { transition: color .2s, text-shadow .2s; }
-    .brand:hover { text-shadow: 0 0 18px rgba(74,222,128,0.55); }
-    .btn { transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
-    .btn-primary:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 8px 26px rgba(34,197,94,0.35); }
-    .btn-primary:active { transform: translateY(0) scale(.98); }
-    .intro h1 { background: linear-gradient(90deg, #e8ece8 30%, #4ade80); -webkit-background-clip: text;
-      background-clip: text; color: transparent; }
-    .role { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
-    .role:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(34,197,94,0.55);
-      box-shadow: 0 14px 38px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,197,94,0.15); }
-    .role h2 { color: var(--accent-h); }
-    code { transition: border-color .15s, box-shadow .15s; }
-    footer .reddit-icon { transition: transform .2s ease, opacity .2s, filter .2s; }
-    footer .reddit-icon:hover { transform: scale(1.25) rotate(-8deg); filter: drop-shadow(0 0 6px rgba(255,69,0,.6)); }
-    footer a:hover { color: var(--accent-h); }
-    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
-    .reveal.in { opacity: 1; transform: none; }
-    @media (prefers-reduced-motion: reduce) {
-      *, .reveal { transition: none !important; transform: none !important; opacity: 1 !important; }
+    @media (max-width: 820px) {
+      .grid-3 { grid-template-columns: 1fr; }
     }
-
-    @media (max-width: 720px) {
-      .intro { padding: 56px 0 44px; }
-      .intro h1 { font-size: 30px; }
-      .roles, .cmd-groups { grid-template-columns: 1fr; }
-          }
+    @media (max-width: 640px) {
+      .wrap { padding: 0 16px; }
+      .intro { padding: 56px 0 48px; }
+      .intro h1 { font-size: 32px; }
+      .grid-2 { grid-template-columns: 1fr; }
+      header .btn-ghost .label { display: none; }
+    }
   </style>
 </head>
 <body>
 {% set sub = subreddit or 'loancentral' %}
+{% set sub_url = 'https://www.reddit.com/r/' ~ sub %}
+{% macro reddit_icon(size=16) -%}
+<svg viewBox="0 0 20 20" width="{{ size }}" height="{{ size }}" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#ff4500"/><ellipse cx="10" cy="11.6" rx="5.2" ry="3.6" fill="#fff"/><circle cx="14.6" cy="8.4" r="1.2" fill="#fff"/><circle cx="5.4" cy="8.4" r="1.2" fill="#fff"/><circle cx="13.4" cy="4.6" r="1" fill="#fff"/><path d="M10 8 L11 4.4 L13.4 4.6" stroke="#fff" stroke-width=".8" fill="none"/><circle cx="8.1" cy="11" r=".8" fill="#ff4500"/><circle cx="11.9" cy="11" r=".8" fill="#ff4500"/><path d="M8 13.2 Q10 14.4 12 13.2" stroke="#ff4500" stroke-width=".7" fill="none"/></svg>
+{%- endmacro %}
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="/">LoanCentral</a>
+    <a class="brand" href="/"><span class="brand-mark">LC</span>LoanCentral</a>
+    <a class="btn btn-ghost" href="{{ sub_url }}" target="_blank" rel="noopener" aria-label="r/{{ sub }} on Reddit">{{ reddit_icon() }}<span class="label">r/{{ sub }}</span></a>
     {% if signed_in %}
       <a class="btn btn-primary" href="{{ url_for('home') }}">Dashboard</a>
     {% else %}
@@ -116,87 +117,89 @@
 </header>
 
 <main class="wrap">
-  <div class="intro reveal">
-    <h1>Loan records for r/{{ sub }}</h1>
+  <div class="intro">
+    <div class="eyebrow">For the r/{{ sub }} community</div>
+    <h1>Loan records, kept straight.</h1>
     <p>Lenders keep track of the loans they've made. Borrowers see their history and what they currently owe.</p>
     <div class="actions">
       {% if signed_in %}
-        <a class="btn btn-primary" href="{{ url_for('home') }}">Go to your dashboard</a>
+        <a class="btn btn-primary btn-lg" href="{{ url_for('home') }}">Go to your dashboard</a>
       {% else %}
-        <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
-        <span class="first">First time? Comment <code>$login</code> on <a href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener">r/{{ sub }}</a> to set up your account.</span>
+        <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Sign in</a>
       {% endif %}
+      <a class="btn btn-ghost btn-lg" href="{{ sub_url }}" target="_blank" rel="noopener">{{ reddit_icon(18) }}Visit r/{{ sub }}</a>
     </div>
+    {% if not signed_in %}
+      <p class="first">First time? Comment <code>$login</code> on <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a> and the bot will DM you a link to set up your account.</p>
+    {% endif %}
   </div>
 
-  <div class="roles reveal">
-    <div class="role">
-      <h2>Lenders</h2>
-      <ul>
-        <li>Record a loan with its request code</li>
-        <li>Mark payments and repaid loans</li>
-        <li>See every loan you've made in the dashboard</li>
-        <li>Due dates and unpaid loans at a glance</li>
-      </ul>
+  <section>
+    <h2>What you get</h2>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Lenders</h3>
+        <ul>
+          <li>Record a loan with its request code</li>
+          <li>Mark payments and repaid loans</li>
+          <li>See every loan you've made in the dashboard</li>
+          <li>Due dates and unpaid loans at a glance</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Borrowers</h3>
+        <ul>
+          <li>Your borrowing history</li>
+          <li>Current loans: amount, lender and what's left to repay</li>
+          <li>Repayment terms and due dates</li>
+        </ul>
+      </div>
     </div>
-    <div class="role">
-      <h2>Borrowers</h2>
-      <ul>
-        <li>Your borrowing history</li>
-        <li>Current loans: amount, lender and what's left to repay</li>
-        <li>Repayment terms and due dates</li>
-      </ul>
-    </div>
-  </div>
+  </section>
 
-  <div class="commands reveal">
-    <h2>Bot commands on r/{{ sub }}</h2>
-    <div class="cmd-groups">
-      <div class="cmd-group">
-        <h3><span class="tag tag-all">Everyone</span></h3>
-        <dl>
-          <dt><code>$login</code></dt><dd>Set up or recover your dashboard account. The bot DMs you a link.</dd>
-          <dt><code>$stats u/name</code></dt><dd>Check a Reddit account's age and activity.</dd>
-          <dt><code>$logi u/name</code></dt><dd>See a lender's record and rank.</dd>
-          <dt><code>$help</code></dt><dd>List every command.</dd>
-        </dl>
+  <section>
+    <h2>Bot commands</h2>
+    <div class="grid grid-3">
+      <div class="card">
+        <h3>Everyone</h3>
+        <div class="cmds">
+          <div class="cmd"><code>$login</code><p>Set up or recover your dashboard account.</p></div>
+          <div class="cmd"><code>$stats u/name</code><p>Check a Reddit account's age and activity.</p></div>
+          <div class="cmd"><code>$logi u/name</code><p>See a lender's record and rank.</p></div>
+          <div class="cmd"><code>$help</code><p>List every command.</p></div>
+        </div>
       </div>
-      <div class="cmd-group">
-        <h3><span class="tag tag-lender">Lenders</span> <span class="req">Verified Lender flair</span></h3>
-        <dl>
-          <dt><code>$fund REQ-0042</code></dt><dd>Fund a request.</dd>
-          <dt><code>$loan 100 USD</code></dt><dd>Offer a loan. The borrower confirms it.</dd>
-          <dt><code>$paid_with_id ID 50 USD</code></dt><dd>Record a repayment.</dd>
-          <dt><code>$unpaid ID</code></dt><dd>Mark a loan unpaid.</dd>
-          <dt><code>$refunded ID</code></dt><dd>Cancel a loan.</dd>
-        </dl>
+      <div class="card">
+        <h3>Lenders <span class="who">Verified Lender flair</span></h3>
+        <div class="cmds">
+          <div class="cmd"><code>$fund REQ-0042</code><p>Fund a request.</p></div>
+          <div class="cmd"><code>$loan 100 USD</code><p>Offer a loan. The borrower confirms it.</p></div>
+          <div class="cmd"><code>$paid_with_id ID 50 USD</code><p>Record a repayment.</p></div>
+          <div class="cmd"><code>$unpaid ID</code><p>Mark a loan unpaid.</p></div>
+          <div class="cmd"><code>$refunded ID</code><p>Cancel a loan.</p></div>
+        </div>
       </div>
-      <div class="cmd-group">
-        <h3><span class="tag tag-borrower">Borrowers</span></h3>
-        <dl>
-          <dt><code>$confirm</code></dt><dd>Accept a loan offer once you've received the money.</dd>
-        </dl>
+      <div class="card">
+        <h3>Borrowers</h3>
+        <div class="cmds">
+          <div class="cmd"><code>$confirm</code><p>Accept a loan offer once you've received the money.</p></div>
+        </div>
       </div>
     </div>
     <p class="note">Every command also works with <code>!</code> instead of <code>$</code>.</p>
-  </div>
+  </section>
 </main>
 
 <footer>
   <div class="wrap">
     <div>LoanCentral keeps records only. It doesn't lend, hold or send money.</div>
-    <div class="links"><a class="reddit-icon" href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener" title="r/{{ sub }} on Reddit" aria-label="r/{{ sub }} on Reddit"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#ff4500"/><ellipse cx="10" cy="11.6" rx="5.2" ry="3.6" fill="#fff"/><circle cx="14.6" cy="8.4" r="1.2" fill="#fff"/><circle cx="5.4" cy="8.4" r="1.2" fill="#fff"/><circle cx="13.4" cy="4.6" r="1" fill="#fff"/><path d="M10 8 L11 4.4 L13.4 4.6" stroke="#fff" stroke-width=".8" fill="none"/><circle cx="8.1" cy="11" r=".8" fill="#ff4500"/><circle cx="11.9" cy="11" r=".8" fill="#ff4500"/><path d="M8 13.2 Q10 14.4 12 13.2" stroke="#ff4500" stroke-width=".7" fill="none"/></svg></a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a> &middot; <a href="mailto:loancentral08@gmail.com">Contact</a></div>
+    <nav>
+      <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a>
+      <a href="{{ url_for('terms') }}">Terms</a>
+      <a href="{{ url_for('privacy') }}">Privacy</a>
+      <a href="mailto:loancentral08@gmail.com">Contact</a>
+    </nav>
   </div>
 </footer>
-<script>
-  (function () {
-    var els = document.querySelectorAll('.reveal');
-    if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, { threshold: 0.12 });
-    els.forEach(function (e) { io.observe(e); });
-  })();
-</script>
 </body>
 </html>

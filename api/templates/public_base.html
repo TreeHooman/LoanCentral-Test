@@ -5,56 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LoanCentral{% endblock %}</title>
   <style>
+    @font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+      src: url("{{ url_for('static', filename='fonts/inter-latin-wght.woff2') }}") format("woff2"); }
+    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap;
+      src: url("{{ url_for('static', filename='fonts/jetbrains-mono-latin-500.woff2') }}") format("woff2"); }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0a0b0a; --surface: #121512; --surface2: #1a1f1a; --border: #243024;
-      --accent: #22c55e; --accent-h: #4ade80; --gold: #f1c40f; --muted: #8a948a; --text: #e8ece8; --text2: #b4bdb4;
+      --bg: #0b0c0b; --surface: #121412; --surface2: #181b18; --border: #232823; --border-h: #34503a;
+      --accent: #22c55e; --accent-h: #34d46c; --accent-ink: #04140a;
+      --text: #ecefec; --text2: #a9b2a9; --muted: #7c867c;
+      --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.65; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.65;
+      -webkit-font-smoothing: antialiased; }
     a { color: var(--accent-h); }
-    code { background: var(--surface2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; color: var(--accent-h); }
-    .wrap { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+    code { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent-h); }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
     header.top { border-bottom: 1px solid var(--border); }
-    header.top .wrap { max-width: 980px; display: flex; align-items: center; height: 64px; }
-    .brand { font-weight: 800; font-size: 19px; color: var(--accent-h); text-decoration: none; }
-    .btn { display: inline-block; text-decoration: none; font-weight: 600; font-size: 14px; padding: 9px 18px; border-radius: 8px; background: var(--accent); color: #051005; margin-left: auto; }
-    .btn { transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
-    .btn:hover { background: var(--accent-h); transform: translateY(-2px) scale(1.04); box-shadow: 0 8px 26px rgba(34,197,94,0.35); }
-    footer .reddit-icon { transition: transform .2s ease, filter .2s; }
-    footer .reddit-icon:hover { transform: scale(1.25) rotate(-8deg); filter: drop-shadow(0 0 6px rgba(255,69,0,.6)); }
+    header.top .wrap { max-width: 1040px; display: flex; align-items: center; gap: 12px; height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.2px;
+      color: var(--text); text-decoration: none; margin-right: auto; }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-ink);
+      display: grid; place-items: center; font-size: 13px; font-weight: 700; letter-spacing: -0.5px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 14px;
+      padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; line-height: 1.2;
+      transition: background-color .15s ease, border-color .15s ease; }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { background: var(--accent-h); }
+    .btn-ghost { border-color: var(--border); color: var(--text); background: var(--surface); }
+    .btn-ghost:hover { border-color: var(--border-h); background: var(--surface2); }
+
     article { padding: 56px 0 72px; }
-    article h1 { font-size: 32px; letter-spacing: -0.6px; }
-    article .updated { color: var(--muted); font-size: 13px; margin-top: 4px; }
-    article h2 { font-size: 18px; margin: 36px 0 10px; }
-    article p, article li { color: var(--text2); font-size: 15px; }
+    article h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.8px; line-height: 1.15; }
+    article .updated { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    article h2 { font-size: 18px; font-weight: 600; margin: 40px 0 10px; }
+    article p, article li { color: var(--text2); }
     article p + p { margin-top: 10px; }
     article ul { margin: 8px 0 0 20px; display: flex; flex-direction: column; gap: 6px; }
-    article strong { color: var(--text); }
-    .callout { background: rgba(241,196,15,0.07); border: 1px solid rgba(241,196,15,0.3); border-radius: 12px; padding: 18px 20px; margin-top: 26px; }
+    article strong { color: var(--text); font-weight: 600; }
+    .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+      border-radius: 10px; padding: 18px 20px; margin-top: 28px; }
     .callout p { color: var(--text); }
     table.data { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
-    table.data th, table.data td { text-align: left; padding: 9px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+    table.data th, table.data td { text-align: left; padding: 10px; border-top: 1px solid var(--border); vertical-align: top; }
     table.data th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
     table.data td { color: var(--text2); }
     table.data td:first-child { color: var(--text); white-space: nowrap; }
+
     footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
-    footer .wrap { max-width: 980px; display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
-    footer a { color: var(--text2); }
-    @media (max-width: 640px) { article h1 { font-size: 26px; } table.data td:first-child { white-space: normal; } }
-      footer .links { display: flex; align-items: center; gap: 8px; }
-    footer .reddit-icon { display: inline-flex; opacity: .85; }
-    footer .reddit-icon:hover { opacity: 1; }
+    footer .wrap { max-width: 1040px; display: flex; gap: 16px 24px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    footer nav { display: flex; gap: 20px; flex-wrap: wrap; }
+    footer a { color: var(--text2); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+    @media (max-width: 640px) {
+      .wrap { padding: 0 16px; }
+      article h1 { font-size: 27px; }
+      table.data td:first-child { white-space: normal; }
+      header .btn-ghost .label { display: none; }
+    }
   </style>
 </head>
 <body>
 {% set sub = subreddit or 'loancentral' %}
+{% set sub_url = 'https://www.reddit.com/r/' ~ sub %}
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="/">LoanCentral</a>
+    <a class="brand" href="/"><span class="brand-mark">LC</span>LoanCentral</a>
+    <a class="btn btn-ghost" href="{{ sub_url }}" target="_blank" rel="noopener" aria-label="r/{{ sub }} on Reddit"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#ff4500"/><ellipse cx="10" cy="11.6" rx="5.2" ry="3.6" fill="#fff"/><circle cx="14.6" cy="8.4" r="1.2" fill="#fff"/><circle cx="5.4" cy="8.4" r="1.2" fill="#fff"/><circle cx="13.4" cy="4.6" r="1" fill="#fff"/><path d="M10 8 L11 4.4 L13.4 4.6" stroke="#fff" stroke-width=".8" fill="none"/><circle cx="8.1" cy="11" r=".8" fill="#ff4500"/><circle cx="11.9" cy="11" r=".8" fill="#ff4500"/><path d="M8 13.2 Q10 14.4 12 13.2" stroke="#ff4500" stroke-width=".7" fill="none"/></svg><span class="label">r/{{ sub }}</span></a>
     {% if session.get('username') %}
-      <a class="btn" href="{{ url_for('home') }}">Dashboard</a>
+      <a class="btn btn-primary" href="{{ url_for('home') }}">Dashboard</a>
     {% else %}
-      <a class="btn" href="{{ url_for('login') }}">Sign in</a>
+      <a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>
     {% endif %}
   </div>
 </header>
@@ -64,7 +87,12 @@
 <footer>
   <div class="wrap">
     <div>LoanCentral keeps records only. It doesn't lend, hold or send money.</div>
-    <div class="links"><a class="reddit-icon" href="https://www.reddit.com/r/{{ sub }}" target="_blank" rel="noopener" title="r/{{ sub }} on Reddit" aria-label="r/{{ sub }} on Reddit"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="#ff4500"/><ellipse cx="10" cy="11.6" rx="5.2" ry="3.6" fill="#fff"/><circle cx="14.6" cy="8.4" r="1.2" fill="#fff"/><circle cx="5.4" cy="8.4" r="1.2" fill="#fff"/><circle cx="13.4" cy="4.6" r="1" fill="#fff"/><path d="M10 8 L11 4.4 L13.4 4.6" stroke="#fff" stroke-width=".8" fill="none"/><circle cx="8.1" cy="11" r=".8" fill="#ff4500"/><circle cx="11.9" cy="11" r=".8" fill="#ff4500"/><path d="M8 13.2 Q10 14.4 12 13.2" stroke="#ff4500" stroke-width=".7" fill="none"/></svg></a> &middot; <a href="{{ url_for('terms') }}">Terms</a> &middot; <a href="{{ url_for('privacy') }}">Privacy</a> &middot; <a href="mailto:loancentral08@gmail.com">Contact</a></div>
+    <nav>
+      <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a>
+      <a href="{{ url_for('terms') }}">Terms</a>
+      <a href="{{ url_for('privacy') }}">Privacy</a>
+      <a href="mailto:loancentral08@gmail.com">Contact</a>
+    </nav>
   </div>
 </footer>
 </body>
