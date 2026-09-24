@@ -11,7 +11,7 @@ PostgreSQL database, with Reddit faked. Every step below passed there
 itself and your live data since June, and that's what your launch-day test is
 for.
 
-Code: branch `refactor/dashboard-authoritative` (Render deploys `upgrade/tested-bot-core`; see E).
+Code: branch `refactor/dashboard-authoritative` (Render deploys `upgrade/tested-bot-core`; see F).
 
 ---
 
@@ -67,7 +67,8 @@ database lines are the same values. Then check each line below:
 | `DASHBOARD_URL` | `https://loancentral-dashboard.onrender.com` | bot comments link to it; 2.0 refuses to start without it |
 | `SECRET_KEY` | a long random string, set once, never changed | signs dashboard logins; changing it signs everyone out |
 | `API_KEY` | another long random string | an emergency admin key; `changeme` or blank switches it off |
-| `REQUIRE_LENDER_FLAIR` | `false` | lenders are verified in LoanCentral, not by flair |
+| `LENDER_FLAIR_TEXT` | `Verified Lender` (the default) | the flair that grants lender commands; exact text, commas for several |
+| `LENDER_FLAIR_TEMPLATE_ID` | optional: the lender flair template's ID | when set, only that mod-only template counts, not the text |
 | `REDDIT_SYNC_IN_BOT` | `true` | after each command the bot sends queued Reddit updates (funded flair and comment) straight away, instead of waiting for step 8's schedule. Leave it out to keep Reddit updates manual |
 | `REDDIT_FUNDED_FLAIR` | optional, default `FUNDED` | the flair text set on funded posts |
 
@@ -85,7 +86,10 @@ lenders. You'll set them in step 5, so decide now:
 
 - your own username → admin
 - your moderators → mod
-- the lenders who hold the Verified Lender flair today → verified lender
+- verified lenders: **nothing to list.** Anyone with the lender flair is
+  let into lender commands and recorded as verified the first time they use
+  one. Only list lenders who should use the **dashboard** before they've used
+  the bot.
 
 To see everyone who has ever lent (run in the new folder once the settings
 file exists; this only reads):
@@ -97,7 +101,20 @@ python scripts/bootstrap_roles.py --list-lenders
 Put the verified lenders in a text file, one username per line, for example
 `verified.txt`.
 
-### E. Put the 2.0 dashboard on Render, and tidy its settings
+### E. Lock down the lender flair (Reddit)
+
+The lender flair now grants lender commands, so check in the subreddit's mod
+tools → **User flair**:
+
+- the lender flair template is **mod only** (users can't pick it);
+- **"Allow users to assign their own flair"** is off, or at least no template
+  lets users type free text (otherwise anyone could type "Verified Lender").
+
+Optionally copy the template's ID into `LENDER_FLAIR_TEMPLATE_ID` (step C) so
+only that template counts. The bot must also stay a **moderator with the
+flair permission** (it sets FUNDED/REPAID flair).
+
+### F. Put the 2.0 dashboard on Render, and tidy its settings
 
 Render deploys the branch `upgrade/tested-bot-core`; 2.0 is on
 `refactor/dashboard-authoritative`. Until that branch is merged and pushed,

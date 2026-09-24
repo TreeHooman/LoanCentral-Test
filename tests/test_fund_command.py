@@ -35,41 +35,6 @@ class FundCommandTests(unittest.TestCase):
         self.assertIn("1700001234", comment.replies[0])
         self.assertIn("$paid_with_id 1700001234", comment.replies[0])
 
-    def test_non_verified_lender_is_rejected(self):
-        comment, _get_req, fund_req = self.run_fund_command(
-            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=False
-        )
-
-        fund_req.assert_not_called()
-        self.assertIn("verification process", comment.replies[0])
-
-    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
-        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
-            comment, _get_req, fund_req = self.run_fund_command(
-                "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
-            )
-
-        fund_req.assert_not_called()
-        self.assertIn("Verified Lender flair", comment.replies[0])
-
-    def test_missing_flair_is_allowed_when_gate_disabled(self):
-        # Default posture: the DB is the source of truth (docs/SECURITY.md rule 2).
-        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
-            comment, _get_req, fund_req = self.run_fund_command(
-                "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=True, flair_text=""
-            )
-
-        fund_req.assert_called()
-        self.assertNotIn("Verified Lender flair", comment.replies[0])
-
-    def test_flair_without_db_verification_is_rejected(self):
-        comment, _get_req, fund_req = self.run_fund_command(
-            "$fund REQ-0001 125 USD 2026-06-30", is_verified_lender=False, flair_text="Verified Lender"
-        )
-
-        fund_req.assert_not_called()
-        self.assertIn("verification process", comment.replies[0])
-
     def test_currency_mismatch_is_rejected(self):
         comment = FakeComment(body="$fund REQ-0001 125 CAD 2026-06-30", author_name="lender")
         fund_command = importlib.import_module("commands.fund_command")

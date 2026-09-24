@@ -51,28 +51,6 @@ class LoanCommandTests(unittest.TestCase):
         self.assertIn("$unpaid", comment.replies[0])
         self.assertIn("$refunded", comment.replies[0])
 
-    def test_non_verified_lender_is_rejected(self):
-        fake_db = FakeDb(verified_lenders=[])
-        comment = run_loan_command(fake_db, "$loan 50 USD u/borrower")
-
-        self.assertEqual(len(fake_db.loans), 0)
-        self.assertIn("lender verification process", comment.replies[0])
-
-    def test_verified_lender_without_flair_is_rejected_when_gate_enabled(self):
-        fake_db = FakeDb()
-        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": "1"}):
-            comment = run_loan_command(fake_db, "$loan 50 USD u/borrower", flair_text="")
-
-        self.assertEqual(len(fake_db.loans), 0)
-        self.assertIn("Verified Lender flair", comment.replies[0])
-
-    def test_missing_flair_is_allowed_when_gate_disabled(self):
-        fake_db = FakeDb()
-        with patch.dict(os.environ, {"REQUIRE_LENDER_FLAIR": ""}):
-            comment = run_loan_command(fake_db, "$loan 50 USD u/borrower", flair_text="")
-
-        self.assertEqual(len(fake_db.loans), 1)
-
     def test_lender_cannot_loan_to_themselves(self):
         fake_db = FakeDb()
         comment = run_loan_command(fake_db, "$loan 50 USD u/lender", author_name="lender")

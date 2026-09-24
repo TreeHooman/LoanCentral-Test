@@ -12,16 +12,25 @@ Do not implement Reddit OAuth for dashboard login. Auth is deferred by design
 (lender API keys + borrower OTP); OAuth is revisited only after the dashboard
 is complete, as an explicit decision.
 
-### 2. The database is the source of truth for permissions — never Reddit flair
+### 2. The database records permissions; on Reddit, the lender flair grants lender commands
 Roles (`users.role`: borrower/lender/mod/admin) and verified-lender status live
-in the DB. Reddit flair is display-only and user-influencable; never read it to
-grant permissions.
+in the DB, and every service re-checks them there.
+
+**Exception, by owner decision (2026-09-23):** on Reddit, the subreddit's lender
+flair is what grants lender bot commands (`commands/lender_gate.py`). A flaired
+commenter is recorded as a verified lender in the DB (audited, granted by
+`reddit-flair`); anyone without the flair is ignored. Flair is otherwise never
+read for permissions — not for mod/admin, and not on the dashboard.
+
+This makes the subreddit's flair settings part of the security boundary. The
+lender flair must be a **mod-only** template, and users must not be able to
+edit their flair text into "Verified Lender" (or set `LENDER_FLAIR_TEMPLATE_ID`
+so only the template counts). Losing the flair does not revoke DB
+verification; a mod revokes that on the dashboard.
 
 Because the bot sees a Reddit handle and the DB is keyed on the dashboard
 username, resolve identity through `services.resolve_user_identity` rather than
 comparing names directly — a raw comparison silently denies linked accounts.
-The optional flair gate (`REQUIRE_LENDER_FLAIR`) may only ever restrict, never
-grant, and must fail open when the flair cannot be read.
 
 ### 3. No production-credential changes without permission
 `.env` points at the live Render Postgres. Never rotate, edit, or copy prod

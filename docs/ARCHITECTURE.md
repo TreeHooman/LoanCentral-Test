@@ -31,11 +31,11 @@ Browser / API ────────┘
   a bot command means adding one file, no `main.py` edits.
 - Lender-only commands (`$loan`, `$fund`, `$paid_with_id`, `$unpaid`,
   `$refund`) call `commands/lender_gate.require_verified_lender` first.
-  DB `verified_lender` is the only granting gate. The Reddit flair check is an
-  optional extra restriction behind `REQUIRE_LENDER_FLAIR=1`, off by default:
-  reading flair needs the bot to hold the `flair` mod permission, so losing mod
-  status denied every lender at once. Even when enabled it fails open — a flair
-  lookup that errors keeps the DB decision rather than locking the lender out.
+  The subreddit's lender flair grants them (owner decision 2026-09-23, see
+  SECURITY.md rule 2): the flair is read from the comment itself (no API
+  call), a flaired commenter is recorded as verified in the DB on first use
+  (audited), and anyone without it is ignored silently. If the flair can't be
+  read at all, the DB `verified_lender` record decides instead.
 - **Identity**: the bot only ever knows a Reddit handle, while `user_roles` is
   keyed on the dashboard username and links the two via `reddit_username`.
   All bot-side permission and loan lookups go through
