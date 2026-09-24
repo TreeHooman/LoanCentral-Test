@@ -31,7 +31,11 @@ def redirect_uri():
     explicit = (os.getenv("GOOGLE_REDIRECT_URI") or "").strip()
     if explicit:
         return explicit
-    base = (os.getenv("DASHBOARD_URL") or "").strip().rstrip("/")
+    # Same default as the bot's links: Google needs an absolute address, and a
+    # missing DASHBOARD_URL produced "/auth/google/callback", which it rejects.
+    from bot_messages import DASHBOARD_URL
+    base = ((os.getenv("DASHBOARD_URL") or "").strip() or DASHBOARD_URL
+            or "https://loancentral.net").rstrip("/")
     return f"{base}/auth/google/callback"
 
 
