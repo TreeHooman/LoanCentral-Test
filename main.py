@@ -173,6 +173,21 @@ def init_database_fallback(conn):
         conn.close()
 
 # Dynamic command loading system
+class _CommandComment:
+    """A comment whose body has been normalized (`!fund` -> `$fund`).
+
+    Everything else — reply(), author, submission, subreddit — is the real
+    comment, so commands behave exactly as they would on the original.
+    """
+
+    def __init__(self, comment, body):
+        self._comment = comment
+        self.body = body
+
+    def __getattr__(self, name):
+        return getattr(self._comment, name)
+
+
 class CommandManager:
     def __init__(self):
         self.commands = {}
@@ -240,6 +255,7 @@ class CommandManager:
                     trigger = getattr(module, 'COMMAND_TRIGGER', f"$unknown")
                     
                     self.commands[trigger.lower()] = process_func
+                    self._bang_re = None  # rebuilt for the new command list
                     logger.info(f"Loaded command: {trigger} from {module_name} using function {process_func.__name__}")
                 else:
                     logger.warning(f"No suitable process function found in {module_name}. Tried: {possible_func_names}")
@@ -265,17 +281,44 @@ class CommandManager:
         ]
         return "\n".join(lines).lower()
 
+    def _bang_pattern(self):
+        """`!name` for every loaded `$name` command, longest names first."""
+        if getattr(self, "_bang_re", None) is None:
+            names = sorted((t[1:] for t in self.commands if t.startswith("$")),
+                           key=len, reverse=True)
+            self._bang_re = re.compile(
+                r"(?<![\w$!])!(" + "|".join(map(re.escape, names)) + r")(?!\w)",
+                re.IGNORECASE) if names else None
+        return self._bang_re
+
+    def normalize_prefix(self, text):
+        """Accept `!command` as well as `$command`, for every command.
+
+        Only a `!` that starts a known command word counts, so "great job!" or
+        "wow!fund" are left alone.
+        """
+        pattern = self._bang_pattern()
+        return pattern.sub(r"$\1", text) if (pattern and text) else text
+
+    @staticmethod
+    def _has_trigger(trigger, text):
+        # Whole command word only: "$logi" must not fire inside "$login".
+        return re.search(re.escape(trigger) + r"(?!\w)", text) is not None
+
     def process_comment(self, comment):
         """Process a comment and check if it matches any commands"""
         bot_username = (os.getenv("REDDIT_USERNAME") or "").lower()
         if comment.author is None or comment.author.name.lower() == bot_username:
             return
         
-        body_lower = self._commandable_text(comment.body)
+        body_lower = self.normalize_prefix(self._commandable_text(comment.body))
+        normalized = self.normalize_prefix(comment.body)
+        if normalized != comment.body:
+            comment = _CommandComment(comment, normalized)
 
         # Check each command trigger
         for trigger, command_func in self.commands.items():
-            if trigger in body_lower:
+            if self._has_trigger(trigger, body_lower):
                 try:
                     if self._is_rate_limited(comment.author.name, trigger):
                         logger.info(f"Rate limited command {trigger} from user {comment.author.name}")

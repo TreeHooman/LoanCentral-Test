@@ -17,6 +17,8 @@ def process_help_command(comment):
 
 The bot tracks loans. Everything else (history, health scores, stats, mod tools) is on the **[dashboard]({DASHBOARD_URL})**.
 
+*Every command works with `!` as well as `$` — `!fund` is the same as `$fund`.*
+
 ---
 
 ## Lender Commands

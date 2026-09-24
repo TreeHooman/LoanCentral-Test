@@ -268,3 +268,42 @@ class BotQueueDrainTests(RealDBTestCase):
         with patch.object(self.main, "drain_reddit_queue_soon") as drain:
             self.main.command_manager.process_comment(FakeCommandComment("$help", "borrower"))
         drain.assert_called_once()
+
+
+class BangPrefixTests(RealDBTestCase):
+    """`!command` works exactly like `$command`, for every command."""
+
+    def setUp(self):
+        super().setUp()
+        import main
+        self.main = main
+        self.main.command_manager.recent_commands.clear()
+        self.make_user("lender", role="lender", verified_lender=True)
+        self.make_user("borrower", role="borrower")
+
+    post = BotEndToEndTests.post
+    command = BotEndToEndTests.command
+    request_row = BotEndToEndTests.request_row
+
+    def test_bang_fund_and_bang_paid_work_end_to_end(self):
+        self.post("bang1", "[REQ] ($150) (#Denver, CO, USA) (Repay $180) (2027-10-15)")
+        request_id = self.request_row("bang1")[0]
+        reply = self.command(f"!fund {request_id}", "lender")
+        self.assertEqual(self.request_row("bang1")[1], "funded", reply.replies)
+        loan_id = self.query(
+            "SELECT l.loan_id FROM loans l JOIN loan_requests r ON r.funded_loan_id = l.id "
+            "WHERE r.request_id = %s", (request_id,))[0][0]
+        self.main.command_manager.recent_commands.clear()
+        self.command(f"!paid_with_id {loan_id} 150 USD", "lender")
+        status = self.query("SELECT status FROM loans WHERE loan_id = %s", (loan_id,))[0][0]
+        self.assertEqual(status, "repaid")
+
+    def test_bang_help_replies(self):
+        self.assertEqual(len(self.command("!help", "borrower").replies), 1)
+
+    def test_an_exclamation_in_normal_text_is_not_a_command(self):
+        self.assertEqual(self.command("thanks, great job!help is on the way", "borrower").replies, [])
+
+    def test_a_longer_word_does_not_fire_a_shorter_command(self):
+        # "$logi" must not fire inside "$login" (or "$logins").
+        self.assertEqual(self.command("$logins are coming", "borrower").replies, [])
