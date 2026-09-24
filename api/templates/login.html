@@ -44,6 +44,7 @@
     .key-login { margin-top: 14px; }
     .key-login summary { cursor: pointer; color: var(--muted); font-size: 12px; text-align: center; list-style: none; margin-bottom: 10px; }
     .key-login summary::-webkit-details-marker { display: none; }
+    .key-login[open] summary { color: var(--text2); font-weight: 600; }
     .btn-dev { display: block; text-align: center; width: 100%; padding: 10px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; text-decoration: none; transition: all 0.15s; }
     .btn-dev:hover { border-color: var(--accent); color: var(--accent-h); }
     .dev-badge { display: inline-block; background: rgba(241,196,15,0.15); color: var(--yellow); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; vertical-align: middle; margin-left: 6px; }
@@ -100,8 +101,10 @@
       The bot will DM you a link to set up your account.
     </div>
 
-    <details class="key-login">
-    <summary>Have a lender key?</summary>
+    {# Until Google sign-in is configured the key is the only way in, so it is
+       shown open with a plain heading instead of a toggle. #}
+    <details class="key-login" {% if not google_ready %}open{% endif %}>
+    <summary>{% if google_ready %}Have a lender key?{% else %}Sign in with your lender key{% endif %}</summary>
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
       <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"

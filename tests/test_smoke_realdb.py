@@ -298,3 +298,23 @@ class LoginPageTests(RealDBTestCase):
         with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "", "GOOGLE_CLIENT_SECRET": ""}):
             html = self._render(is_dev=False)
         self.assertNotIn("Sign in with Google", html)
+
+
+class LoginWithoutGoogleTests(RealDBTestCase):
+    """Before Google is configured the key form is the way in: shown, not tucked away."""
+
+    def test_key_form_is_open_until_google_is_configured(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "", "GOOGLE_CLIENT_SECRET": ""}):
+            html = self.client.get("/login").get_data(as_text=True)
+        self.assertIn('<details class="key-login" open>', html)
+        self.assertIn("Sign in with your lender key", html)
+
+    def test_key_form_is_tucked_away_once_google_is_configured(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "x", "GOOGLE_CLIENT_SECRET": "y"}):
+            html = self.client.get("/login").get_data(as_text=True)
+        self.assertIn('<details class="key-login" >', html)
+        self.assertIn("Have a lender key?", html)
