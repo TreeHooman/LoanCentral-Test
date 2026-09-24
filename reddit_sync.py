@@ -157,10 +157,36 @@ def _payload(action):
         return {}
 
 
+def _loan_already_repaid(loan_id):
+    """True when the loan is repaid (by public or internal id). Errors -> False."""
+    if not loan_id:
+        return False
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM loans WHERE loan_id = %s OR CAST(id AS TEXT) = %s",
+                    (str(loan_id), str(loan_id)))
+        row = cur.fetchone()
+        return bool(row) and row[0] == "repaid"
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
 def apply_flair_sync(action, reddit):
     data = _payload(action)
     post_id = data.get("reddit_post_id")
     flair_text = data.get("flair_text")
+    from services import REPAID_FLAIR_TEXT
+    if flair_text and flair_text != REPAID_FLAIR_TEXT and _loan_already_repaid(data.get("loan_id")):
+        # A FUNDED change that failed and is being retried after the loan was
+        # repaid: sending it now would overwrite REPAID. Done, nothing to send.
+        logger.info(f"Skipping stale {flair_text!r} flair for repaid loan {data.get('loan_id')}")
+        return True, None, False
     # The stored subreddit is only context for a human reading the queue: the
     # submission already knows which subreddit it belongs to, so requiring it
     # here would strand actions queued before SUBREDDITS was configured.
@@ -176,16 +202,19 @@ def apply_flair_sync(action, reddit):
         return False, str(e), _is_gone(e)
 
 
-def apply_funded_comment(action, reddit):
-    """Edit the bot's existing request comment, or reply if there isn't one.
+def apply_status_comment(action, reddit):
+    """Add a status message ("Funded by", "Repaid") to the bot's request comment.
 
-    Editing is preferred: it costs the same one API call, keeps the thread
-    tidy, and cannot produce a second "Funded by" comment if this is retried.
+    Edits the bot's existing comment on the post, or replies to the post when
+    there isn't one (a loan recorded with $loan). Editing is preferred: it
+    costs the same one API call, keeps the thread tidy, and cannot produce a
+    second copy of the message if this is retried.
     """
     data = _payload(action)
     body = data.get("body")
+    kind = action.get("action_type") or "status_comment"
     if not body:
-        return False, "funded_comment has no body", True
+        return False, f"{kind} has no body", True
     comment_id = data.get("reddit_comment_id")
     post_id = data.get("reddit_post_id")
     try:
@@ -199,14 +228,18 @@ def apply_funded_comment(action, reddit):
         if post_id:
             reddit.submission(id=post_id).reply(body)
             return True, None, False
-        return False, "funded_comment needs reddit_comment_id or reddit_post_id", True
+        return False, f"{kind} needs reddit_comment_id or reddit_post_id", True
     except Exception as e:
         return False, str(e), _is_gone(e)
 
 
+#: Kept for callers and tests that use the old name.
+apply_funded_comment = apply_status_comment
+
 HANDLERS = {
     "flair_sync": apply_flair_sync,
-    "funded_comment": apply_funded_comment,
+    "funded_comment": apply_status_comment,
+    "repaid_comment": apply_status_comment,
 }
 
 

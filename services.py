@@ -11,6 +11,7 @@ import time
 import logging
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -230,10 +231,14 @@ def get_recent_activity(limit: int = 50):
 
 def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: str = None,
                           request_id: str = None, subreddit: str = None, payload: dict = None,
-                          reason: str = None, created_by: str = None):
+                          reason: str = None, created_by: str = None, dedupe: bool = True):
     """
     Stage an outbound Reddit action for review/execution.
     This function never calls Reddit.
+
+    dedupe=True (the default) returns an identical queued action instead of
+    adding another. Pass False for an action that is distinct by content, such
+    as a REPAID flair change queued while the FUNDED one is still waiting.
     """
     allowed = {"reminder_comment", "lender_dm", "ban_user", "flair_sync", "funded_comment", "repaid_comment"}
     action_type = (action_type or "").strip().lower()
@@ -254,7 +259,7 @@ def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: st
                 payload_value = json.dumps(payload or {})
         cur.execute("""
             SELECT id, status FROM reddit_actions
-            WHERE action_type = %s
+            WHERE %s AND action_type = %s
               AND status = 'queued'
               AND COALESCE(target_user, '') = COALESCE(%s, '')
               AND COALESCE(loan_id, '') = COALESCE(%s, '')
@@ -262,6 +267,7 @@ def enqueue_reddit_action(action_type: str, target_user: str = None, loan_id: st
             ORDER BY created_at DESC
             LIMIT 1
         """, (
+            bool(dedupe),
             action_type,
             target_user.lower() if isinstance(target_user, str) else target_user,
             str(loan_id) if loan_id is not None else None,
@@ -384,6 +390,88 @@ def queue_request_funded_sync(request_id: str, loan_id: str, lender: str,
             queued.append(result)
     except Exception as e:
         logger.error(f"queue_request_funded_sync error: {e}", exc_info=True)
+    return queued
+
+
+#: What the bot sets a repaid loan's post flair to.
+REPAID_FLAIR_TEXT = os.getenv("REDDIT_REPAID_FLAIR", "REPAID")
+
+_POST_ID_IN_URL = re.compile(r"/comments/([a-z0-9]+)", re.IGNORECASE)
+
+
+def repaid_comment_body(lender: str, borrower: str, loan_id: str, amount, currency: str) -> str:
+    """The message that marks a loan repaid on Reddit, whichever interface repaid it."""
+    return (
+        f"**Repaid ✓** u/{borrower} has repaid u/{lender}.\n\n"
+        f"Loan ID: `{loan_id}` ({Decimal(str(amount)):.2f} {currency})\n\n"
+        "This loan is now recorded as repaid in LoanCentral."
+    )
+
+
+def queue_loan_repaid_sync(db_id):
+    """Stage the Reddit side of a fully repaid loan: REPAID flair and message.
+
+    Called by mark_repaid, the one function every repayment goes through
+    ($paid_with_id, the dashboard Paid button, bulk paid). Never calls Reddit.
+
+    The post is the request's post when the loan funded a request (the message
+    is added to the bot's own comment there), otherwise the thread the loan
+    was recorded in ($loan). A loan with no Reddit post gets nothing.
+    Not deduplicated: a loan becomes repaid once, and the REPAID flair must not
+    be swallowed by a FUNDED flair change still waiting in the queue.
+    Failures are logged and swallowed — the repayment is already committed.
+    """
+    conn = _get_db()
+    if not conn:
+        logger.error("queue_loan_repaid_sync: database connection failed")
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.loan_id, l.lender, l.borrower, l.amount, l.currency, l.original_thread,
+                   r.request_id, r.reddit_post_id, r.reddit_comment_id
+            FROM loans l
+            LEFT JOIN loan_requests r ON r.funded_loan_id = l.id
+            WHERE l.id = %s
+        """, (db_id,))
+        row = cur.fetchone()
+    except Exception as e:
+        logger.error(f"queue_loan_repaid_sync lookup failed: {e}", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    if not row:
+        return []
+    public_id, lender, borrower, amount, currency, thread, request_id, post_id, comment_id = row
+    loan_id = public_id or str(db_id)
+    if not post_id and thread:
+        found = _POST_ID_IN_URL.search(thread)
+        post_id = found.group(1) if found else None
+    if not post_id:
+        return []
+
+    subreddit = (os.getenv("PRIMARY_SUBREDDIT")
+                 or (os.getenv("SUBREDDITS", "").split(",")[0].strip() or None))
+    payload = {"request_id": request_id, "loan_id": loan_id, "lender": lender,
+               "reddit_post_id": post_id, "reddit_comment_id": comment_id}
+    queued = []
+    try:
+        for action_type, extra in (
+                ("flair_sync", {"flair_text": REPAID_FLAIR_TEXT}),
+                ("repaid_comment", {"body": repaid_comment_body(lender, borrower, loan_id,
+                                                                amount, currency)})):
+            result, error = enqueue_reddit_action(
+                action_type, target_user=lender, loan_id=loan_id, request_id=request_id,
+                subreddit=subreddit, payload={**payload, **extra},
+                reason=f"Loan {loan_id} repaid; reflect on the Reddit post.",
+                created_by=lender, dedupe=False,
+            )
+            if error:
+                logger.error(f"queue_loan_repaid_sync {action_type} failed: {error}")
+            else:
+                queued.append(result)
+    except Exception as e:
+        logger.error(f"queue_loan_repaid_sync error: {e}", exc_info=True)
     return queued
 
 
@@ -853,6 +941,8 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
             f"Status: {new_status}."
         )
         create_notification(lender, "payment_received", "Payment received", payment_msg)
+        if new_status == "repaid":
+            queue_loan_repaid_sync(db_id)
 
         return {
             "db_id": db_id,
