@@ -84,3 +84,20 @@ class AdminKeyTests(RealDBTestCase):
         self.assertEqual(signin.status_code, 200, signin.get_json())
         loans = self.client.get("/api/loans?lender=dash1").get_json()
         self.assertEqual([l["loan_id"] for l in loans], ["B-9"])
+
+    def test_a_key_sign_in_survives_closing_the_browser(self):
+        key = self.create(reddit_username="stayer").get_json()["key"]
+        self.logout()
+        signin = self.client.post("/auth/key", headers={"X-API-Key": key})
+        cookie = signin.headers.get("Set-Cookie", "")
+        # A browser-session cookie has no Expires; a lasting one does.
+        self.assertIn("Expires=", cookie)
+
+    def test_revoking_the_key_signs_a_lasting_session_out(self):
+        key = self.create(reddit_username="leaver").get_json()["key"]
+        self.logout()
+        self.client.post("/auth/key", headers={"X-API-Key": key})
+        self.assertEqual(self.client.get("/api/loans?lender=leaver").status_code, 200)
+        # Revoked while the lender is signed in (as an admin would, elsewhere).
+        self.execute("UPDATE lender_keys SET active = FALSE WHERE username = 'leaver'")
+        self.assertEqual(self.client.get("/api/loans?lender=leaver").status_code, 401)

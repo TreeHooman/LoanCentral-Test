@@ -696,6 +696,11 @@ def auth_key():
     session.clear()
     if pending_request:
         session["pending_fund_request"] = pending_request
+    # Stay signed in (Flask's default: 31 days) like every other sign-in;
+    # without this a lender re-pasted their key after every browser restart.
+    # Still safe: validate_key_session re-checks the key on every request, so a
+    # revoked key signs them out on their next click.
+    session.permanent = True
     session["username"] = username
     session["role"] = role or "lender"
     session["auth_method"] = "key"
