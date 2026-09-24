@@ -2926,9 +2926,9 @@ def api_get_reddit_link(username):
 @app.route("/api/admin/users/<username>/reddit-link", methods=["POST"])
 @require_mod_api
 def api_set_reddit_link(username):
-    from services import link_reddit_username, log_audit
+    from services import link_reddit_username, log_audit, normalize_username
     data = request.get_json() or {}
-    reddit_username = (data.get("reddit_username") or "").strip()
+    reddit_username = normalize_username(data.get("reddit_username"))
     actor = session.get("username", "api-key")
     ok, err = link_reddit_username(username, reddit_username, actor)
     if not ok:

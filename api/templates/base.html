@@ -22,6 +22,16 @@
     .nav-link { color: var(--text2); text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: all 0.15s; }
     .nav-link:hover { background: var(--surface2); color: var(--text); }
     .nav-link.active { background: var(--surface2); color: var(--text); }
+    .nav-main { display: flex; align-items: center; gap: 4px; min-width: 0; }
+    .nav-more { position: relative; }
+    .nav-more > summary { list-style: none; cursor: pointer; user-select: none; }
+    .nav-more > summary::-webkit-details-marker { display: none; }
+    .nav-more-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 210; min-width: 190px;
+      display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .nav-more-menu .nav-link { white-space: nowrap; }
+    .nav-more-sep { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+      padding: 8px 12px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
     .nav-right { display: flex; align-items: center; gap: 10px; }
     .role-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
     .role-mod      { background: rgba(241,196,15,0.15); color: var(--yellow); }
@@ -214,7 +224,10 @@
         flex-wrap: wrap;
       }
       .nav-brand { font-size: 16px; line-height: 30px; flex: 0 0 auto; min-height: 34px; }
+      .nav-main { order: 3; width: 100%; }
       .nav-links { order: 3; width: 100%; overflow-x: auto; padding-top: 2px; scrollbar-width: none; }
+      .nav-main .nav-links { order: 0; width: auto; flex: 1; min-width: 0; }
+      .nav-more-menu { left: auto; right: 0; }  /* More sits at the right edge */
       .nav-links::-webkit-scrollbar { display: none; }
       .nav-link { display: inline-flex; align-items: center; min-height: 36px; white-space: nowrap; }
       .nav-right { gap: 6px; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
@@ -644,20 +657,32 @@
 <nav>
   <a class="nav-brand" href="/">LoanCentral</a>
   {% if role in ['mod', 'admin'] %}
+  {# The everyday pages. Everything else lives under More, so nothing is lost. #}
+  <div class="nav-main">
   <div class="nav-links">
       {% if role == 'admin' %}
-      <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Admin View</a>
+      <a class="nav-link {% if request.endpoint == 'dashboard_admin' %}active{% endif %}" href="{{ url_for('dashboard_admin') }}">Dashboard</a>
       <a class="nav-link {% if request.endpoint in ('admin_lenders_page', 'admin_lender_profile_page') %}active{% endif %}" href="{{ url_for('admin_lenders_page') }}">Lenders</a>
-      <a class="nav-link {% if request.endpoint == 'admin_keys_page' %}active{% endif %}" href="{{ url_for('admin_keys_page') }}">🔑 Keys</a>
+      <a class="nav-link {% if request.endpoint == 'admin_keys_page' %}active{% endif %}" href="{{ url_for('admin_keys_page') }}">Keys</a>
+      {% else %}
+      <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Dashboard</a>
       {% endif %}
-      <a class="nav-link {% if request.endpoint == 'dashboard_mod' %}active{% endif %}" href="{{ url_for('dashboard_mod') }}">Mod View</a>
-      <a class="nav-link {% if request.endpoint == 'global_search_page' %}active{% endif %}" href="{{ url_for('global_search_page') }}">Search</a>
-      <a class="nav-link {% if request.endpoint == 'audit_log_page' %}active{% endif %}" href="{{ url_for('audit_log_page') }}">Audit Log</a>
       <a class="nav-link {% if request.endpoint == 'mod_queue_page' %}active{% endif %}" href="{{ url_for('mod_queue_page') }}">Queue</a>
-      <a class="nav-link {% if request.endpoint == 'community_health_page' %}active{% endif %}" href="{{ url_for('community_health_page') }}">Health</a>
-      <a class="nav-link {% if request.endpoint == 'admin_feedback_page' %}active{% endif %}" href="{{ url_for('admin_feedback_page') }}">Feedback</a>
-      <a class="nav-link {% if request.endpoint == 'dashboard_lender' %}active{% endif %}" href="{{ url_for('dashboard_lender') }}">Lender View</a>
-      <a class="nav-link {% if request.endpoint == 'dashboard_borrower' %}active{% endif %}" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
+      <a class="nav-link {% if request.endpoint == 'mod_moderation_page' %}active{% endif %}" href="{{ url_for('mod_moderation_page') }}">Bans &amp; Sync</a>
+  </div>
+  {% set more_pages = ['global_search_page', 'audit_log_page', 'community_health_page', 'admin_feedback_page', 'dashboard_lender', 'dashboard_borrower'] %}
+  <details class="nav-more">
+    <summary class="nav-link {% if request.endpoint in more_pages %}active{% endif %}">More &#9662;</summary>
+    <div class="nav-more-menu">
+      <a class="nav-link" href="{{ url_for('global_search_page') }}">Search</a>
+      <a class="nav-link" href="{{ url_for('audit_log_page') }}">Audit Log</a>
+      <a class="nav-link" href="{{ url_for('community_health_page') }}">Community Health</a>
+      <a class="nav-link" href="{{ url_for('admin_feedback_page') }}">Feedback Inbox</a>
+      <div class="nav-more-sep">Preview as</div>
+      <a class="nav-link" href="{{ url_for('dashboard_lender') }}">Lender View</a>
+      <a class="nav-link" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>
+    </div>
+  </details>
   </div>
   {% endif %}
   <div class="nav-right">
@@ -680,7 +705,9 @@
         </div>
       </div>
     </div>
+    {% if role not in ['mod', 'admin'] %}
     <a class="nav-link {% if request.endpoint == 'feedback_page' %}active{% endif %}" href="{{ url_for('feedback_page') }}" style="font-size:12px">Feedback</a>
+    {% endif %}
     <a class="btn-logout" href="{{ url_for('auth_logout') }}">Logout</a>
   </div>
 </nav>
@@ -941,6 +968,13 @@
   }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
   document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
+
+  // Close the nav's More menu on any click outside it.
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('details.nav-more[open]').forEach(d => {
+      if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+  });
 
   function escapeHtml(s) {
     if (s == null) return '';

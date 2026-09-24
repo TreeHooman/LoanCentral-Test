@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Audit Log — LoanCentral{% endblock %}
 {% block content %}
+<style>
+  .audit-details { font-size:12px; color:var(--text2); line-height:1.45; max-width:340px; overflow-wrap:anywhere; }
+  .audit-details .audit-key { color:var(--muted); }
+</style>
+
 <div class="section-header" style="margin-bottom:16px">
   <div><h2 class="section-title">Audit Log</h2></div>
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
@@ -109,6 +114,23 @@ function actionBadge(action) {
   return `<span style="background:${c}22;color:${c};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${action.replace(/_/g,' ')}</span>`;
 }
 
+// Details arrive as a JSON string (sometimes twice-encoded). Show them as short
+// "key: value" lines that wrap, escaped: values like notes are user-typed.
+function auditDetails(raw) {
+  let val = raw;
+  for (let i = 0; i < 2 && typeof val === 'string'; i++) {
+    try { val = JSON.parse(val); } catch (e) { break; }
+  }
+  if (val === null || val === undefined || val === '') return '';
+  if (typeof val !== 'object') {
+    return `<div class="audit-details">${escapeHtml(String(val))}</div>`;
+  }
+  const lines = Object.entries(val)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `<div><span class="audit-key">${escapeHtml(k.replace(/_/g, ' '))}:</span> ${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</div>`);
+  return lines.length ? `<div class="audit-details">${lines.join('')}</div>` : '';
+}
+
 function renderAudit(data) {
   const rows = data.rows || [];
   const total = data.total || 0;
@@ -127,21 +149,19 @@ function renderAudit(data) {
     let target = '<span style="color:var(--muted)">—</span>';
     if (r.target_id) {
       if (r.target_type === 'user')
-        target = `<a href="/dashboard/users/${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px">u/${r.target_id}</a>`;
+        target = `<a href="/dashboard/users/${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px">u/${escapeHtml(r.target_id)}</a>`;
       else if (r.target_type === 'loan')
-        target = `<a href="/dashboard/admin/search?q=${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px;font-family:monospace">loan ${r.target_id}</a>`;
+        target = `<a href="/dashboard/admin/search?q=${encodeURIComponent(r.target_id)}" style="color:var(--accent-h);font-size:12px;font-family:monospace">loan ${escapeHtml(r.target_id)}</a>`;
       else if (r.target_type === 'verification_application')
-        target = `<span style="color:var(--muted);font-size:12px">verification #${r.target_id}</span>`;
+        target = `<span style="color:var(--muted);font-size:12px">verification #${escapeHtml(r.target_id)}</span>`;
       else
-        target = `<span style="color:var(--muted);font-size:12px">${r.target_type || ''} #${r.target_id}</span>`;
+        target = `<span style="color:var(--muted);font-size:12px">${escapeHtml(r.target_type || '')} #${escapeHtml(r.target_id)}</span>`;
     }
-    const newVal = r.new_value_json
-      ? `<pre style="font-size:11px;color:var(--muted);margin:0;max-width:200px;overflow:auto">${JSON.stringify(r.new_value_json,null,1)}</pre>`
-      : '';
+    const newVal = auditDetails(r.new_value_json);
     html += `<tr>
       <td style="white-space:nowrap;font-size:12px">${ts}</td>
-      <td><a href="/dashboard/users/${r.actor_username}" style="color:var(--accent-h)">u/${r.actor_username}</a></td>
-      <td><span class="badge badge-${r.actor_role}">${r.actor_role}</span></td>
+      <td><a href="/dashboard/users/${encodeURIComponent(r.actor_username || '')}" style="color:var(--accent-h)">u/${escapeHtml(r.actor_username)}</a></td>
+      <td><span class="badge badge-${escapeHtml(r.actor_role)}">${escapeHtml(r.actor_role)}</span></td>
       <td>${actionBadge(r.action_type)}</td>
       <td>${target}</td>
       <td>${newVal}</td>
