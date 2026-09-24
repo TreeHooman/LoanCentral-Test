@@ -293,6 +293,7 @@ class CommandManager:
                     logger.info(f"Processing command {trigger} from user {comment.author.name}")
                     reddit_limiter.wait()
                     command_func(comment)
+                    drain_reddit_queue_soon()
                 except Exception as e:
                     logger.error(f"Error processing command {trigger}: {e}")
                     logger.error(traceback.format_exc())
@@ -396,6 +397,47 @@ def generate_user_info(username):
 
     return "\n\n".join(response)
 
+_TRUE = ("1", "true", "yes", "on")
+_drain_running = threading.Lock()
+
+
+def drain_reddit_queue_soon():
+    """Send queued Reddit updates now, in the background, if switched on.
+
+    The bot has just used the database, so Neon is awake anyway: draining the
+    queue here costs no extra compute, and a $fund's flair and "funded"
+    comment go out in seconds instead of waiting for the scheduled worker.
+    Loans funded on the dashboard still wait for the worker.
+
+    Off unless REDDIT_SYNC_IN_BOT=true: outbound Reddit writes from the queue
+    must be switched on explicitly (docs/SECURITY.md). A pass already running
+    here is not doubled; one running elsewhere is excluded by the advisory
+    lock in reddit_sync.run_once.
+    """
+    if (os.getenv("REDDIT_SYNC_IN_BOT") or "").strip().lower() not in _TRUE:
+        return None
+    if not _drain_running.acquire(blocking=False):
+        return None
+    thread = threading.Thread(target=_drain_reddit_queue, daemon=True)
+    thread.start()
+    return thread
+
+
+def _drain_reddit_queue():
+    try:
+        import reddit_sync
+        summary, error = reddit_sync.run_once(limit=25, live=True, reddit=reddit)
+        if error:
+            logger.info(f"Reddit queue not drained: {error}")
+        elif summary["considered"]:
+            logger.info(f"Reddit queue: {summary['sent']} sent, {summary['failed']} failed, "
+                        f"{summary['skipped']} skipped, {summary['unsupported']} left for mods")
+    except Exception as e:
+        logger.error(f"Reddit queue drain failed: {e}")
+    finally:
+        _drain_running.release()
+
+
 # Function to keep the bot alive
 def keep_alive():
     while True:
@@ -440,6 +482,7 @@ def post_monitor():
                 if "[req]" in post.title.lower() or "[pre]" in post.title.lower():
                     handle_new_post(post)
                     processed_posts.add(post.id)
+                    drain_reddit_queue_soon()
                     
                     if len(processed_posts) > 1000:
                         to_remove = list(processed_posts)[:100]

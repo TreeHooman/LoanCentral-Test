@@ -68,6 +68,7 @@ database lines are the same values. Then check each line below:
 | `SECRET_KEY` | a long random string, set once, never changed | signs dashboard logins; changing it signs everyone out |
 | `API_KEY` | another long random string | an emergency admin key; `changeme` or blank switches it off |
 | `REQUIRE_LENDER_FLAIR` | `false` | lenders are verified in LoanCentral, not by flair |
+| `REDDIT_SYNC_IN_BOT` | `true` | after each command the bot sends queued Reddit updates (funded flair and comment) straight away, instead of waiting for step 8's schedule. Leave it out to keep Reddit updates manual |
 | `REDDIT_FUNDED_FLAIR` | optional, default `FUNDED` | the flair text set on funded posts |
 
 Leave out `DASHBOARD_CLIENT_ID` and `DASHBOARD_CLIENT_SECRET`: Reddit login
@@ -198,9 +199,23 @@ keys to lenders and mods, and verify or revoke lenders later.
 
 ### 6. Start 2.0
 
-- the bot: `python main.py`. Its first log lines should include "Database
-  check finished". If they say statements were skipped, note them; the bot
-  still runs.
+- the bot, from the 2.0 folder: `python scripts\run_bot_forever.py`. It
+  starts `main.py` and starts it again if it ever stops (after 30 seconds,
+  waiting longer each time if it keeps failing straight away). A second copy
+  refuses to start. Its first log lines should include "Database check
+  finished". If they say statements were skipped, note them; the bot still
+  runs. What the supervisor did is in `bot_supervisor.log`.
+- to start it by itself whenever you sign in to Windows (Command Prompt, from
+  the 2.0 folder):
+
+  ```
+  schtasks /Create /TN "LoanCentral Bot" /SC ONLOGON /F /TR "\"python\" \"%CD%\scripts\run_bot_forever.py\""
+  ```
+
+  This needs the bot computer to sign in after a reboot (automatic sign-in,
+  or someone signing in). Remove it with
+  `schtasks /Delete /TN "LoanCentral Bot" /F`, and **never set it up on the
+  old bot's folder**.
 - the dashboard is already running on Render against Neon.
 
 ### 7. Test it yourself (sub still closed)
@@ -250,6 +265,10 @@ Every 30 minutes costs about 30 hours. Funded flair and comments can lag by up
 to 30 minutes; the loan itself is recorded instantly. Run the worker by hand
 when you want an update out sooner.
 
+With `REDDIT_SYNC_IN_BOT=true` (step C), updates from Reddit commands such as
+`$fund` go out within seconds; the schedule is what sends updates for loans
+funded on the dashboard.
+
 Only one live pass can run at a time, on any machine: a second one (a manual
 run during a scheduled one, say) sees "Another live sync pass is already
 running" and exits without sending anything.
@@ -263,7 +282,11 @@ Reddit commands still work, and they get their login key from a mod.
 
 ## If it goes wrong: rolling back
 
-1. Stop 2.0 (bot, and dashboard if it's running).
+1. Stop 2.0: close the bot's window (the supervisor restarts it otherwise),
+   and if you set up the sign-in task, run
+   `schtasks /Change /TN "LoanCentral Bot" /DISABLE` so it doesn't come back
+   at the next sign-in. Also disable the sync task:
+   `schtasks /Change /TN "LoanCentral Reddit Sync" /DISABLE`.
 2. Start the old bot from its untouched folder.
 3. Reopen the subreddit.
 

@@ -44,3 +44,4 @@ backups/
 # OS files
 .DS_Store
 Thumbs.db
+bot_supervisor.lock

@@ -192,3 +192,56 @@ class BotEndToEndTests(RealDBTestCase):
         count = self.query(
             "SELECT COUNT(*) FROM loans WHERE lower(borrower) = 'borrower'")[0][0]
         self.assertEqual(count, 1)
+
+
+class BotQueueDrainTests(RealDBTestCase):
+    """After a command the bot may send queued Reddit updates straight away."""
+
+    def setUp(self):
+        super().setUp()
+        import main
+        self.main = main
+        self.main.command_manager.recent_commands.clear()
+
+    def run_drain(self, env_value):
+        import os
+        import reddit_sync
+        from unittest.mock import patch
+        calls = []
+
+        def fake_run_once(**kwargs):
+            calls.append(kwargs)
+            return {"considered": 0, "sent": 0, "failed": 0, "skipped": 0, "unsupported": 0}, None
+
+        with patch.dict(os.environ, {"REDDIT_SYNC_IN_BOT": env_value}), \
+             patch.object(reddit_sync, "run_once", side_effect=fake_run_once):
+            thread = self.main.drain_reddit_queue_soon()
+            if thread is not None:
+                thread.join(5)
+        return calls
+
+    def test_off_unless_switched_on(self):
+        self.assertEqual(self.run_drain(""), [])
+        self.assertEqual(self.run_drain("false"), [])
+
+    def test_when_on_it_sends_live_with_the_bots_client(self):
+        calls = self.run_drain("true")
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["live"])
+        self.assertIs(calls[0]["reddit"], self.main.reddit)
+
+    def test_a_pass_already_running_is_not_doubled(self):
+        import os
+        from unittest.mock import patch
+        self.main._drain_running.acquire()
+        try:
+            with patch.dict(os.environ, {"REDDIT_SYNC_IN_BOT": "true"}):
+                self.assertIsNone(self.main.drain_reddit_queue_soon())
+        finally:
+            self.main._drain_running.release()
+
+    def test_a_command_triggers_a_drain(self):
+        from unittest.mock import patch
+        with patch.object(self.main, "drain_reddit_queue_soon") as drain:
+            self.main.command_manager.process_comment(FakeCommandComment("$help", "borrower"))
+        drain.assert_called_once()
