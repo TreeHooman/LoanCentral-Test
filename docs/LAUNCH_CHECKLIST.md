@@ -347,8 +347,10 @@ running" and exits without sending anything.
 
 ### 9. Reopen the subreddit and tell lenders
 
-A pinned post: lenders record loans on the dashboard with the request code,
-Reddit commands still work, and they get their login key from a mod.
+Follow [LAUNCH_PLAN.md](LAUNCH_PLAN.md) "0:50 — Go live": community type back
+to Public, the launch post (draft C) stickied with the FAQ comment (draft D),
+and the sidebar/wiki text (draft F). Everyone sets up their account with
+`!login` (no keys to hand out); lender keys stay as a backup.
 
 ---
 
