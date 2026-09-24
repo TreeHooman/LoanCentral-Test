@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS user_roles (
     perm_version INTEGER NOT NULL DEFAULT 0,
     reddit_username TEXT,
     reddit_username_linked_at TIMESTAMP,
-    reddit_username_linked_by TEXT
+    reddit_username_linked_by TEXT,
+    google_sub TEXT,          -- Google's permanent account ID (sign-in)
+    google_email TEXT,        -- display only
+    google_linked_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
@@ -334,3 +337,15 @@ CREATE TABLE IF NOT EXISTS lender_keys (
 
 CREATE INDEX IF NOT EXISTS idx_lender_keys_username ON lender_keys(username);
 CREATE INDEX IF NOT EXISTS idx_lender_keys_hash     ON lender_keys(key_hash);
+
+-- One-time links the bot DMs for `$login`: following one proves the Reddit
+-- name and lets the person connect a Google account (migration 017).
+CREATE TABLE IF NOT EXISTS account_setup_links (
+    id SERIAL PRIMARY KEY,
+    reddit_username TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_setup_links_user ON account_setup_links(reddit_username, created_at);

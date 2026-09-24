@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Create your account — LoanCentral</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
+      --accent: #5b6ef5; --accent-h: #7b8cff; --red: #e74c3c; --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { width: 100%; max-width: 440px; padding: 24px; }
+    .logo { text-align: center; margin-bottom: 28px; }
+    .logo a { font-size: 30px; font-weight: 800; color: var(--accent-h); letter-spacing: -1px; text-decoration: none; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; }
+    .card h1 { font-size: 20px; margin-bottom: 8px; }
+    .card p { color: var(--text2); font-size: 14px; line-height: 1.55; margin-bottom: 16px; }
+    .who { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-weight: 700; margin-bottom: 18px; }
+    .who span { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+    .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; background: #fff; color: #1f1f1f; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn-google:hover { background: #f1f3f4; }
+    .btn-google svg { width: 18px; height: 18px; }
+    .error { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); border-radius: 8px; padding: 12px 14px; font-size: 14px; margin-bottom: 16px; }
+    .note { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+    .note code, p code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; color: var(--accent-h); }
+    a.link { color: var(--accent-h); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="logo"><a href="/">LoanCentral</a></div>
+  <div class="card">
+    {% if error %}
+      <h1>This link can't be used</h1>
+      <div class="error">{{ error }}</div>
+      <p>Links from <code>$login</code> work once and expire after a short time. Comment <code>$login</code>
+        {% if subreddit %}on <a class="link" href="https://www.reddit.com/r/{{ subreddit }}">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}
+        and the bot will DM you a new one.</p>
+      <p><a class="link" href="{{ url_for('login') }}">Already set up? Sign in</a></p>
+    {% else %}
+      <h1>Create your LoanCentral account</h1>
+      <p>This link proves you are this Reddit account. Connect a Google account to it, and from now on you'll sign in with Google.</p>
+      <div class="who"><span>Reddit account</span>u/{{ reddit_name }}</div>
+      {% if google_ready %}
+      <form method="post" action="{{ url_for('auth_google_start') }}">
+        <input type="hidden" name="setup_token" value="{{ token }}" />
+        <button class="btn-google" type="submit">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>
+          Continue with Google
+        </button>
+      </form>
+      <p class="note">Only your Google account ID and email address are stored — never a password.
+        Already connected a Google account before? Continuing replaces it.</p>
+      {% else %}
+      <div class="error">Google sign-in isn't set up on this site yet. Ask a moderator.</div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

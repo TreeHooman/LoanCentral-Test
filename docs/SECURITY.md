@@ -32,6 +32,15 @@ Because the bot sees a Reddit handle and the DB is keyed on the dashboard
 username, resolve identity through `services.resolve_user_identity` rather than
 comparing names directly — a raw comparison silently denies linked accounts.
 
+**Dashboard sign-in (2026-09-24).** Reddit identity is proven by a one-time
+link the bot DMs to the account that commented `$login` (only that account can
+read its DMs). The link signs nobody in: it lets the person connect a Google
+account, stored by Google's permanent ID (`google_sub`), never the address
+alone. Sign-in is then Google only; a lost Google account is replaced by
+another `$login`. Links: single use, 30 minutes, 3 per account per hour, stored
+hashed. Sessions whose Google account was replaced end on their next request.
+This is not Reddit OAuth (rule 1): no Reddit token is ever requested.
+
 ### 3. No production-credential changes without permission
 `.env` points at the live Render Postgres. Never rotate, edit, or copy prod
 credentials (DB, `API_KEY`, `SECRET_KEY`, Reddit creds) without the owner's

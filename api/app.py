@@ -668,9 +668,7 @@ def home():
     if not session.get("username"):
         # Public front door: explains the site and sends lenders and borrowers
         # to their own sign-in, instead of dropping everyone on the key form.
-        subreddit = (os.getenv("PRIMARY_SUBREDDIT")
-                     or (os.getenv("SUBREDDITS", "").split(",")[0].strip()))
-        return render_template("home.html", subreddit=subreddit or None)
+        return render_template("home.html", subreddit=_primary_subreddit())
     role = session.get("role", "borrower")
     if role == "admin":
         return redirect(url_for("dashboard_admin"))
@@ -710,6 +708,133 @@ def auth_key():
     session["auth_method"] = "key"
     session["key_hash"] = _key_hash(key)
     return _json({"ok": True, "redirect": url_for("home")})
+
+
+# ---------------------------------------------------------------------------
+# Accounts: proven through Reddit ($login DM link), signed in with Google.
+# See accounts.py for the whole flow.
+# ---------------------------------------------------------------------------
+
+def _primary_subreddit():
+    return (os.getenv("PRIMARY_SUBREDDIT")
+            or (os.getenv("SUBREDDITS", "").split(",")[0].strip()) or None)
+
+
+@app.route("/account/setup/<token>")
+def account_setup_page(token):
+    """Where the $login DM lands. Shows who the link is for; signs no one in."""
+    from accounts import peek_setup_link
+    import google_auth
+    reddit_name, error = peek_setup_link(token)
+    return render_template("account_setup.html", token=token, reddit_name=reddit_name,
+                           error=error, google_ready=google_auth.configured(),
+                           subreddit=_primary_subreddit())
+
+
+@app.route("/auth/google/start", methods=["POST"])
+def auth_google_start():
+    """Send the browser to Google, for signing in or for finishing a setup link."""
+    import google_auth
+    from api.auth import check_rate_limit
+    if not google_auth.configured():
+        flash("Google sign-in isn't set up yet. Ask a moderator.", "error")
+        return redirect(url_for("login"))
+    if not check_rate_limit(request.remote_addr):
+        flash("Too many sign-in attempts. Please wait 15 minutes.", "error")
+        return redirect(url_for("login"))
+    state, verifier = google_auth.new_flow()
+    session["google_state"] = state
+    session["google_verifier"] = verifier
+    setup_token = (request.form.get("setup_token") or "").strip()
+    if setup_token:
+        session["setup_token"] = setup_token
+    else:
+        session.pop("setup_token", None)
+    return redirect(google_auth.authorize_url(state, verifier))
+
+
+@app.route("/auth/google/callback")
+def auth_google_callback():
+    import google_auth
+    from accounts import connect_google_account, consume_setup_link, find_account_by_google
+    from services import get_user_role, update_last_login
+
+    expected_state = session.pop("google_state", None)
+    verifier = session.pop("google_verifier", None)
+    setup_token = session.pop("setup_token", None)
+    if request.args.get("error"):
+        flash("Google sign-in was cancelled.", "error")
+        return redirect(url_for("login"))
+    if not expected_state or request.args.get("state") != expected_state or not verifier:
+        flash("That sign-in attempt expired. Please try again.", "error")
+        return redirect(url_for("login"))
+
+    account, error = google_auth.exchange_code(request.args.get("code", ""), verifier)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("login"))
+
+    if setup_token:
+        # Finishing a $login link: this is where the account is created (or its
+        # Google login replaced). The link is used up only now, once Google has
+        # answered, so a cancelled Google screen doesn't waste it.
+        reddit_name, error = consume_setup_link(setup_token)
+        if error:
+            flash(error, "error")
+            return redirect(url_for("login"))
+        username, error = connect_google_account(reddit_name, account["sub"], account.get("email"))
+        if error:
+            flash(error, "error")
+            return redirect(url_for("login"))
+    else:
+        username, _ = find_account_by_google(account["sub"])
+        if not username:
+            sub = _primary_subreddit()
+            where = f"on r/{sub}" if sub else "on the subreddit"
+            flash(f"No LoanCentral account uses that Google account yet. "
+                  f"Comment $login {where} and follow the link the bot sends you.", "error")
+            return redirect(url_for("login"))
+
+    role, _ = get_user_role(username)
+    update_last_login(username)
+    session.clear()
+    session.permanent = True
+    session["username"] = username
+    session["role"] = role or "borrower"
+    session["auth_method"] = "google"
+    session["google_sub"] = account["sub"]
+    session["login_at"] = datetime.now().isoformat()
+    return redirect(url_for("home"))
+
+
+@app.before_request
+def validate_google_session():
+    """End a Google session whose Google account is no longer the one connected.
+
+    Reconnecting through a new $login link replaces the Google account; the old
+    one's sessions stop here on their next request. Also keeps the role fresh.
+    """
+    if session.get("auth_method") != "google" or request.path.startswith("/static/"):
+        return None
+    from services import _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Unable to verify session."}, 503)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT role FROM user_roles WHERE lower(username) = lower(%s) AND google_sub = %s",
+                    (session.get("username", ""), session.get("google_sub", "")))
+        row = cur.fetchone()
+    except Exception:
+        return _json({"error": "Unable to verify session."}, 503)
+    finally:
+        conn.close()
+    if not row:
+        session.clear()
+        if request.path.startswith("/api/"):
+            return _json({"error": "Session ended. Sign in again."}, 401)
+        return redirect(url_for("login"))
+    session["role"] = row[0]
 
 
 @app.route("/dashboard/admin/keys")
@@ -1133,7 +1258,10 @@ def login():
     if session.get("username"):
         return redirect(url_for("home"))
     from api.auth import oauth_configured
-    return render_template("login.html", oauth_ready=oauth_configured(), is_dev=IS_DEV)
+    import google_auth
+    return render_template("login.html", oauth_ready=oauth_configured(), is_dev=IS_DEV,
+                           google_ready=google_auth.configured(),
+                           subreddit=_primary_subreddit())
 
 
 @app.route("/auth/reddit")

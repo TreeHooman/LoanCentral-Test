@@ -69,6 +69,16 @@ $dispute [paid_id]
 
 ---
 
+## Everyone
+
+**Set up or recover your dashboard account**
+```
+$login
+```
+*The bot DMs you a one-time link. Open it and connect a Google account; after that, sign in with Google.*
+
+---
+
 **Dashboard:** {DASHBOARD_URL} - view history, health score, active loans.
 **Need help?** Contact the moderators.
 """

@@ -64,7 +64,7 @@ database lines are the same values. Then check each line below:
 | `PRIMARY_SUBREDDIT` | `loancentral` | where "funded" updates are posted |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | the **Neon** values, copied from `.env` on the build machine (not the old bot's) | the shared database; the old bot keeps its own |
 | `LOANCENTRAL_ENV` | `prod` | turns off the developer shortcuts |
-| `DASHBOARD_URL` | `https://loancentral-dashboard.onrender.com` | bot comments link to it; 2.0 refuses to start without it |
+| `DASHBOARD_URL` | `https://loancentral.net` | bot comments link to it; 2.0 refuses to start without it |
 | `SECRET_KEY` | a long random string, set once, never changed | signs dashboard logins; changing it signs everyone out |
 | `API_KEY` | another long random string | an emergency admin key; `changeme` or blank switches it off |
 | `LENDER_FLAIR_TEXT` | `Verified Lender` (the default) | the flair that grants lender commands; exact text, commas for several |
@@ -114,6 +114,29 @@ Optionally copy the template's ID into `LENDER_FLAIR_TEMPLATE_ID` (step C) so
 only that template counts. The bot must also stay a **moderator with the
 flair permission** (it sets FUNDED/REPAID flair).
 
+### G. Custom domain and Google sign-in (one-time)
+
+**Domain: loancentral.net.** In Render → `loancentral-dashboard` → Settings →
+**Custom Domains** → add `loancentral.net` (and `www.loancentral.net`). Render
+shows the DNS records to create at your domain registrar; HTTPS is automatic
+once they resolve. The old `onrender.com` address keeps working.
+
+**Google sign-in.** Everyone signs in with Google after proving their Reddit
+name once with `$login` (the bot DMs them a setup link).
+
+1. Google Cloud Console → create a project → **APIs & Services → OAuth consent
+   screen**: External; app name LoanCentral; your email; scopes `openid` and
+   `email` only (no review needed for these). Publish it.
+2. **Credentials → Create credentials → OAuth client ID** → Web application.
+   Authorized redirect URI: `https://loancentral.net/auth/google/callback`.
+3. Put the client ID and secret into Render as `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET`.
+4. Test: comment `$login`, open the DM link, Continue with Google; sign out;
+   Sign in with Google.
+
+The bot's Reddit account must be able to send DMs: an established account with
+some karma, not brand new (Reddit filters link DMs from new accounts).
+
 ### F. Put the 2.0 dashboard on Render, and tidy its settings
 
 Render deploys the branch `upgrade/tested-bot-core`; 2.0 is on
@@ -129,7 +152,7 @@ Done 2026-09-23: `API_KEY` replaced (old one rejected), Neon compute capped at
 2. In Render → `loancentral-dashboard` → **Environment**:
    - `API_KEY`: replace with a long random string. It is an admin key, and the
      current value is guessable.
-   - `DASHBOARD_URL`: `https://loancentral-dashboard.onrender.com`.
+   - `DASHBOARD_URL`: `https://loancentral.net`.
    - `DATABASE_URL`: after resetting the Neon password (Neon → Connect →
      Reset password), paste the new connection string here and put the new
      password in `.env` on the build machine.
@@ -193,7 +216,7 @@ the "Emptying the target" step, stop and send me the error.
 
 ### 4. Check the dashboard sees it
 
-Open `https://loancentral-dashboard.onrender.com/health` → `"db": "ok"`.
+Open `https://loancentral.net/health` → `"db": "ok"`.
 The dashboard reads Neon directly, so there is nothing to redeploy.
 
 ### 5. Give people their roles

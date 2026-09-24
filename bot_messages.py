@@ -2,7 +2,7 @@ import os
 from urllib.parse import quote
 
 
-DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://loancentral.app")
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://loancentral.net")
 DASHBOARD_FOOTER = (
     f"*Dashboard: [{DASHBOARD_URL}]({DASHBOARD_URL}) - view history and manage loans. "
     "LoanCentral is a record-keeping tool and is not a party to any loan.*"

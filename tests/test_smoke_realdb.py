@@ -280,9 +280,21 @@ class LoginPageTests(RealDBTestCase):
     def test_production_login_does_not_promise_reddit_sign_in(self):
         html = self._render(is_dev=False)
         self.assertNotIn("Sign in with your Reddit account", html)
-        self.assertIn("Lenders sign in with the key", html)
+        self.assertNotIn("Continue with Reddit", html)
 
     def test_production_login_offers_the_real_methods(self):
-        html = self._render(is_dev=False)
+        # Google (once configured), $login for newcomers, and keys as a backup.
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "x", "GOOGLE_CLIENT_SECRET": "y"}):
+            html = self._render(is_dev=False)
+        self.assertIn("Sign in with Google", html)
+        self.assertIn("$login", html)
         self.assertIn("Login with Key", html)
-        self.assertIn("/login/borrower", html)
+
+    def test_without_google_configured_there_is_no_dead_google_button(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "", "GOOGLE_CLIENT_SECRET": ""}):
+            html = self._render(is_dev=False)
+        self.assertNotIn("Sign in with Google", html)

@@ -204,6 +204,7 @@ class EveryWriteRouteHasAGateTests(unittest.TestCase):
     #: Routes that are deliberately open or self-scoped, with the reason.
     EXEMPT = {
         "auth_key":            "login endpoint",
+        "auth_google_start":   "login endpoint: stores only this browser's own sign-in state, rate limited per IP",
         "api_borrower_claim":  "pre-auth OTP request, rate limited per IP",
         "api_borrower_verify": "pre-auth OTP verification",
         "api_submit_feedback": "self-service, writes session['username'] only",

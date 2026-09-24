@@ -27,14 +27,22 @@ services:
       # (the code's production default) until durable storage exists.
       - key: ATTACHMENTS_ENABLED
         value: "false"
+      # The custom domain (added under Settings -> Custom Domains in Render).
+      # loancentral-dashboard.onrender.com keeps working as a second address.
       - key: DASHBOARD_URL
-        value: https://loancentral-dashboard.onrender.com
+        value: https://loancentral.net
+      # Sign in with Google (Google Cloud Console -> OAuth client, "Web
+      # application"; authorized redirect URI: https://loancentral.net/auth/google/callback)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       - key: DASHBOARD_CLIENT_ID
         sync: false
       - key: DASHBOARD_CLIENT_SECRET
         sync: false
       - key: DASHBOARD_REDIRECT_URI
-        value: https://loancentral-dashboard.onrender.com/auth/callback
+        value: https://loancentral.net/auth/callback
       - key: SUBREDDITS
         sync: false
       - key: REDDIT_CLIENT_ID

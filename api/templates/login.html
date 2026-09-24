@@ -34,6 +34,16 @@
     .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
     .flash.error { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); }
     .not-configured { background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); color: var(--yellow); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
+    .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; background: #fff; color: #1f1f1f; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn-google:hover { background: #f1f3f4; }
+    .btn-google svg { width: 18px; height: 18px; }
+    .new-here { margin: 18px 0 6px; font-size: 13px; color: var(--text2); line-height: 1.55; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .new-here strong { display: block; color: var(--text); margin-bottom: 2px; }
+    .new-here code { background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--accent-h); }
+    .new-here a { color: var(--accent-h); }
+    .key-login { margin-top: 14px; }
+    .key-login summary { cursor: pointer; color: var(--muted); font-size: 12px; text-align: center; list-style: none; margin-bottom: 10px; }
+    .key-login summary::-webkit-details-marker { display: none; }
     .btn-dev { display: block; text-align: center; width: 100%; padding: 10px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; text-decoration: none; transition: all 0.15s; }
     .btn-dev:hover { border-color: var(--accent); color: var(--accent-h); }
     .dev-badge { display: inline-block; background: rgba(241,196,15,0.15); color: var(--yellow); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; vertical-align: middle; margin-left: 6px; }
@@ -51,7 +61,7 @@
     {% if oauth_ready %}
     <p>Sign in with your Reddit account to access your dashboard. We only request permission to read your username — nothing else.</p>
     {% else %}
-    <p>Lenders sign in with the key a moderator gave them. Borrowers sign in with a one-time code sent by email or text.</p>
+    <p>Sign in with the Google account you connected to your Reddit name.</p>
     {% endif %}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -76,7 +86,22 @@
       </div>
     {% endif %}
 
-    {% if oauth_ready %}<div class="divider"><hr><span>or</span><hr></div>{% endif %}
+    {% if google_ready %}
+    <form method="post" action="{{ url_for('auth_google_start') }}">
+      <button class="btn-google" type="submit">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>
+        Sign in with Google
+      </button>
+    </form>
+    {% endif %}
+    <div class="new-here">
+      <strong>New here, or lost your Google account?</strong>
+      Comment <code>$login</code> {% if subreddit %}on <a href="https://www.reddit.com/r/{{ subreddit }}">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}.
+      The bot will DM you a link to set up your account.
+    </div>
+
+    <details class="key-login">
+    <summary>Have a lender key?</summary>
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
       <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
@@ -87,6 +112,7 @@
       </button>
       <div id="keyError" style="display:none;color:var(--red);font-size:12px;text-align:center"></div>
     </form>
+    </details>
 
     {% if is_dev %}
       <div class="divider"><hr><span>dev only</span><hr></div>
@@ -94,17 +120,6 @@
         Dev Login (bypass OAuth) <span class="dev-badge">local only</span>
       </a>
     {% endif %}
-
-    <div class="features">
-      <div class="feature"><div class="feature-icon fi-mod">🛡️</div><span><strong>Mods</strong> — full loan management, role assignment, stats</span></div>
-      <div class="feature"><div class="feature-icon fi-lender">💰</div><span><strong>Lenders</strong> — track loans given, record payments, manage borrowers</span></div>
-      <div class="feature"><div class="feature-icon fi-borrow">📋</div><span><strong>Borrowers</strong> — see what you owe and your loan history</span></div>
-    </div>
-
-    <div class="divider"><hr><span>borrower?</span><hr></div>
-    <a href="/login/borrower" style="display:block;text-align:center;width:100%;padding:11px;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.25);border-radius:8px;color:var(--green);font-size:14px;font-weight:600;text-decoration:none">
-      Log in with Email / SMS code
-    </a>
 
     <p style="color:var(--muted);font-size:11px;text-align:center;margin-top:20px;line-height:1.6">
       By logging in you agree to our <a href="/terms" target="_blank" style="color:var(--accent-h);text-decoration:none">Terms of Service</a>.

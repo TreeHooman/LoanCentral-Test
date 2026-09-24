@@ -55,7 +55,7 @@
         <li>Track repayments, due dates and unpaid loans</li>
       </ul>
       <a class="btn btn-primary" href="{{ url_for('login') }}">Lender sign in</a>
-      <div class="hint">Sign in with the key a moderator gave you.</div>
+      <div class="hint">First time? Comment <b>$login</b> on the subreddit.</div>
     </div>
     <div class="door">
       <h2>Borrowers</h2>
@@ -65,8 +65,8 @@
         <li>See what lenders see about your record</li>
         <li>Flag a loan for moderator review</li>
       </ul>
-      <a class="btn btn-primary" href="{{ url_for('borrower_login_page') }}">Borrower sign in</a>
-      <div class="hint">No account to create. Sign in to see your record.</div>
+      <a class="btn btn-primary" href="{{ url_for('login') }}">Borrower sign in</a>
+      <div class="hint">First time? Comment <b>$login</b> on the subreddit.</div>
     </div>
   </div>
 

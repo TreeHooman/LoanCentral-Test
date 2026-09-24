@@ -265,6 +265,9 @@ def _ensure_schema(conn):
     _ensure_column(conn, "user_roles", "reddit_username", "TEXT")
     _ensure_column(conn, "user_roles", "reddit_username_linked_at", "TIMESTAMP")
     _ensure_column(conn, "user_roles", "reddit_username_linked_by", "TEXT")
+    _ensure_column(conn, "user_roles", "google_sub", "TEXT")
+    _ensure_column(conn, "user_roles", "google_email", "TEXT")
+    _ensure_column(conn, "user_roles", "google_linked_at", "TIMESTAMP")
     # Retry bookkeeping for the Reddit sync worker. Postgres gets these from
     # scripts/migrations/013_integrity_constraints.sql.
     _ensure_column(conn, "reddit_actions", "attempts", "INTEGER NOT NULL DEFAULT 0")
@@ -292,6 +295,9 @@ _UNIQUE_INDEXES = [
     ("uq_loans_loan_id",
      "CREATE UNIQUE INDEX IF NOT EXISTS uq_loans_loan_id "
      "ON loans (loan_id) WHERE loan_id IS NOT NULL"),
+    ("uq_user_roles_google_sub",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_roles_google_sub "
+     "ON user_roles (google_sub) WHERE google_sub IS NOT NULL"),
 ]
 
 

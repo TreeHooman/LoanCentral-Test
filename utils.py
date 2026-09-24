@@ -187,7 +187,7 @@ def reddit_config_problems():
     dashboard_url = (os.getenv("DASHBOARD_URL") or "").strip()
     if not dashboard_url:
         problems.append("DASHBOARD_URL is not set — bot replies link to the dashboard "
-                        "(e.g. https://loancentral-dashboard.onrender.com).")
+                        "(e.g. https://loancentral.net).")
     elif not dashboard_url.startswith("https://"):
         problems.append(f"DASHBOARD_URL must be an https:// address ({dashboard_url!r}).")
     return problems
