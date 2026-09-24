@@ -1,0 +1,60 @@
+/* LoanCentral brand: the one place colours and fonts are defined.
+   Every page (homepage, legal pages, sign-in, dashboard) links this file, so
+   a change here restyles the whole site. Page stylesheets use these
+   variables rather than their own hex values. */
+
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url("../fonts/inter-latin-wght.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-500.woff2") format("woff2"); }
+
+:root {
+  /* Surfaces: near-black, faintly green */
+  --bg: #0b0c0b;
+  --surface: #121412;
+  --surface2: #181b18;
+  --border: #232823;
+  --border-h: #34503a;
+
+  /* Brand green */
+  --accent: #22c55e;
+  --accent-h: #34d46c;
+  --accent-ink: #04140a;          /* text on a green background */
+  --accent-soft: rgba(34, 197, 94, 0.12);
+  --accent-line: rgba(34, 197, 94, 0.35);
+
+  /* Text */
+  --text: #ecefec;
+  --text2: #a9b2a9;
+  --muted: #7c867c;
+
+  /* Status (used sparingly: state, not decoration) */
+  --green: #22c55e;
+  --red: #ef5350;
+  --orange: #f0a030;
+  --yellow: #e8c547;
+  --blue: #7aa7e8;
+
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+code, kbd, .mono { font-family: var(--mono); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The mark used next to the name in every header */
+.brand-mark {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--accent); color: var(--accent-ink);
+  display: inline-grid; place-items: center;
+  font-size: 13px; font-weight: 700; letter-spacing: -0.5px; flex: none;
+}

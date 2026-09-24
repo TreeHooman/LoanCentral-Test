@@ -71,7 +71,7 @@ async function loadDetail() {
 function field(label, value, mono) {
   if (!value && value !== 0) value = '—';
   return `<div style="margin-bottom:12px">
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">${label}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:2px">${label}</div>
     <div style="font-size:14px${mono ? ';font-family:monospace' : ''}">${value}</div>
   </div>`;
 }
@@ -146,7 +146,7 @@ function render(r) {
 
       ${r.notes ? `
       <div class="stat-card" style="grid-column:1/3">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Notes</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Notes</div>
         <div style="font-size:13px;white-space:pre-wrap">${escapeHtml(r.notes)}</div>
       </div>` : ''}
     </div>

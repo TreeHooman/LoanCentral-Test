@@ -5,16 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="no-referrer" />
   <title>Create your account — LoanCentral</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #0a0b0a; --surface: #121512; --surface2: #1a1f1a; --border: #243024;
-      --accent: #22c55e; --accent-h: #4ade80; --red: #e74c3c; --muted: #8a948a; --text: #e8ece8; --text2: #b4bdb4;
-    }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     .container { width: 100%; max-width: 440px; padding: 24px; }
     .logo { text-align: center; margin-bottom: 28px; }
-    .logo a { font-size: 30px; font-weight: 800; color: var(--accent-h); letter-spacing: -1px; text-decoration: none; }
+    .logo a { font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; text-decoration: none; }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; }
     .card h1 { font-size: 20px; margin-bottom: 8px; }
     .card p { color: var(--text2); font-size: 14px; line-height: 1.55; margin-bottom: 16px; }
@@ -31,7 +28,7 @@
 </head>
 <body>
 <div class="container">
-  <div class="logo"><a href="/">LoanCentral</a></div>
+  <div class="logo"><a href="/" style="display:inline-flex;align-items:center;gap:10px"><span class="brand-mark">LC</span>LoanCentral</a></div>
   <div class="card">
     {% if error %}
       <h1>This link can't be used</h1>

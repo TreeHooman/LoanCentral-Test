@@ -8,20 +8,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LoanCentral{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
-    :root {
-      --bg: #0f1117; --surface: #1a1d26; --surface2: #22263a; --border: #2e3248;
-      --accent: #5b6ef5; --accent-h: #7b8cff;
-      --green: #2ecc71; --red: #e74c3c; --orange: #f39c12; --yellow: #f1c40f;
-      --muted: #8891aa; --text: #e2e6f0; --text2: #b0b8cc;
-    }
     html, body { max-width: 100%; overflow-x: hidden; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; min-height: 100vh; -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; min-height: 100vh; -webkit-text-size-adjust: 100%; }
 
     /* NAV */
-    nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
-    .nav-brand { font-size: 18px; font-weight: 700; color: var(--accent-h); letter-spacing: -0.5px; text-decoration: none; }
+    nav { background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; text-decoration: none; }
     .nav-links { display: flex; gap: 4px; }
     .nav-link { color: var(--text2); text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: all 0.15s; }
     .nav-link:hover { background: var(--surface2); color: var(--text); }
@@ -37,11 +32,8 @@
     .nav-more-sep { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
       padding: 8px 12px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
     .nav-right { display: flex; align-items: center; gap: 10px; }
-    .role-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .role-mod      { background: rgba(241,196,15,0.15); color: var(--yellow); }
-    .role-admin    { background: rgba(231,76,60,0.15);  color: var(--red); }
-    .role-lender   { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
-    .role-borrower { background: rgba(46,204,113,0.15); color: var(--green); }
+    .role-badge { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; text-transform: capitalize; border: 1px solid var(--border); background: var(--surface); color: var(--text2); }
+    .role-lender   { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-h); }
     .rank-badge    { background: rgba(255,255,255,0.06); color: var(--text2); }
     .rank-bronze   { color: #cd7f32; } .rank-silver { color: #c0c0c0; }
     .rank-gold     { color: #f1c40f; } .rank-platinum { color: #9fd8df; }
@@ -54,8 +46,8 @@
     .flashes { padding: 0 24px; margin-top: 12px; }
     .flash { padding: 10px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
     .flash.error   { background: rgba(231,76,60,0.1);  border: 1px solid rgba(231,76,60,0.3);  color: var(--red); }
-    .flash.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); color: var(--green); }
-    .flash.info    { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.3); color: var(--accent-h); }
+    .flash.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+    .flash.info    { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--accent-h); }
     .session-warning { display: none; margin: 12px 24px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(243,156,18,0.3); background: rgba(243,156,18,0.09); color: var(--text2); font-size: 13px; line-height: 1.4; }
     .session-warning strong { color: var(--orange); }
 
@@ -64,28 +56,30 @@
 
     /* STATS GRID */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 12px; margin-bottom: 24px; }
-    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
-    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+    .stat-label { font-size: 13px; color: var(--muted); }
+    .stat-value { font-size: clamp(20px, 2vw, 26px); overflow-wrap: anywhere; font-weight: 600; margin-top: 2px; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
     .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    /* Stat numbers stay plain; colour is kept for what needs attention. */
+    .stat-value.c-accent, .stat-value.c-green, .stat-value.c-yellow, .stat-value.c-orange { color: var(--text); }
     .c-accent { color: var(--accent-h); } .c-green { color: var(--green); } .c-red { color: var(--red); } .c-orange { color: var(--orange); } .c-yellow { color: var(--yellow); } .c-muted { color: var(--muted); }
 
     /* TOOLBAR */
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; max-width: 100%; }
     .tabs { display: flex; gap: 4px; max-width: 100%; flex-wrap: wrap; }
-    .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
-    .tab:hover { border-color: var(--accent); color: var(--text); }
-    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .tab { background: transparent; border: 1px solid var(--border); color: var(--text2); padding: 7px 14px; border-radius: 999px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .tab:hover { border-color: var(--border-h); color: var(--text); }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
     .search-wrap { flex: 1 1 min(200px, 100%); min-width: 0; }
     .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: border 0.15s; }
     .search-wrap input:focus { border-color: var(--accent); }
     .search-wrap input::placeholder { color: var(--muted); }
-    .btn-primary { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+    .btn-primary { background: var(--accent); border: none; color: var(--accent-ink); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
     .btn-primary:hover { background: var(--accent-h); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary, .btn-secondary { max-width: 100%; overflow-wrap: anywhere; }
     .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.15s; }
-    .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
+    .btn-secondary:hover { border-color: var(--border-h); color: var(--text); }
     .panel-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(min(320px, 100%), .8fr); gap: 16px; margin-bottom: 22px; }
     .panel, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
     .search-input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; font-family: inherit; }
@@ -93,9 +87,9 @@
     .panel-copy { color: var(--muted); font-size: 13px; line-height: 1.45; }
     .mini-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
     .mini-stat { background: rgba(255,255,255,0.025); border: 1px solid var(--border); border-radius: 6px; padding: 10px; min-height: 62px; }
-    .mini-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+    .mini-label { color: var(--muted); font-size: 12px; }
     .mini-value { color: var(--text); font-size: 18px; font-weight: 700; margin-top: 4px; }
-    .callout { background: rgba(91,110,245,0.1); border: 1px solid rgba(91,110,245,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+    .callout { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
     .callout strong { color: var(--text); }
     .profile-link { color: var(--text); text-decoration: none; font-weight: 600; }
     .profile-link:hover { color: var(--accent-h); }
@@ -103,12 +97,12 @@
     /* TABLE */
     .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     table { width: 100%; border-collapse: collapse; }
-    thead { background: var(--surface2); }
-    th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+    thead { background: var(--surface); }
+    th { padding: 11px 14px; text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border); }
     td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(91,110,245,0.05); }
-    .loan-id { font-family: monospace; font-size: 12px; color: var(--accent-h); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .loan-id { font-family: var(--mono); font-size: 12px; color: var(--accent-h); }
     .username a { color: var(--text); text-decoration: none; font-weight: 500; }
     .username a:hover { color: var(--accent-h); }
     .amount { font-weight: 600; color: var(--text); }
@@ -116,10 +110,10 @@
     .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
     .thread-link { font-size: 11px; color: var(--accent-h); text-decoration: none; }
     .thread-link:hover { text-decoration: underline; }
-    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-    .badge-confirmed        { background: rgba(91,110,245,0.2);  color: var(--accent-h); }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
+    .badge-confirmed        { background: rgba(122,167,232,0.14); color: var(--blue); }
     .badge-partially_repaid { background: rgba(241,196,15,0.15); color: var(--yellow); }
-    .badge-repaid           { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-repaid           { background: rgba(34,197,94,0.15); color: var(--green); }
     .badge-unpaid           { background: rgba(231,76,60,0.15);  color: var(--red); }
     .badge-refunded         { background: rgba(136,145,170,0.15); color: var(--muted); }
     .badge-disputed         { background: rgba(243,156,18,0.2);  color: var(--orange); }
@@ -137,8 +131,8 @@
     .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
     .btn-ban     { background: rgba(231,76,60,0.85); color: #fff; }
     .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
-    .btn-paid    { background: rgba(46,204,113,0.2); color: var(--green); }
-    .btn-extension { background: rgba(91,110,245,0.18); color: var(--accent-h); }
+    .btn-paid    { background: rgba(34,197,94,0.2); color: var(--green); }
+    .btn-extension { background: rgba(34,197,94,0.18); color: var(--accent-h); }
 
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
@@ -151,12 +145,12 @@
     .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: var(--accent); }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
     .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    .btn-confirm { background: var(--accent); border: none; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-confirm { background: var(--accent); border: none; color: var(--accent-ink); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
     .btn-confirm:hover { background: var(--accent-h); }
     .modal-error { color: var(--red); font-size: 12px; margin-bottom: 8px; display: none; }
     .flow-steps { display: grid; gap: 8px; margin: 0 0 14px; }
     .flow-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.025); }
-    .flow-step-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(91,110,245,0.18); color: var(--accent-h); font-weight: 800; font-size: 12px; }
+    .flow-step-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(34,197,94,0.18); color: var(--accent-h); font-weight: 800; font-size: 12px; }
     .flow-step-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 2px; }
     .flow-step-copy { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .req-tips { margin: 0 0 14px; padding: 11px 12px; border: 1px solid rgba(243,156,18,0.25); border-radius: 8px; background: rgba(243,156,18,0.07); }
@@ -192,12 +186,12 @@
 
     /* FEEDBACK CATEGORY & STATUS BADGES */
     .badge-fb-bug             { background: rgba(231,76,60,0.15);  color: var(--red); }
-    .badge-fb-suggestion      { background: rgba(91,110,245,0.18); color: var(--accent-h); }
-    .badge-fb-feature_request { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-fb-suggestion      { background: rgba(34,197,94,0.18); color: var(--accent-h); }
+    .badge-fb-feature_request { background: rgba(34,197,94,0.15); color: var(--green); }
     .badge-fb-other           { background: rgba(136,145,170,0.15); color: var(--muted); }
-    .badge-fbstatus-open      { background: rgba(91,110,245,0.18); color: var(--accent-h); }
+    .badge-fbstatus-open      { background: rgba(34,197,94,0.18); color: var(--accent-h); }
     .badge-fbstatus-reviewed  { background: rgba(241,196,15,0.15);  color: var(--yellow); }
-    .badge-fbstatus-completed { background: rgba(46,204,113,0.15); color: var(--green); }
+    .badge-fbstatus-completed { background: rgba(34,197,94,0.15); color: var(--green); }
     .badge-fbstatus-duplicate { background: rgba(136,145,170,0.15); color: var(--muted); }
 
     /* NOTES & ATTACHMENTS */
@@ -402,12 +396,12 @@
         word-break: break-word;
       }
       table.mobile-cards tr:not(.mobile-more-row) td:first-child {
-        background: rgba(91,110,245,0.055);
+        background: rgba(34,197,94,0.055);
       }
       table.mobile-cards td.mobile-card-head {
         display: block;
         padding: 9px 10px;
-        background: rgba(91,110,245,0.07) !important;
+        background: rgba(34,197,94,0.07) !important;
         position: relative;
       }
       table.mobile-cards td.mobile-card-head::before {
@@ -511,9 +505,9 @@
         min-height: 34px;
         min-width: 72px;
         padding: 7px 10px;
-        border: 1px solid rgba(91,110,245,0.35);
+        border: 1px solid rgba(34,197,94,0.35);
         border-radius: 6px;
-        background: rgba(91,110,245,0.08);
+        background: rgba(34,197,94,0.08);
         font-size: 12px;
         font-weight: 700;
         text-decoration: none;
@@ -663,7 +657,7 @@
 <body>
 
 <nav>
-  <a class="nav-brand" href="{{ url_for('home') }}">LoanCentral</a>
+  <a class="nav-brand" href="{{ url_for('home') }}"><span class="brand-mark">LC</span>LoanCentral</a>
   {% if role in ['mod', 'admin'] %}
   {# The everyday pages. Everything else lives under More, so nothing is lost. #}
   <div class="nav-main">
@@ -701,8 +695,9 @@
     <!-- Notification bell -->
     <div style="position:relative;display:inline-flex;align-items:center">
       <button id="notif-bell" onclick="toggleNotifPanel()" title="Notifications"
-        style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:18px;padding:4px 6px;line-height:1;position:relative">
-        🔔
+        aria-label="Notifications"
+        style="background:none;border:none;cursor:pointer;color:var(--text2);padding:6px;line-height:0;position:relative;display:inline-flex">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
         <span id="notif-badge" style="display:none;position:absolute;top:0;right:0;background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:50%;width:16px;height:16px;line-height:16px;text-align:center"></span>
       </button>
       <div id="notif-panel" style="display:none;position:absolute;right:0;top:36px;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;z-index:200;box-shadow:0 8px 32px rgba(0,0,0,0.4);overflow:hidden">
@@ -758,7 +753,7 @@
     <div style="margin-top:4px;margin-bottom:2px;font-size:12px;color:var(--muted)">Payment timing</div>
     <div style="display:flex;gap:8px;margin-bottom:12px" id="payTimingBtns">
       <button type="button" class="btn-timing active" data-timing="early"   onclick="setPayTiming('early')"   style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">⚡ Early</button>
-      <button type="button" class="btn-timing active" data-timing="on_time" onclick="setPayTiming('on_time')" style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent-h);background:rgba(91,110,245,0.15);color:var(--accent-h);cursor:pointer;font-weight:700">✓ On Time</button>
+      <button type="button" class="btn-timing active" data-timing="on_time" onclick="setPayTiming('on_time')" style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent-h);background:rgba(34,197,94,0.15);color:var(--accent-h);cursor:pointer;font-weight:700">✓ On Time</button>
       <button type="button" class="btn-timing"        data-timing="late"    onclick="setPayTiming('late')"    style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">⏱ Late</button>
     </div>
     <div class="modal-actions">
@@ -831,7 +826,7 @@
       </div>
     </div>
 
-    <div id="nlAutoFillBanner" style="display:none;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
+    <div id="nlAutoFillBanner" style="display:none;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
       ✓ Auto-filled from <span id="nlBannerReqId"></span> — review and confirm below
     </div>
 
@@ -947,7 +942,7 @@
     document.getElementById('payTiming').value = val;
     document.querySelectorAll('#payTimingBtns button').forEach(b => {
       const active = b.dataset.timing === val;
-      const colors = { early: ['var(--green)', 'rgba(46,204,113,0.15)'], on_time: ['var(--accent-h)', 'rgba(91,110,245,0.15)'], late: ['var(--orange)', 'rgba(243,156,18,0.15)'] };
+      const colors = { early: ['var(--green)', 'rgba(34,197,94,0.15)'], on_time: ['var(--accent-h)', 'rgba(34,197,94,0.15)'], late: ['var(--orange)', 'rgba(243,156,18,0.15)'] };
       const [col, bg] = colors[b.dataset.timing] || ['var(--text)', 'var(--surface)'];
       b.style.borderColor = active ? col : 'var(--border)';
       b.style.background  = active ? bg  : 'var(--surface)';
@@ -1459,7 +1454,7 @@
     if (!wrap) return;
     wrap.style.display = 'block';
     wrap.innerHTML = items.map(a => `
-      <div id="ann-${a.id}" style="display:flex;align-items:flex-start;gap:10px;background:rgba(91,110,245,0.09);border:1px solid rgba(91,110,245,0.25);border-radius:8px;padding:10px 14px;margin-bottom:8px">
+      <div id="ann-${a.id}" style="display:flex;align-items:flex-start;gap:10px;background:rgba(34,197,94,0.09);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:10px 14px;margin-bottom:8px">
         ${a.pinned ? '<span style="font-size:14px;flex-shrink:0">📌</span>' : ''}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:var(--text)">${escapeHtml(a.title)}</div>

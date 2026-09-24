@@ -64,7 +64,7 @@
 </div>
 <div class="panel" style="max-width:480px">
   <p class="panel-copy" style="margin-bottom:14px">Control which in-app notifications you receive.</p>
-  <div id="prefSaved" style="display:none;background:rgba(46,204,113,0.1);border:1px solid rgba(46,204,113,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:12px">Preferences saved.</div>
+  <div id="prefSaved" style="display:none;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:12px">Preferences saved.</div>
   <div style="display:grid;gap:10px" id="prefGrid">
     <div style="color:var(--muted);font-size:13px">Loading…</div>
   </div>
@@ -85,7 +85,7 @@
     .panel-grid { display:none; }
     .timeline-item { grid-template-columns:1fr; gap:6px; padding:10px; }
     .timeline-date { font-size:11px; }
-    #profileLoans td[data-label="Loan"] { background:rgba(91,110,245,0.055); }
+    #profileLoans td[data-label="Loan"] { background:rgba(34,197,94,0.055); }
     #profileLoans td[data-label="Still Owe"] { background:rgba(243,156,18,0.07); font-weight:700; }
   }
 </style>
@@ -116,7 +116,7 @@
             vlTitle += ` — verified ${dt.toLocaleDateString()}`;
           }
           if (p.verified_lender_by) vlTitle += ` by u/${p.verified_lender_by}`;
-          extra += ` <span title="${escapeHtml(vlTitle)}" style="display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(46,204,113,0.15);color:var(--green);vertical-align:middle;cursor:help">✓ Verified Lender</span>`;
+          extra += ` <span title="${escapeHtml(vlTitle)}" style="display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,0.15);color:var(--green);vertical-align:middle;cursor:help">✓ Verified Lender</span>`;
           if (p.verified_lender_at) {
             const dt = new Date(p.verified_lender_at);
             extra += ` <span style="font-size:11px;color:var(--muted);vertical-align:middle">since ${dt.toLocaleDateString()}${p.verified_lender_by ? ' · by u/' + escapeHtml(p.verified_lender_by) : ''}</span>`;

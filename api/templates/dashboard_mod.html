@@ -73,9 +73,9 @@
     <div class="search-wrap">
       <input type="text" id="searchInput" placeholder="Search lender, borrower, or loan ID..." />
     </div>
-    <button class="btn-primary" id="refreshBtn" onclick="loadLoans()">↻ Refresh</button>
-    <button class="btn-primary" style="background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:var(--red)" onclick="showTab('unpaid')">⚑ Unpaid</button>
-    <button class="btn-primary" style="background:rgba(243,156,18,0.15);border:1px solid rgba(243,156,18,0.3);color:var(--yellow)" onclick="showTab('disputes')">⚠ Disputes</button>
+    <button class="btn-secondary" id="refreshBtn" onclick="loadLoans()">Refresh</button>
+    <button class="btn-secondary" onclick="showTab('unpaid')">Unpaid</button>
+    <button class="btn-secondary" onclick="showTab('disputes')">Disputes</button>
     <div class="dropdown-wrap" style="position:relative">
       <button class="btn-primary" id="moreMenuBtn" onclick="toggleMoreMenu()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">More ▾</button>
       <div id="moreMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.4)">
@@ -171,7 +171,7 @@
       {% if can_view_money %}<option value="admin">Admin</option>{% endif %}
     </select>
     <button class="btn-primary" onclick="assignRole()">Assign Role</button>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">↻ Refresh</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadRoles()">Refresh</button>
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
@@ -264,7 +264,7 @@
   <div class="section-header">
     <span class="section-title">Data Integrity Checks</span>
     <div style="display:flex;gap:8px">
-      <button class="btn-primary" onclick="loadIntegrity()">↻ Run Checks</button>
+      <button class="btn-primary" onclick="loadIntegrity()">Run checks</button>
       <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
     </div>
   </div>
@@ -294,7 +294,7 @@
       <option value="approved">Approved</option>
       <option value="denied">Denied</option>
     </select>
-    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadVerificationApplications()">↻ Refresh</button>
+    <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="loadVerificationApplications()">Refresh</button>
   </div>
   <div class="table-wrap">
     <table class="mobile-cards">
@@ -424,7 +424,7 @@
 
   async function loadLoans() {
     const btn = document.getElementById('refreshBtn');
-    btn.disabled = true; btn.textContent = '↻ Loading...';
+    btn.disabled = true; btn.textContent = 'Loading…';
     const search = document.getElementById('searchInput').value.trim();
     let url = `/api/loans?limit=200`;
     if (currentStatus) url += `&status=${currentStatus}`;
@@ -435,7 +435,7 @@
     } catch(e) {
       const cols = CAN_VIEW_MONEY ? 11 : 4;
       document.getElementById('loansBody').innerHTML = `<tr><td colspan="${cols}" class="table-placeholder" style="color:var(--red)">Error: ${e.message}</td></tr>`;
-    } finally { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+    } finally { btn.disabled = false; btn.textContent = 'Refresh'; }
   }
 
   function renderLoans() {
@@ -869,8 +869,8 @@
             <button class="btn-action btn-paid" onclick="quickRole('${escapeHtml(r.username)}','lender')">→ Lender</button>
             <button class="btn-action btn-unpaid" onclick="quickRole('${escapeHtml(r.username)}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
-            <button class="btn-action" style="background:rgba(46,204,113,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
-            ${r.contact_email ? `<button class="btn-action" style="background:rgba(91,110,245,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
+            <button class="btn-action" style="background:rgba(34,197,94,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
+            ${r.contact_email ? `<button class="btn-action" style="background:rgba(34,197,94,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
             <button class="btn-action" style="background:rgba(255,69,0,0.1);color:#ff6b35" onclick="openRedditLinkModal('${escapeHtml(r.username)}','${escapeHtml(r.reddit_username||'')}')">🔗 Reddit</button>
           </div></td>
         </tr>`).join('') : '<tr><td colspan="7" class="table-placeholder">No roles configured.</td></tr>';
@@ -928,7 +928,7 @@
 
   function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
 
-  function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(91,110,245,0.2)', borrower: 'rgba(46,204,113,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
+  function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(34,197,94,0.2)', borrower: 'rgba(34,197,94,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { admin: 'var(--red)', mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
   async function loadAnnouncements() {

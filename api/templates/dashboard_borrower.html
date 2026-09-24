@@ -15,7 +15,7 @@
 </div>
 
 <!-- Onboarding card -->
-<div id="onboardingCard" style="display:none;background:rgba(46,204,113,0.07);border:1px solid rgba(46,204,113,0.25);border-radius:10px;padding:18px 20px;margin-bottom:20px">
+<div id="onboardingCard" style="display:none;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.25);border-radius:10px;padding:18px 20px;margin-bottom:20px">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
     <div>
       <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">Welcome to your Borrower Dashboard</div>
@@ -165,7 +165,7 @@
 
 {% block scripts %}
 <style>
-  .sort-head { background:none;border:0;color:var(--muted);font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;padding:0;text-align:left; }
+  .sort-head { background:none;border:0;color:var(--muted);font:inherit;font-size:12px;font-weight:500;cursor:pointer;padding:0;text-align:left; }
   .sort-head:hover { color:var(--text); }
   tr.row-overdue td { background:rgba(231,76,60,0.055); }
   @media (max-width: 640px) {
@@ -188,7 +188,7 @@
     }
     .borrower-owing-table td[data-label="Loan"],
     .borrower-history-table td[data-label="Loan"] {
-      background: rgba(91,110,245,0.055);
+      background: rgba(34,197,94,0.055);
     }
     .borrower-owing-table td[data-label="Still Owe"] {
       background: rgba(243,156,18,0.07);
@@ -326,7 +326,7 @@
         <td data-label="Due" class="date-cell">${dueLabel(loan.repay_date) || fmtDate(loan.date_created)}</td>
         <td data-label="Interest $">${loan.interest_amount != null ? fmt(loan.interest_amount) + ' ' + escapeHtml(loan.currency) : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Payment">${escapeHtml(loan.payment_method || 'Not recorded')}</td>
-        <td data-label="Acknowledged">${ackHtml}<br><button class="btn-action" style="background:rgba(91,110,245,0.1);color:var(--accent-h);margin-top:6px" onclick="openReportPayment('${escapeHtml(id)}','${escapeHtml(loan.currency)}')">Report Payment</button></td>
+        <td data-label="Acknowledged">${ackHtml}<br><button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h);margin-top:6px" onclick="openReportPayment('${escapeHtml(id)}','${escapeHtml(loan.currency)}')">Report Payment</button></td>
         <td data-label="Days Funded" class="date-cell">${daysSince(loan.date_created)}</td>
         <td data-label="Thread">${thread}</td>
       </tr>`;

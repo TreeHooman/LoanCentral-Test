@@ -4,19 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LoanCentral{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
   <style>
-    @font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap;
-      src: url("{{ url_for('static', filename='fonts/inter-latin-wght.woff2') }}") format("woff2"); }
-    @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap;
-      src: url("{{ url_for('static', filename='fonts/jetbrains-mono-latin-500.woff2') }}") format("woff2"); }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #0b0c0b; --surface: #121412; --surface2: #181b18; --border: #232823; --border-h: #34503a;
-      --accent: #22c55e; --accent-h: #34d46c; --accent-ink: #04140a;
-      --text: #ecefec; --text2: #a9b2a9; --muted: #7c867c;
-      --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
     body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.65;
       -webkit-font-smoothing: antialiased; }
     a { color: var(--accent-h); }
@@ -27,8 +17,6 @@
     header.top .wrap { max-width: 1040px; display: flex; align-items: center; gap: 12px; height: 64px; }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.2px;
       color: var(--text); text-decoration: none; margin-right: auto; }
-    .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-ink);
-      display: grid; place-items: center; font-size: 13px; font-weight: 700; letter-spacing: -0.5px; }
     .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: 14px;
       padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; line-height: 1.2;
       transition: background-color .15s ease, border-color .15s ease; }
