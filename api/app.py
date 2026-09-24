@@ -2164,7 +2164,13 @@ def get_reminders():
     if session.get("username") and not _is_mod_or_admin():
         lender = session["username"]
 
-    loans, error = _get_all_loans_from_db(limit=limit)
+    if lender:
+        # This lender's own book, under every name they use (bot loans carry
+        # the Reddit handle) — not the newest `limit` loans platform-wide.
+        from services import get_loan_history
+        loans, error = get_loan_history(lender, role="lender", limit=limit)
+    else:
+        loans, error = _get_all_loans_from_db(limit=limit)
     if error:
         return _json({"error": error}, 500)
 
@@ -2174,8 +2180,6 @@ def get_reminders():
     counts = {"overdue": 0, "due_today": 0, "due_soon": 0, "missing_due_date": 0, "upcoming": 0}
 
     for loan in loans:
-        if lender and str(loan.get("lender", "")).lower() != lender:
-            continue
         if loan.get("status") not in open_statuses:
             continue
         repay_amount = Decimal(str(loan.get("repay_amount") or loan.get("amount") or 0))

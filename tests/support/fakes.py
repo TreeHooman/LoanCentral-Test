@@ -470,6 +470,18 @@ class FakeCursor:
             self.last_result = None
             return
 
+        if normalized.startswith("select coalesce(sum(loans_as_borrower)"):
+            rows = [self.fake_db.users[n] for n in params if n in self.fake_db.users]
+            keys = ("loans_as_borrower", "loans_as_lender", "amount_borrowed", "amount_lent",
+                    "amount_repaid", "unpaid_loans", "unpaid_amount")
+            zero = {"amount_borrowed", "amount_lent", "amount_repaid", "unpaid_amount"}
+            self.last_result = tuple(
+                sum((u.get(k, Decimal("0") if k in zero else 0) for u in rows),
+                    Decimal("0") if k in zero else 0)
+                for k in keys
+            ) + (len(rows),)
+            return
+
         if normalized.startswith("select coalesce(loans_as_borrower"):
             username = params[0]
             user = self.fake_db.users.get(username)
@@ -497,10 +509,10 @@ class FakeCursor:
             return
 
         if normalized.startswith("select count(*), coalesce(sum(amount - amount_repaid)"):
-            borrower = params[0]
+            borrowers = {n.lower() for n in params}
             active = [
                 loan for loan in self.fake_db.loans
-                if loan["borrower"] == borrower and loan["status"] == "confirmed"
+                if loan["borrower"].lower() in borrowers and loan["status"] == "confirmed"
             ]
             count = len(active)
             total = sum(loan["amount"] - loan["amount_repaid"] for loan in active)
@@ -509,8 +521,25 @@ class FakeCursor:
 
         # Multi-row loan history query (get_loan_history): fetchall path — must have LIMIT
         if normalized.startswith("select id, loan_id, lender, borrower, amount, amount_repaid") and "id::text" not in normalized and "limit %s" in normalized:
-            username = params[0]
-            if "lower(borrower) = lower(%s) or lower(lender) = lower(%s)" in normalized or \
+            if "lower(borrower) in (" in normalized or "lower(lender) in (" in normalized:
+                limit = params[-1]
+                names = [n.lower() for n in params[:-1]]
+                has_b = "lower(borrower) in (" in normalized
+                has_l = "lower(lender) in (" in normalized
+                half = len(names) // 2 if (has_b and has_l) else len(names)
+                borrowers = set(names[:half]) if has_b else set()
+                lenders = set(names[-half:]) if has_l else set()
+                matches = [
+                    loan for loan in self.fake_db.loans
+                    if loan["borrower"].lower() in borrowers or loan["lender"].lower() in lenders
+                ]
+                username = None
+            else:
+                matches = None
+                username = params[0]
+            if matches is not None:
+                pass
+            elif "lower(borrower) = lower(%s) or lower(lender) = lower(%s)" in normalized or \
                "borrower = %s or lender = %s" in normalized:
                 # "both" role: params are (username, username, limit)
                 username2 = params[1]

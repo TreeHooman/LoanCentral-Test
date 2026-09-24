@@ -33,7 +33,7 @@ class UserProfileBadgeTests(unittest.TestCase):
         # First fetchone: users row. Second fetchone: active loans count.
         # Third fetchone: user_roles row (verified_lender, reddit_username).
         from decimal import Decimal
-        users_row = (3, 5, "200.00", "500.00", "180.00", 0, "0.00")
+        users_row = (3, 5, "200.00", "500.00", "180.00", 0, "0.00", 1)
         active_row = (2, "150.00")
         from datetime import datetime
         roles_row = (True, "lender_reddit_name", datetime(2026, 1, 1), "mod1")
@@ -50,7 +50,7 @@ class UserProfileBadgeTests(unittest.TestCase):
     def test_profile_includes_verified_lender_false(self):
         conn, cur = _make_conn()
         from decimal import Decimal
-        users_row = (1, 0, "100.00", "0.00", "90.00", 0, "0.00")
+        users_row = (1, 0, "100.00", "0.00", "90.00", 0, "0.00", 1)
         active_row = (0, "0.00")
         roles_row = (False, None, None, None)
         cur.fetchone.side_effect = [users_row, active_row, roles_row]
@@ -64,7 +64,7 @@ class UserProfileBadgeTests(unittest.TestCase):
     def test_profile_graceful_when_user_not_in_roles(self):
         """verified_lender defaults to False if user_roles row is missing."""
         conn, cur = _make_conn()
-        users_row = (0, 0, "0.00", "0.00", "0.00", 0, "0.00")
+        users_row = (0, 0, "0.00", "0.00", "0.00", 0, "0.00", 1)
         active_row = (0, "0.00")
         cur.fetchone.side_effect = [users_row, active_row, None]  # None = no roles row
         with patch("services._get_db", return_value=conn):

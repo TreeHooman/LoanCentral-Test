@@ -29,7 +29,7 @@ class ProfileVerificationDetailsTests(unittest.TestCase):
 
     def test_profile_includes_verified_at_and_by(self):
         conn, cur = _make_conn()
-        users_row = (2, 3, "150.00", "300.00", "140.00", 0, "0.00")
+        users_row = (2, 3, "150.00", "300.00", "140.00", 0, "0.00", 1)
         active_row = (1, "100.00")
         verified_at = datetime(2026, 3, 15, 10, 0, 0)
         roles_row = (True, "reddit_name", verified_at, "mod1")
@@ -45,7 +45,7 @@ class ProfileVerificationDetailsTests(unittest.TestCase):
 
     def test_profile_verified_at_none_when_not_verified(self):
         conn, cur = _make_conn()
-        users_row = (0, 0, "0.00", "0.00", "0.00", 0, "0.00")
+        users_row = (0, 0, "0.00", "0.00", "0.00", 0, "0.00", 1)
         active_row = (0, "0.00")
         roles_row = (False, None, None, None)
         cur.fetchone.side_effect = [users_row, active_row, roles_row]

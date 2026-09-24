@@ -1197,6 +1197,11 @@ def get_user_profile(username: str):
     Get loan stats for a user.
     Returns (profile_dict, error_message)
     """
+    # The same person can have a stats row under their Reddit handle (bot
+    # loans) and another under their dashboard username; report the sum.
+    aliases = account_aliases(username)
+    users_sql, users_params = _alias_match("username", aliases)
+    borrower_sql, borrower_params = _alias_match("borrower", aliases)
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
@@ -1204,33 +1209,34 @@ def get_user_profile(username: str):
     try:
         cur = conn.cursor()
 
-        cur.execute('''
+        cur.execute(f'''
             SELECT
-                COALESCE(loans_as_borrower, 0),
-                COALESCE(loans_as_lender, 0),
-                COALESCE(amount_borrowed, 0),
-                COALESCE(amount_lent, 0),
-                COALESCE(amount_repaid, 0),
-                COALESCE(unpaid_loans, 0),
-                COALESCE(unpaid_amount, 0)
-            FROM users WHERE username = %s
-        ''', (username.lower(),))
+                COALESCE(SUM(loans_as_borrower), 0),
+                COALESCE(SUM(loans_as_lender), 0),
+                COALESCE(SUM(amount_borrowed), 0),
+                COALESCE(SUM(amount_lent), 0),
+                COALESCE(SUM(amount_repaid), 0),
+                COALESCE(SUM(unpaid_loans), 0),
+                COALESCE(SUM(unpaid_amount), 0),
+                COUNT(*)
+            FROM users WHERE {users_sql}
+        ''', users_params)
 
         row = cur.fetchone()
 
         try:
-            cur.execute('''
+            cur.execute(f'''
                 SELECT COUNT(*), COALESCE(SUM(COALESCE(repay_amount, amount) - amount_repaid), 0)
-                FROM loans WHERE borrower = %s AND status = 'confirmed'
-            ''', (username.lower(),))
+                FROM loans WHERE {borrower_sql} AND status = 'confirmed'
+            ''', borrower_params)
         except Exception as e:
             if not _looks_like_missing_column(e):
                 raise
             conn.rollback()
-            cur.execute('''
+            cur.execute(f'''
                 SELECT COUNT(*), COALESCE(SUM(amount - amount_repaid), 0)
-                FROM loans WHERE borrower = %s AND status = 'confirmed'
-            ''', (username.lower(),))
+                FROM loans WHERE {borrower_sql} AND status = 'confirmed'
+            ''', borrower_params)
 
         active = cur.fetchone()
 
@@ -1240,13 +1246,13 @@ def get_user_profile(username: str):
             cur.execute(
                 """SELECT verified_lender, reddit_username,
                           verified_lender_at, verified_lender_by
-                   FROM user_roles WHERE lower(username)=lower(%s)""",
-                (username,))
+                   FROM user_roles WHERE {users_sql}""".format(users_sql=users_sql),
+                users_params)
             role_row = cur.fetchone()
         except Exception:
             role_row = None
 
-        if not row:
+        if not row or not row[7]:  # no stats row under any of their names
             return {
                 "username": username,
                 "loans_as_borrower": 0,
@@ -1295,23 +1301,27 @@ def get_loan_history(username: str, role: str = "both", limit: int = 50):
     role: "borrower", "lender", or "both"
     Returns (list_of_loan_dicts, error_message)
     """
+    # Every name the account uses: the bot records loans under the Reddit
+    # handle, the dashboard under the dashboard username. One lender, one list.
+    aliases = account_aliases(username)
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
 
     try:
         cur = conn.cursor()
-        username = username.lower()
+        borrower_sql, borrower_params = _alias_match("borrower", aliases)
+        lender_sql, lender_params = _alias_match("lender", aliases)
 
         if role == "borrower":
-            where = "WHERE lower(borrower) = lower(%s)"
-            params = (username, limit)
+            where = f"WHERE {borrower_sql}"
+            params = (*borrower_params, limit)
         elif role == "lender":
-            where = "WHERE lower(lender) = lower(%s)"
-            params = (username, limit)
+            where = f"WHERE {lender_sql}"
+            params = (*lender_params, limit)
         else:  # both
-            where = "WHERE lower(borrower) = lower(%s) OR lower(lender) = lower(%s)"
-            params = (username, username, limit)
+            where = f"WHERE {borrower_sql} OR {lender_sql}"
+            params = (*borrower_params, *lender_params, limit)
 
         schema_mode = "dashboard"
         try:
@@ -2338,6 +2348,7 @@ def get_lender_stats(lender: str):
     Get lending stats for a specific lender.
     Returns (stats_dict, error_message).
     """
+    lender_sql, lender_params = _alias_match("lender", account_aliases(lender))
     conn = _get_db()
     if not conn:
         return None, "Database connection failed."
@@ -2354,8 +2365,8 @@ def get_lender_stats(lender: str):
                     COALESCE(SUM(amount_repaid), 0)                            AS total_recovered,
                     COALESCE(SUM(COALESCE(repay_amount, amount) - amount_repaid)
                         FILTER (WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding
-                FROM loans WHERE lender = %s
-            """, (lender.lower(),))
+                FROM loans WHERE {lender_sql}
+            """.format(lender_sql=lender_sql), lender_params)
         except Exception as e:
             if not _looks_like_missing_column(e):
                 raise
@@ -2370,8 +2381,8 @@ def get_lender_stats(lender: str):
                     COALESCE(SUM(amount_repaid), 0)                            AS total_recovered,
                     COALESCE(SUM(amount - amount_repaid)
                         FILTER (WHERE status IN ('confirmed','partially_repaid','unpaid')), 0) AS outstanding
-                FROM loans WHERE lender = %s
-            """, (lender.lower(),))
+                FROM loans WHERE {lender_sql}
+            """.format(lender_sql=lender_sql), lender_params)
         row = cur.fetchone()
         return {
             "total_loans":      row[0],
