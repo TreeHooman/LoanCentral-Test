@@ -289,7 +289,7 @@ class LoginPageTests(RealDBTestCase):
         with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "x", "GOOGLE_CLIENT_SECRET": "y"}):
             html = self._render(is_dev=False)
         self.assertIn("Sign in with Google", html)
-        self.assertIn("$login", html)
+        self.assertIn("!login", html)
         self.assertIn("Login with Key", html)
 
     def test_without_google_configured_there_is_no_dead_google_button(self):

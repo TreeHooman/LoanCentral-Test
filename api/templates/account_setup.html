@@ -36,7 +36,7 @@
     {% if error %}
       <h1>This link can't be used</h1>
       <div class="error">{{ error }}</div>
-      <p>Links from <code>$login</code> work once and expire after a short time. Comment <code>$login</code>
+      <p>Links from <code>!login</code> work once and expire after a short time. Comment <code>!login</code>
         {% if subreddit %}on <a class="link" href="https://www.reddit.com/r/{{ subreddit }}" target="_blank" rel="noopener">r/{{ subreddit }}</a>{% else %}on the subreddit{% endif %}
         and the bot will DM you a new one.</p>
       <p><a class="link" href="{{ url_for('login') }}">Already set up? Sign in</a></p>

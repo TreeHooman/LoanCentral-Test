@@ -76,8 +76,6 @@
     .cmd { padding: 10px 0; border-top: 1px solid var(--border); }
     .cmd:first-child { border-top: 0; padding-top: 0; }
     .cmd p { color: var(--text2); font-size: 14px; margin-top: 2px; }
-    .note { margin-top: 16px; font-size: 13px; color: var(--muted); }
-    .note code { font-size: 12px; }
 
     /* Footer */
     footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
@@ -130,7 +128,7 @@
       <a class="btn btn-ghost btn-lg" href="{{ sub_url }}" target="_blank" rel="noopener">{{ reddit_icon(18) }}Visit r/{{ sub }}</a>
     </div>
     {% if not signed_in %}
-      <p class="first">First time? Comment <code>$login</code> on <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a> and the bot will DM you a link to set up your account.</p>
+      <p class="first">First time? Comment <code>!login</code> on <a href="{{ sub_url }}" target="_blank" rel="noopener">r/{{ sub }}</a> and the bot will DM you a link to set up your account.</p>
     {% endif %}
   </div>
 
@@ -163,30 +161,29 @@
       <div class="card">
         <h3>Everyone</h3>
         <div class="cmds">
-          <div class="cmd"><code>$login</code><p>Set up or recover your dashboard account.</p></div>
-          <div class="cmd"><code>$stats u/name</code><p>Check a Reddit account's age and activity.</p></div>
-          <div class="cmd"><code>$logi u/name</code><p>See a lender's record and rank.</p></div>
-          <div class="cmd"><code>$help</code><p>List every command.</p></div>
+          <div class="cmd"><code>!login</code><p>Set up or recover your dashboard account.</p></div>
+          <div class="cmd"><code>!stats u/name</code><p>Check a Reddit account's age and activity.</p></div>
+          <div class="cmd"><code>!logi u/name</code><p>See a lender's record and rank.</p></div>
+          <div class="cmd"><code>!help</code><p>List every command.</p></div>
         </div>
       </div>
       <div class="card">
         <h3>Lenders <span class="who">Verified Lender flair</span></h3>
         <div class="cmds">
-          <div class="cmd"><code>$fund REQ-0042</code><p>Fund a request.</p></div>
-          <div class="cmd"><code>$loan 100 USD</code><p>Offer a loan. The borrower confirms it.</p></div>
-          <div class="cmd"><code>$paid_with_id ID 50 USD</code><p>Record a repayment.</p></div>
-          <div class="cmd"><code>$unpaid ID</code><p>Mark a loan unpaid.</p></div>
-          <div class="cmd"><code>$refunded ID</code><p>Cancel a loan.</p></div>
+          <div class="cmd"><code>!fund REQ-0042</code><p>Fund a request.</p></div>
+          <div class="cmd"><code>!loan 100 USD</code><p>Offer a loan. The borrower confirms it.</p></div>
+          <div class="cmd"><code>!paid_with_id ID 50 USD</code><p>Record a repayment.</p></div>
+          <div class="cmd"><code>!unpaid ID</code><p>Mark a loan unpaid.</p></div>
+          <div class="cmd"><code>!refunded ID</code><p>Cancel a loan.</p></div>
         </div>
       </div>
       <div class="card">
         <h3>Borrowers</h3>
         <div class="cmds">
-          <div class="cmd"><code>$confirm</code><p>Accept a loan offer once you've received the money.</p></div>
+          <div class="cmd"><code>!confirm</code><p>Accept a loan offer once you've received the money.</p></div>
         </div>
       </div>
     </div>
-    <p class="note">Every command also works with <code>!</code> instead of <code>$</code>.</p>
   </section>
 </main>
 
