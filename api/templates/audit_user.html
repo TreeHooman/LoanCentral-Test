@@ -9,7 +9,7 @@
   </div>
   <div style="display:flex;gap:8px">
     <a href="{{ url_for('audit_log_page') }}" class="btn-secondary">← Audit Log</a>
-    <a href="/admin/lenders/{{ target_user }}" class="btn-secondary">Profile</a>
+    {% if role == 'admin' %}<a href="{{ url_for('admin_lender_profile_page', username=target_user) }}" class="btn-secondary">Profile</a>{% endif %}
     <a href="/dashboard/users/{{ target_user }}" class="btn-secondary">Loan Record</a>
   </div>
 </div>

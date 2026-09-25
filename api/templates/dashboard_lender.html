@@ -39,7 +39,7 @@
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">-</div></div>
   <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">-</div></div>
-  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">-</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value" id="s-unpaid">-</div></div>
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">-</div></div>
   <div class="stat-card"><div class="stat-label">Total Lent</div><div class="stat-value c-yellow" id="s-lent">-</div></div>
   <div class="stat-card"><div class="stat-label">Due Back</div><div class="stat-value c-orange" id="s-dueback">-</div><div class="stat-sub" id="s-duecount"></div></div>
@@ -268,6 +268,7 @@
       document.getElementById('s-total').textContent = s.total_loans;
       document.getElementById('s-active').textContent = s.active_loans;
       document.getElementById('s-unpaid').textContent = s.unpaid_loans;
+      document.getElementById('s-unpaid').classList.toggle('c-red', (s.unpaid_loans || 0) > 0);
       document.getElementById('s-repaid').textContent = s.repaid_loans;
       document.getElementById('s-lent').textContent = '$' + fmt(s.total_lent);
       document.getElementById('s-dueback').textContent = '$' + fmt(s.outstanding);

@@ -97,8 +97,8 @@ function renderRequests(rows) {
            class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">Thread</a>`
       : `<span style="color:var(--muted);font-size:11px">—</span>`;
     const loanLink  = r.funded_loan_id
-      ? `<a href="/dashboard/loans/${r.funded_loan_id}"
-           style="color:var(--accent-h);font-size:12px">Loan #${r.funded_loan_id}</a>`
+      ? `<span
+           style="color:var(--accent-h);font-size:12px" title="Funded loan">Loan #${r.funded_loan_id}</span>`
       : '—';
     const expBadge  = (r.request_status === 'open' && isExpiringSoon(r.created_at))
       ? `<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(220,50,50,.12);border:1px solid rgba(220,50,50,.3);border-radius:4px;padding:1px 5px;margin-left:4px">Expiring</span>`
@@ -120,7 +120,7 @@ function renderRequests(rows) {
         <div class="mobile-card-actions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
           <a href="/dashboard/requests/${escapeHtml(r.request_id)}" class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">View</a>
           ${threadBtn}
-          ${r.funded_loan_id ? `<a href="/dashboard/loans/${r.funded_loan_id}" class="btn-secondary" style="font-size:11px;padding:3px 8px;text-decoration:none">Loan</a>` : ''}
+          ${r.funded_loan_id ? `<span class="btn-secondary" style="font-size:11px;padding:3px 8px;" title="Funded loan">Loan</span>` : ''}
         </div>
       </td>
       <td data-label="Request ID" style="font-family:monospace;font-size:12px">

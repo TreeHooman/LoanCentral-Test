@@ -6,7 +6,7 @@
 <div class="stats-grid" id="statsGrid">
   <div class="stat-card"><div class="stat-label">Total Loans</div><div class="stat-value c-accent" id="s-total">—</div></div>
   <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value c-accent" id="s-active">—</div></div>
-  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value c-red" id="s-unpaid">—</div></div>
+  <div class="stat-card"><div class="stat-label">Unpaid</div><div class="stat-value" id="s-unpaid">—</div></div>
   <div class="stat-card"><div class="stat-label">Repaid</div><div class="stat-value c-green" id="s-repaid">—</div></div>
   {% if can_view_money %}
   <div class="stat-card"><div class="stat-label">Volume</div><div class="stat-value c-yellow" id="s-volume">—</div><div class="stat-sub" id="s-outstanding"></div></div>
@@ -44,6 +44,28 @@
 </script>
 {% endif %}
 
+<!-- Sections: one tab strip instead of buttons + a More menu + "Back" links -->
+<div class="section-tabs" id="sectionTabs" role="tablist" aria-label="Dashboard sections">
+  <button class="section-tab active" data-tab="loans">Loans</button>
+  <button class="section-tab" data-tab="unpaid">Unpaid</button>
+  <button class="section-tab" data-tab="disputes">Disputes</button>
+  <button class="section-tab" data-tab="requests">Requests</button>
+  <button class="section-tab" data-tab="verification">Verification</button>
+  <button class="section-tab" data-tab="roles">Roles</button>
+  <button class="section-tab" data-tab="reddit-actions">Reddit queue</button>
+  <button class="section-tab" data-tab="announcements">Announcements</button>
+  <button class="section-tab" data-tab="activity">Activity</button>
+  <button class="section-tab" data-tab="reminders">Reminders</button>
+  <button class="section-tab" data-tab="integrity">Integrity</button>
+</div>
+<style>
+  .section-tabs { display:flex; flex-wrap:nowrap; gap:2px; overflow-x:auto; scrollbar-width:none; border-bottom:1px solid var(--border); margin:4px 0 18px; -webkit-overflow-scrolling:touch; }
+  .section-tabs::-webkit-scrollbar { display:none; }
+  .section-tab { flex:none; background:none; border:none; border-bottom:2px solid transparent; color:var(--text2); font:inherit; font-size:13.5px; font-weight:500; padding:10px 12px; cursor:pointer; white-space:nowrap; margin-bottom:-1px; }
+  .section-tab:hover { color:var(--text); }
+  .section-tab.active { color:var(--text); border-bottom-color:var(--accent); }
+</style>
+
 <!-- Loans tab -->
 <div id="tab-loans">
   <div class="toolbar">
@@ -59,34 +81,8 @@
       <input type="text" id="searchInput" placeholder="Search lender, borrower, or loan ID..." />
     </div>
     <button class="btn-secondary" id="refreshBtn" onclick="loadLoans()">Refresh</button>
-    <button class="btn-secondary" onclick="showTab('unpaid')">Unpaid</button>
-    <button class="btn-secondary" onclick="showTab('disputes')">Disputes</button>
-    <div class="dropdown-wrap" style="position:relative">
-      <button class="btn-primary" id="moreMenuBtn" onclick="toggleMoreMenu()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">More ▾</button>
-      <div id="moreMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.4)">
-        <button class="more-item" onclick="showTab('requests')">📋 Requests</button>
-        <button class="more-item" onclick="showTab('verification')">✓ Verification</button>
-        <button class="more-item" onclick="showTab('roles')">👥 Roles</button>
-        <button class="more-item" onclick="showTab('activity')">📊 Activity</button>
-        <button class="more-item" onclick="showTab('reminders')">🔔 Reminders</button>
-        <button class="more-item" onclick="showTab('reddit-actions')">Reddit Queue</button>
-        <button class="more-item" onclick="showTab('integrity')" style="color:var(--red)">🔍 Integrity</button>
-        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
-        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
-        <a class="more-item" href="/mod/queue" style="display:block;text-decoration:none;color:var(--text2)">📋 Mod Queue</a>
-        <a class="more-item" href="/admin/health" style="display:block;text-decoration:none;color:var(--text2)">📊 Community Health</a>
-        <a class="more-item" href="/admin/lenders/management" style="display:block;text-decoration:none;color:var(--text2)">🏦 Lender Mgmt</a>
-        <a class="more-item" href="/admin/borrowers" style="display:block;text-decoration:none;color:var(--text2)">👥 Borrowers</a>
-        <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
-        <button class="more-item" onclick="showTab('announcements')">📣 Announcements</button>
-        <a class="more-item" href="/dashboard/admin/audit-log" style="display:block;text-decoration:none;color:var(--text2)">📜 Audit Log</a>
-        <a class="more-item" href="/dashboard/admin/search" style="display:block;text-decoration:none;color:var(--text2)">🔎 Global Search</a>
-      </div>
-    </div>
   </div>
   <style>
-    .more-item { display:block; width:100%; text-align:left; padding:8px 12px; background:none; border:none; color:var(--text2); font-size:13px; cursor:pointer; border-radius:6px; }
-    .more-item:hover { background:var(--surface2); color:var(--text); }
     @media (max-width: 640px) {
       .mod-loans-table td[data-label="Lender"],
       .mod-loans-table td[data-label="Borrower"],
@@ -115,7 +111,6 @@
 <div id="tab-requests" style="display:none">
   <div class="section-header">
     <span class="section-title">Open Loan Requests</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">All open REQ posts the bot has seen. Lenders fund these from their dashboard.</p>
   <div class="table-wrap">
@@ -130,7 +125,6 @@
 <div id="tab-unpaid" style="display:none">
   <div class="section-header">
     <span class="section-title">Unpaid Loan Review</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">These loans have been flagged unpaid by a lender. Review each case — if confirmed ghosted or scammed, issue the ban.</p>
   <div class="table-wrap">
@@ -145,7 +139,6 @@
 <div id="tab-roles" style="display:none">
   <div class="section-header">
     <span class="section-title">Role Management</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
   </div>
   <div class="toolbar">
     <div class="search-wrap"><input type="text" id="roleSearch" placeholder="Add user by Reddit username..." /></div>
@@ -170,7 +163,6 @@
 <div id="tab-activity" style="display:none">
   <div class="section-header">
     <span class="section-title">Live Activity Feed</span>
-    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Recent dashboard and bot audit events. Auto-refreshes once per minute while open.</p>
   <div class="table-wrap">
@@ -185,7 +177,6 @@
 <div id="tab-reminders" style="display:none">
   <div class="section-header">
     <span class="section-title">Reminder Queue</span>
-    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Read-only queue for overdue, due-today, due-soon, and missing due-date loans. This does not call Reddit.</p>
   <div class="table-wrap">
@@ -200,7 +191,6 @@
 <div id="tab-disputes" style="display:none">
   <div class="section-header">
     <span class="section-title">Disputed Loans</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Loans a borrower has flagged for review. Status is frozen until resolved. Use the loan actions to mark paid, unpaid, or refunded once reviewed.</p>
   <div class="table-wrap">
@@ -250,7 +240,6 @@
     <span class="section-title">Data Integrity Checks</span>
     <div style="display:flex;gap:8px">
       <button class="btn-primary" onclick="loadIntegrity()">Run checks</button>
-      <button class="btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)" onclick="showTab('loans')">← Back</button>
     </div>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Runs live DB sanity checks — overpaid loans, stale actives, duplicate pairs, unregistered users. No changes are made.</p>
@@ -269,7 +258,6 @@
 <div id="tab-verification" style="display:none">
   <div class="section-header">
     <span class="section-title">Verification Applications</span>
-    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Approve grants dashboard lender access and marks the user as Verified Lender (completed LoanCentral process). Reddit flair changes stay manual until Reddit integration is enabled.</p>
   <div class="toolbar" style="margin-bottom:12px">
@@ -293,7 +281,6 @@
 <div id="tab-announcements" style="display:none">
   <div class="section-header">
     <span class="section-title">Announcements</span>
-    <button class="btn-primary" onclick="showTab('loans')">← Back</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Active banners shown to all users. Dismissable per-user via localStorage.</p>
 
@@ -341,7 +328,6 @@
 <div id="tab-reddit-actions" style="display:none">
   <div class="section-header">
     <span class="section-title">Reddit Action Queue</span>
-    <button class="btn-primary" onclick="showTab('loans')">Back to Loans</button>
   </div>
   <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Staged Reddit actions for reminders, bans, and flair sync. This page reviews queue records only; it does not call Reddit.</p>
   <div class="table-wrap">
@@ -378,8 +364,10 @@
       modLoanLimit = 40;
       searchTimer = setTimeout(loadLoans, 400);
     });
+    document.querySelectorAll('#sectionTabs .section-tab').forEach(b =>
+      b.addEventListener('click', () => showTab(b.dataset.tab)));
     const initialTab = new URLSearchParams(window.location.search).get('tab');
-    if (['activity','reminders','verification','reddit-actions','requests','roles','unpaid','disputes'].includes(initialTab)) {
+    if (['activity','reminders','verification','reddit-actions','requests','roles','unpaid','disputes','integrity','announcements'].includes(initialTab)) {
       showTab(initialTab);
     }
   });
@@ -390,6 +378,7 @@
       document.getElementById('s-total').textContent   = s.total_loans;
       document.getElementById('s-active').textContent  = s.active_loans + s.partial_loans;
       document.getElementById('s-unpaid').textContent  = s.unpaid_loans;
+      document.getElementById('s-unpaid').classList.toggle('c-red', (s.unpaid_loans || 0) > 0);
       document.getElementById('s-repaid').textContent  = s.repaid_loans;
       if (CAN_VIEW_MONEY) {
         document.getElementById('s-volume').textContent  = '$' + fmt(s.total_volume);
@@ -501,20 +490,12 @@
     </tr>`;
   }
 
-  function toggleMoreMenu() {
-    const menu = document.getElementById('moreMenu');
-    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-  }
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.dropdown-wrap')) {
-      const m = document.getElementById('moreMenu');
-      if (m) m.style.display = 'none';
-    }
-  });
-
   function showTab(name) {
-    const m = document.getElementById('moreMenu');
-    if (m) m.style.display = 'none';
+    document.querySelectorAll('#sectionTabs .section-tab').forEach(b => {
+      const on = b.dataset.tab === name;
+      b.classList.toggle('active', on);
+      if (on) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
     ['loans','unpaid','disputes','requests','roles','activity','reminders','verification','reddit-actions','integrity','announcements'].forEach(t =>
       document.getElementById('tab-'+t).style.display = name === t ? '' : 'none'
     );
@@ -969,7 +950,6 @@
   }
 
   Object.assign(window, {
-    toggleMoreMenu,
     assignRole,
     clearUnpaid,
     confirmBan,

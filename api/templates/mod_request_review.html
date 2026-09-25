@@ -286,7 +286,7 @@ function renderFunded(rows) {
     const amt     = r.requested_amount ? '$' + parseFloat(r.requested_amount).toFixed(2) : '—';
     const created = (r.created_at || '').slice(0, 10);
     const loan    = r.funded_loan_id
-      ? `<a href="/dashboard/loans/${r.funded_loan_id}" style="color:var(--accent-h);font-size:12px">#${r.funded_loan_id}</a>`
+      ? `<span style="color:var(--accent-h);font-size:12px" title="Funded loan">#${r.funded_loan_id}</span>`
       : `<span style="color:var(--muted);font-size:11px">Not linked</span>`;
     return `<tr>
       <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" role="button" tabindex="0">

@@ -235,6 +235,7 @@
       .nav-more-menu { left: auto; right: 0; }  /* More sits at the right edge */
       .nav-links::-webkit-scrollbar { display: none; }
       .nav-link { display: inline-flex; align-items: center; min-height: 36px; white-space: nowrap; }
+      .nav-links .nav-link { flex: none; padding: 6px 10px; }
       .nav-right { gap: 6px; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
       .nav-user { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
       .role-badge { padding: 3px 6px; font-size: 10px; }
@@ -292,13 +293,14 @@
       .mini-label { font-size: 9px; }
       .mini-value { font-size: 15px; }
       .stats-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
         margin-bottom: 12px;
       }
       .stat-card { padding: 9px; border-radius: 8px; min-height: 62px; overflow: hidden; }
       .stat-label { font-size: 9px; }
-      .stat-value { font-size: 17px; margin-top: 4px; overflow-wrap: anywhere; }
+      .stat-value { font-size: 16px; margin-top: 4px; overflow-wrap: anywhere; }
+      .stat-card .stat-label { font-size: 11px !important; line-height: 1.25; }
       .stat-sub { font-size: 10px; margin-top: 2px; }
       .toolbar {
         display: grid;
@@ -448,9 +450,11 @@
       .mobile-card-meta {
         display: flex;
         flex-wrap: wrap;
+        align-items: center;
         gap: 5px;
         margin-top: 6px;
       }
+      .mobile-card-meta .badge { align-self: center; }
       .mobile-chip {
         display: inline-flex;
         align-items: center;
@@ -675,7 +679,7 @@
       <a class="nav-link {% if request.endpoint == 'mod_queue_page' %}active{% endif %}" href="{{ url_for('mod_queue_page') }}">Queue</a>
       <a class="nav-link {% if request.endpoint == 'mod_moderation_page' %}active{% endif %}" href="{{ url_for('mod_moderation_page') }}">Bans &amp; Sync</a>
   </div>
-  {% set more_pages = ['global_search_page', 'audit_log_page', 'community_health_page', 'admin_feedback_page', 'dashboard_lender', 'dashboard_borrower'] %}
+  {% set more_pages = ['global_search_page', 'audit_log_page', 'community_health_page', 'admin_feedback_page', 'lender_management_page', 'borrower_activity_page', 'dashboard_lender', 'dashboard_borrower'] %}
   <details class="nav-more">
     <summary class="nav-link {% if request.endpoint in more_pages %}active{% endif %}">More &#9662;</summary>
     <div class="nav-more-menu">
@@ -683,6 +687,8 @@
       <a class="nav-link" href="{{ url_for('audit_log_page') }}">Audit Log</a>
       <a class="nav-link" href="{{ url_for('community_health_page') }}">Community Health</a>
       <a class="nav-link" href="{{ url_for('admin_feedback_page') }}">Feedback Inbox</a>
+      <a class="nav-link" href="{{ url_for('lender_management_page') }}">Lender management</a>
+      <a class="nav-link" href="{{ url_for('borrower_activity_page') }}">Borrowers</a>
       <div class="nav-more-sep">Preview as</div>
       <a class="nav-link" href="{{ url_for('dashboard_lender') }}">Lender View</a>
       <a class="nav-link" href="{{ url_for('dashboard_borrower') }}">Borrower View</a>

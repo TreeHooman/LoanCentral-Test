@@ -86,8 +86,8 @@ function render(r) {
          class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">View Thread</a>`
     : null;
   const loanBtn  = r.funded_loan_id
-    ? `<a href="/dashboard/loans/${r.funded_loan_id}"
-         class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">Loan #${r.funded_loan_id}</a>`
+    ? `<span
+         class="btn-secondary" style="font-size:12px;padding:4px 10px;" title="Funded loan">Loan #${r.funded_loan_id}</span>`
     : null;
   const daysOld  = r.created_at ? (Date.now() - new Date(r.created_at)) / 86400000 : 0;
   const expBadge = (r.request_status === 'open' && daysOld >= 7 && daysOld < 10)
@@ -111,7 +111,7 @@ function render(r) {
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${r.thread_url ? `<a href="${escapeHtml(r.thread_url)}" target="_blank" rel="noopener" class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">View Thread</a>` : ''}
-            ${r.funded_loan_id ? `<a href="/dashboard/loans/${r.funded_loan_id}" class="btn-secondary" style="font-size:12px;padding:4px 10px;text-decoration:none">Loan #${r.funded_loan_id}</a>` : ''}
+            ${r.funded_loan_id ? `<span class="btn-secondary" style="font-size:12px;padding:4px 10px;" title="Funded loan">Loan #${r.funded_loan_id}</span>` : ''}
             ${isMod ? `<button class="btn-action btn-extension" style="font-size:12px" onclick="openStatusModal()">Change Status</button>
             <button class="btn-secondary" style="font-size:12px" onclick="openLinkModal()">Link to Loan</button>` : ''}
           </div>

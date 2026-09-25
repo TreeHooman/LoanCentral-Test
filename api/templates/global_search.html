@@ -114,14 +114,15 @@ function clearRecent() {
 }
 
 // Pre-fill query from URL (e.g. loan links from the audit log)
-(function initFromUrl() {
+// Runs after the page (and base.html's escapeHtml, defined further down) has loaded.
+document.addEventListener('DOMContentLoaded', function initFromUrl() {
   const sp = new URLSearchParams(location.search);
   if (sp.get('q')) {
     document.getElementById('q').value = sp.get('q');
-    setTimeout(() => runSearch(), 0);
+    runSearch();
   }
   renderRecentSearches();
-})();
+});
 
 async function runSearch(offset) {
   _offset = offset || 0;
