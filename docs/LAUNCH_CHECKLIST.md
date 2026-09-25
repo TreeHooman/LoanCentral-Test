@@ -229,17 +229,27 @@ replaces the database, so that account goes away and this recreates yours.)
 Preview the roles. This changes nothing:
 
 ```
-python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod MODNAME --lenders-file verified.txt
+python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod left-associate3911 --mod logistix1 --lender embarrassed-throat42 --lender left-associate3911 --lender logistix1 --lenders-file verified.txt
 ```
 
 Then apply, and set your own admin key (you type it at a hidden prompt):
 
 ```
-python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod MODNAME --lenders-file verified.txt --apply --set-admin-key
+python scripts/bootstrap_roles.py --admin embarrassed-throat42 --mod left-associate3911 --mod logistix1 --lender embarrassed-throat42 --lender left-associate3911 --lender logistix1 --lenders-file verified.txt --apply --set-admin-key
 ```
 
-Then grant **Legacy Lender** to the founders: Admin > Lenders > open each one >
-Grant Legacy Lender.
+Mods (decided 2026-09-25): **u/left-associate3911** and **u/logistix1**, plus you
+as admin. All three are lenders too (`--lender`), so their lender commands and
+dashboard work whatever their flair says.
+
+Then grant **Legacy Lender** to the founders, the same three:
+**embarrassed-throat42, left-associate3911, logistix1**. Admin > Lenders > open
+each one > Grant Legacy Lender.
+
+The June records also hold one loan each under **embarassed-throat42** and
+**embarrassedthroat-42** (typos of your name). To count them toward your record:
+`python scripts/rename_reddit_user.py embarassed-throat42 embarrassed-throat42 --apply`
+(and the same for `embarrassedthroat-42`), after step 3 and before this step.
 
 Sign in to the dashboard at `/login` with **Login with Key** and the key you
 just typed (or, once you have run `!login`, with Google). From the admin area you can then issue
