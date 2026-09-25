@@ -94,6 +94,7 @@
       .grid-2 { grid-template-columns: 1fr; }
       header .btn-ghost .label { display: none; }
     }
+    .req-note { margin-top: 14px; font-size: 13px; line-height: 1.5; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -173,6 +174,8 @@
           <li>See every loan you've made in the dashboard</li>
           <li>Due dates and unpaid loans at a glance</li>
         </ul>
+        <p class="req-note">To lend you need the Verified Lender flair, and your Reddit account must meet
+          r/{{ sub }}'s requirements, including at least 500 karma.</p>
       </div>
       <div class="card">
         <h3>Borrowers</h3>
@@ -206,6 +209,7 @@
           <div class="cmd"><code>!unpaid ID</code><p>Mark a loan unpaid.</p></div>
           <div class="cmd"><code>!refunded ID</code><p>Cancel a loan.</p></div>
         </div>
+        <p class="req-note">Reddit requirements apply too: at least 500 karma.</p>
       </div>
       <div class="card">
         <h3>Borrowers</h3>

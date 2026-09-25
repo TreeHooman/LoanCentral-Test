@@ -112,33 +112,29 @@ class DisputeAuthorizationTests(RealDBTestCase):
         return self.query("SELECT status FROM loans WHERE loan_id = %s",
                           (self.loan_id,))[0][0]
 
-    def test_other_user_cannot_dispute_someone_elses_loan(self):
-        self.login("attacker", role="borrower")
-        response = self.client.post(f"/api/loans/{self.loan_id}/dispute",
-                                    json={"borrower": "victim"})
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(self._status(), "confirmed",
-                         "an unauthorized dispute must not change loan status")
-
-    def test_other_user_cannot_dispute_by_omitting_the_body(self):
-        """Falling back to the session must not match a loan they don't own."""
-        self.login("attacker", role="borrower")
-        response = self.client.post(f"/api/loans/{self.loan_id}/dispute", json={})
-        self.assertEqual(response.status_code, 400)
+    def test_borrower_cannot_dispute_from_the_dashboard(self):
+        """Since 2.0 disputes go to modmail; the endpoint is mod-only."""
+        for who in ("victim", "attacker"):
+            self.login(who, role="borrower")
+            response = self.client.post(f"/api/loans/{self.loan_id}/dispute",
+                                        json={"borrower": "victim"})
+            self.assertIn(response.status_code, (401, 403))
         self.assertEqual(self._status(), "confirmed")
 
-    def test_borrower_can_still_dispute_their_own_loan(self):
-        self.login("victim", role="borrower")
-        response = self.client.post(f"/api/loans/{self.loan_id}/dispute", json={})
+    def test_lender_cannot_dispute(self):
+        self.login("lender", role="lender")
+        response = self.client.post(f"/api/loans/{self.loan_id}/dispute",
+                                    json={"borrower": "victim"})
+        self.assertIn(response.status_code, (401, 403))
+        self.assertEqual(self._status(), "confirmed")
+
+    def test_mod_can_mark_a_loan_disputed(self):
+        self.make_user("moddy", role="mod")
+        self.login("moddy", role="mod")
+        response = self.client.post(f"/api/loans/{self.loan_id}/dispute",
+                                    json={"borrower": "victim"})
         self.assertEqual(response.status_code, 200, response.get_json())
         self.assertEqual(self._status(), "disputed")
-
-    def test_dispute_audit_row_names_the_real_actor(self):
-        self.login("victim", role="borrower")
-        self.client.post(f"/api/loans/{self.loan_id}/dispute", json={})
-        actors = [row[0] for row in self.query(
-            "SELECT actor_username FROM audit_logs WHERE action_type = 'dispute_opened'")]
-        self.assertEqual(actors, ["victim"])
 
 
 class RequestStateTransitionTests(RealDBTestCase):

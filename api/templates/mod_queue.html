@@ -216,7 +216,7 @@ function renderFeedback(rows) {
             <div class="mobile-card-sub">#${f.id} - u/${escapeHtml(f.username)}</div>
           </div>
           <div class="mobile-card-side">
-            <span class="badge badge-fb-${f.category}">${CAT[f.category] || f.category}</span>
+            <span class="badge badge-fb-${escapeHtml(f.category)}">${escapeHtml(CAT[f.category] || f.category)}</span>
           </div>
         </div>
         <div class="mobile-card-actions">
@@ -227,7 +227,7 @@ function renderFeedback(rows) {
       </td>
       <td data-label="ID" style="font-size:12px;color:var(--muted)">${f.id}</td>
       <td data-label="User" class="username">u/${escapeHtml(f.username)}</td>
-      <td data-label="Category"><span class="badge badge-fb-${f.category}">${CAT[f.category] || f.category}</span></td>
+      <td data-label="Category"><span class="badge badge-fb-${escapeHtml(f.category)}">${escapeHtml(CAT[f.category] || f.category)}</span></td>
       <td data-label="Title" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.title)}</td>
       <td data-label="Submitted" class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '-'}</td>
       <td data-label="Actions"><a href="/admin/feedback" class="btn-action btn-extension" style="text-decoration:none;display:inline-block">Review</a></td>

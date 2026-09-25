@@ -759,7 +759,7 @@
         return;
       }
       tbody.innerHTML = reqs.map(r => {
-        const thread = r.thread_link ? `<a class="thread-link" href="${r.thread_link}" target="_blank">View ↗</a>` : '—';
+        const thread = r.thread_link ? `<a class="thread-link" href="${escapeAttr(safeUrl(r.thread_link))}" target="_blank">View ↗</a>` : '—';
         const repayAmt = r.repay_amount ? `$${parseFloat(r.repay_amount).toFixed(2)}` : '<span style="color:var(--orange)">TBD</span>';
         const repayDate = r.repay_date ? r.repay_date.split('T')[0] : '—';
         const posted = r.post_date ? fmtDate(r.post_date) : '—';
@@ -790,7 +790,7 @@
       tbody.innerHTML = loans.map(loan => {
         const id = loan.loan_id || loan.db_id;
         const thread = loan.original_thread && loan.original_thread !== 'dashboard'
-          ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">View Thread ↗</a>`
+          ? `<a class="thread-link" href="${escapeAttr(safeUrl(loan.original_thread))}" target="_blank">View Thread ↗</a>`
           : '—';
         return `<tr>
           <td data-label="Loan"><span class="loan-id">${id}</span></td>

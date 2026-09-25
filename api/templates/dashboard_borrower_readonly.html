@@ -118,7 +118,7 @@
           <td data-label="Status"><span class="badge badge-{{ loan.status }}">{{ loan.status | replace('_',' ') | title }}</span></td>
           <td data-label="Thread">
             {% if loan.original_thread and loan.original_thread != 'dashboard' %}
-            <a class="thread-link" href="{{ loan.original_thread }}" target="_blank" rel="noopener">Thread</a>
+            <a class="thread-link" href="{{ loan.original_thread | web_url }}" target="_blank" rel="noopener">Thread</a>
             {% else %}—{% endif %}
           </td>
         </tr>
@@ -146,7 +146,7 @@
           <td data-label="Date">{{ loan.date_created | string | truncate(10, True, '') if loan.date_created else '—' }}</td>
           <td data-label="Thread">
             {% if loan.original_thread and loan.original_thread != 'dashboard' %}
-            <a class="thread-link" href="{{ loan.original_thread }}" target="_blank" rel="noopener">Thread</a>
+            <a class="thread-link" href="{{ loan.original_thread | web_url }}" target="_blank" rel="noopener">Thread</a>
             {% else %}—{% endif %}
           </td>
         </tr>

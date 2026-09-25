@@ -638,6 +638,19 @@ def update_reddit_action_status(action_id: int, status: str, actor: str = None, 
 # Loan Services
 # ---------------------------------------------------------------------------
 
+def web_url_or_blank(url):
+    """Stored thread links are shown as clickable links, so only http(s)
+    addresses are kept. Anything else with a scheme (javascript:, data:, ...)
+    becomes "". Values without a scheme, like the "dashboard" marker, pass."""
+    if url is None:
+        return url
+    text = str(url).strip()
+    squashed = re.sub(r"[\x00-\x20]", "", text)   # browsers ignore these inside a scheme
+    if re.match(r"(?i)^https?://", squashed):
+        return text
+    return "" if ":" in squashed else text
+
+
 def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thread_url: str,
                 repay_amount: Decimal = None, repay_date: str = None, payment_method: str = None,
                 interest_amount: Decimal = None, interest_rate: Decimal = None,
@@ -657,6 +670,7 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
     """
     if amount <= 0:
         return None, "Loan amount must be greater than zero."
+    thread_url = web_url_or_blank(thread_url)
 
     if lender == borrower:
         return None, "Lender and borrower cannot be the same person."
@@ -691,7 +705,7 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
                 amount = Decimal(str(claimed[1]))
                 currency = metadata.get("currency", "USD")
             payment_method = metadata.get("method")
-            thread_url = claimed[3] or ""
+            thread_url = web_url_or_blank(claimed[3] or "")
             # Kept for the post-commit Reddit sync enqueue below.
             reddit_post_id, reddit_comment_id = claimed[4], claimed[5]
             if metadata.get("expires") and metadata["expires"] < datetime.now().date().isoformat():
@@ -5813,6 +5827,7 @@ def create_loan_request(
     """
     if not borrower_username:
         return None, "borrower_username is required"
+    thread_url = web_url_or_blank(thread_url)
     conn = _get_db()
     if not conn:
         return None, "Database connection failed"

@@ -124,11 +124,11 @@ function renderTable(rows, total) {
             <div class="mobile-card-sub">#${f.id} - u/${escapeHtml(f.username)}</div>
           </div>
           <div class="mobile-card-side">
-            <span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span>
+            <span class="badge badge-fbstatus-${escapeHtml(f.status)}">${escapeHtml(ST_LABELS[f.status] || f.status)}</span>
           </div>
         </div>
         <div class="mobile-card-meta">
-          <span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span>
+          <span class="badge badge-fb-${escapeHtml(f.category)}">${escapeHtml(CAT_LABELS[f.category] || f.category)}</span>
           <span class="mobile-chip">${f.created_at ? f.created_at.slice(0,10) : '-'}</span>
         </div>
         <div class="mobile-card-actions">
@@ -155,9 +155,9 @@ function renderTable(rows, total) {
       </td>
       <td data-label="ID" style="font-size:12px;color:var(--muted)">${f.id}</td>
       <td data-label="User" class="username"><a href="/audit/user/${escapeHtml(f.username)}" style="color:var(--text);text-decoration:none;font-weight:500">u/${escapeHtml(f.username)}</a></td>
-      <td data-label="Category"><span class="badge badge-fb-${f.category}">${CAT_LABELS[f.category] || f.category}</span></td>
+      <td data-label="Category"><span class="badge badge-fb-${escapeHtml(f.category)}">${escapeHtml(CAT_LABELS[f.category] || f.category)}</span></td>
       <td data-label="Title" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</td>
-      <td data-label="Status"><span class="badge badge-fbstatus-${f.status}">${ST_LABELS[f.status] || f.status}</span></td>
+      <td data-label="Status"><span class="badge badge-fbstatus-${escapeHtml(f.status)}">${escapeHtml(ST_LABELS[f.status] || f.status)}</span></td>
       <td data-label="Submitted" class="date-cell">${f.created_at ? f.created_at.slice(0,10) : '-'}</td>
       <td data-label="Actions"><button class="btn-action btn-extension" onclick='openDetail(${JSON.stringify(f)})'>Review</button></td>
     </tr>`).join('');
@@ -187,10 +187,10 @@ function openDetail(f) {
   document.getElementById('dmNote').value = f.reviewer_note || '';
   document.getElementById('dmError').style.display = 'none';
   const catBadge = document.getElementById('dmCatBadge');
-  catBadge.className = `badge badge-fb-${f.category}`;
+  catBadge.className = `badge badge-fb-${escapeHtml(f.category)}`;
   catBadge.textContent = CAT_LABELS[f.category] || f.category;
   const stBadge = document.getElementById('dmStatusBadge');
-  stBadge.className = `badge badge-fbstatus-${f.status}`;
+  stBadge.className = `badge badge-fbstatus-${escapeHtml(f.status)}`;
   stBadge.textContent = ST_LABELS[f.status] || f.status;
   document.getElementById('detailModal').classList.add('open');
 }

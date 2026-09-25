@@ -985,6 +985,17 @@
     });
   });
 
+  // Links built from stored data must be web links. Anything else becomes "#".
+  function safeUrl(u) {
+    const s = String(u == null ? '' : u).trim();
+    return /^https?:\/\//i.test(s.replace(/[\u0000-\u0020]/g, '')) ? s : '#';
+  }
+  // Backstop for every page: never follow a javascript:/data:/vbscript: link.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (a && /^(javascript|data|vbscript):/i.test(a.protocol)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
   function escapeHtml(s) {
     if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -1423,7 +1434,7 @@
     const canPay    = ['confirmed','partially_repaid','unpaid'].includes(loan.status);
     const canUnpaid = ['confirmed','partially_repaid'].includes(loan.status);
     const canRefund = !['repaid','refunded'].includes(loan.status);
-    const thread = loan.original_thread ? `<a class="thread-link" href="${loan.original_thread}" target="_blank">↗</a>` : '';
+    const thread = loan.original_thread ? `<a class="thread-link" href="${escapeHtml(safeUrl(loan.original_thread))}" target="_blank">↗</a>` : '';
     return `<tr>
       <td><span class="loan-id">${id}</span></td>
       <td class="username"><a href="#" onclick="return false">u/${loan.lender}</a></td>

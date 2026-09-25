@@ -45,6 +45,19 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = _is_prod  # HTTPS only in prod
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
+if _is_prod:
+    # Render's proxy connects to us, so without this every visitor has the
+    # proxy's address and the per-IP sign-in limits are one shared bucket:
+    # one person guessing keys would lock everyone out. x_for=1 trusts only
+    # the address Render's proxy appended (the rightmost one), which a
+    # visitor cannot fake by sending their own X-Forwarded-For.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+    if not os.getenv("SECRET_KEY"):
+        logging.getLogger("LoanCentral.api").critical(
+            "SECRET_KEY is not set: sessions will not survive a restart and "
+            "differ between workers. Set it on Render.")
+
 API_KEY = os.getenv("API_KEY", "changeme")
 # Master-key auth is disabled when API_KEY is unset or left at the insecure
 # default — otherwise a missing env var would let anyone in with "changeme".
@@ -144,6 +157,8 @@ def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
     response.headers["X-XSS-Protection"] = "0"  # modern browsers: rely on CSP not this
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
@@ -152,6 +167,8 @@ def add_security_headers(response):
         "img-src 'self' data:; "
         "font-src 'self'; "
         "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
         "frame-ancestors 'none';"
     )
     if _is_prod:
@@ -206,6 +223,13 @@ def validate_key_session():
 
 
 _RANK_TTL = 600  # seconds; the nav badge re-reads the count at most every 10 min
+
+
+@app.template_filter("web_url")
+def _web_url_filter(url):
+    """Only http(s) links become hrefs; anything else is replaced by '#'."""
+    from services import web_url_or_blank
+    return web_url_or_blank(url) or "#"
 
 
 @app.context_processor
@@ -1649,6 +1673,17 @@ def export_loans_csv():
     )
 
 
+def _may_see_loan(lender, borrower):
+    """Mods/admins (and the master API key) see every loan; anyone else only
+    loans recorded under one of their own names (dashboard or Reddit)."""
+    me = session.get("username")
+    if not me or _is_mod_or_admin():
+        return True   # no session = master API key, already checked by require_auth
+    from services import account_aliases
+    mine = set(account_aliases(me)) | {me.lower()}
+    return (lender or "").lower() in mine or (borrower or "").lower() in mine
+
+
 @app.route("/api/loans/<loan_id>", methods=["GET"])
 @require_auth
 def get_loan(loan_id):
@@ -1724,10 +1759,8 @@ def get_loan(loan_id):
             "schema_outdated": schema_mode != "dashboard",
         }
         # Scope check
-        if session.get("username") and not _is_mod_or_admin():
-            me = session["username"]
-            if loan["lender"] != me and loan["borrower"] != me:
-                return _json({"error": "You can only view your own loans."}, 403)
+        if not _may_see_loan(loan["lender"], loan["borrower"]):
+            return _json({"error": "You can only view your own loans."}, 403)
         if session.get("role") == "mod":
             loan = _redact_loan_money(loan)
         return _json(loan)
@@ -1926,32 +1959,18 @@ def set_loan_refunded(loan_id):
 
 
 @app.route("/api/loans/<loan_id>/dispute", methods=["POST"])
-@require_auth
+@require_mod_api
 def set_loan_disputed(loan_id):
-    from services import dispute_loan, account_aliases
-    data = request.get_json() or {}
+    """Mark a loan disputed. Mods and admins only: since 2.0 borrowers raise
+    disputes through modmail, not from the dashboard or an API call."""
+    from services import dispute_loan
+    data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return _json({"error": "Expected a JSON object."}, 400)
-    actor = session.get("username", "").strip().lower()
-    supplied = data.get("borrower")
-    if not isinstance(supplied, (str, type(None))):
-        return _json({"error": "Invalid borrower."}, 400)
-    supplied = (supplied or "").strip().lower()
-
-    if actor:
-        # A session may only dispute as itself. The loan stores whichever name
-        # the loan was recorded under, so accept any alias of the caller
-        # (dashboard name or linked Reddit name) but never another user's.
-        borrower = supplied or actor
-        if borrower != actor and borrower not in account_aliases(actor):
-            return _json({"error": "You can only dispute your own loans."}, 403)
-    else:
-        # Master API key (no session): caller is already admin-level.
-        borrower = supplied
-
-    if not borrower:
+    borrower = data.get("borrower")
+    if not isinstance(borrower, str) or not borrower.strip():
         return _json({"error": "borrower is required"}, 400)
-    result, error = dispute_loan(loan_id, borrower)
+    result, error = dispute_loan(loan_id, borrower.strip().lower())
     if error:
         return _json({"error": error}, 400)
     return _json(result)
@@ -2902,7 +2921,21 @@ def audit_log_page():
 @app.route("/api/loans/<loan_id>/events", methods=["GET"])
 @require_auth
 def api_loan_events(loan_id):
-    from services import get_loan_events
+    from services import get_loan_events, _get_db
+    conn = _get_db()
+    if not conn:
+        return _json({"error": "Database connection failed"}, 500)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT lender, borrower FROM loans WHERE id::text = %s OR loan_id = %s "
+                    "ORDER BY id DESC LIMIT 1", (loan_id, loan_id))
+        row = cur.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return _json({"error": "Loan not found"}, 404)
+    if not _may_see_loan(row[0], row[1]):
+        return _json({"error": "You can only view your own loans."}, 403)
     events, error = get_loan_events(loan_id)
     if error:
         return _json({"error": error}, 500)
