@@ -22,7 +22,18 @@ night: if something goes wrong you want the next day free.)
   Lender: the same three.
 - Post and pin **draft G** (the permanent "How LoanCentral works" guide).
 - Restyle the subreddit (banner, colours, icon, sidebar widgets) with Claude
-  guiding over screen share / screenshots.
+  guiding. Two ways to do it (owner picks; option 1 is the simplest):
+  1. **Claude watches, you click.** With permission, Claude takes screenshots
+     of your screen (computer use), sees where you are and tells you exactly
+     what to click next. On the browser this is view-only: Claude can see it
+     but not click it.
+  2. **Claude clicks in your Chrome.** With the Claude in Chrome extension,
+     Claude works in your own Chrome, where you're already logged into Reddit.
+     It shows each change and waits for your OK before saving anything, since
+     it changes a public page.
+  Have the subreddit's mod tools open when starting. Use the new logo files
+  (`api/static/img/logo-mark.png`, `logo-full.png`) and the site green
+  `#2fdb5e` on black so the sub matches loancentral.net.
 
 ### Still to do before launch day
 
