@@ -8,6 +8,7 @@ LoanCentral API + Dashboard
 
 import json
 import os
+import re
 import secrets
 import sys
 import csv
@@ -630,6 +631,17 @@ def _lender_write_actor(data):
     if not _is_lender_verified_fresh(actor):
         return None, _json({"error": "Verified lender access required."}, 403)
     return actor, None
+
+
+def _int_arg(name, default, lo=0, hi=1000):
+    """A whole number from the query string, clamped to [lo, hi]. Anything
+    that isn't a number (?limit=abc, ?offset=' OR 1=1) falls back to the
+    default instead of crashing the request with a 500."""
+    try:
+        value = int(str(request.args.get(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(lo, min(value, hi))
 
 
 def _money_input(value):
@@ -1530,8 +1542,8 @@ def list_roles():
     conn = _get_db()
     if not conn:
         return _json({"error": "Database connection failed"}, 500)
-    limit  = min(int(request.args.get("limit", 500)), 1000)
-    offset = int(request.args.get("offset", 0))
+    limit  = min(_int_arg("limit", 500), 1000)
+    offset = _int_arg("offset", 0, hi=10_000_000)
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -1564,7 +1576,7 @@ def get_loans():
     borrower = request.args.get("borrower")
     status   = request.args.get("status")
     search   = request.args.get("search")
-    limit    = int(request.args.get("limit", 200))
+    limit    = _int_arg("limit", 200)
 
     # Non-mod/admins can only see their own data.
     if session.get("username") and not _is_mod_or_admin():
@@ -1643,8 +1655,17 @@ def export_loans_csv():
         "repay_date", "payment_method", "interest_amount", "interest_rate",
         "borrower_acknowledged_at", "borrower_acknowledged_note", "thread", "notes"
     ])
+    def cell(value):
+        # Text that starts like a formula (=, +, -, @, tab) would run as one
+        # when the export is opened in Excel or Sheets: =HYPERLINK(...) in a
+        # note is a phishing link. A leading ' makes the spreadsheet show it
+        # as plain text. Numbers are written as numbers.
+        if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", chr(9), chr(13)):
+            return "'" + value
+        return value
+
     for loan in loans:
-        writer.writerow([
+        writer.writerow([cell(v) for v in [
             loan.get("loan_id") or loan.get("db_id"),
             loan.get("lender"),
             loan.get("borrower"),
@@ -1663,9 +1684,10 @@ def export_loans_csv():
             loan.get("borrower_acknowledged_note") or "",
             loan.get("original_thread"),
             loan.get("notes") or "",
-        ])
+        ]])
 
-    filename = f"loancentral-{role}-{username}-loans.csv"
+    safe_name = re.sub(r"[^A-Za-z0-9_-]", "", username or "")[:40] or "user"
+    filename = f"loancentral-{role}-{safe_name}-loans.csv"
     return app.response_class(
         out.getvalue(),
         mimetype="text/csv",
@@ -2202,7 +2224,7 @@ def get_reddit_actions():
     rows, error = list_reddit_actions(
         status=request.args.get("status"),
         action_type=request.args.get("action_type"),
-        limit=int(request.args.get("limit", 100)),
+        limit=_int_arg("limit", 100),
     )
     if error:
         return _json({"error": error}, 500)
@@ -2321,7 +2343,7 @@ def get_lender_stats(lender):
 @require_mod_api
 def get_activity():
     from services import get_recent_activity
-    limit = int(request.args.get("limit", 50))
+    limit = _int_arg("limit", 50)
     events, error = get_recent_activity(limit=limit)
     if error:
         return _json({"error": error}, 500)
@@ -2335,7 +2357,7 @@ def get_activity():
 def get_verification_applications():
     from services import list_verification_applications
     status = request.args.get("status")
-    limit = int(request.args.get("limit", 100))
+    limit = _int_arg("limit", 100)
     rows, error = list_verification_applications(status=status, limit=limit)
     if error:
         return _json({"error": error}, 500)
@@ -2389,8 +2411,8 @@ def decide_verification(application_id):
 def get_reminders():
     """Read-only due-date queue for dashboard reminders. Does not call Reddit."""
     lender = (request.args.get("lender") or "").strip().lower()
-    limit = min(max(int(request.args.get("limit", 200)), 1), 500)
-    days = min(max(int(request.args.get("days", 3)), 0), 30)
+    limit = min(max(_int_arg("limit", 200), 1), 500)
+    days = min(max(_int_arg("days", 3), 0), 30)
 
     if session.get("username") and not _is_mod_or_admin():
         lender = session["username"]
@@ -2893,8 +2915,8 @@ def api_audit_log():
     target_id       = request.args.get("target_id")
     date_from       = request.args.get("date_from")
     date_to         = request.args.get("date_to")
-    limit           = min(int(request.args.get("limit", 50)), 200)
-    offset          = int(request.args.get("offset", 0))
+    limit           = min(_int_arg("limit", 50), 200)
+    offset          = _int_arg("offset", 0, hi=10_000_000)
     rows, total, error = get_audit_log(
         username=username, action_type=action_type,
         target_type=target_type, target_id=target_id,
@@ -2967,8 +2989,8 @@ def api_add_loan_event(loan_id):
 def api_get_notifications():
     from services import get_notifications
     unread_only = request.args.get("unread") == "1"
-    limit  = min(int(request.args.get("limit", 50)), 100)
-    offset = int(request.args.get("offset", 0))
+    limit  = min(_int_arg("limit", 50), 100)
+    offset = _int_arg("offset", 0, hi=10_000_000)
     notifs, unread_count, total, error = get_notifications(
         session["username"], unread_only=unread_only, limit=limit, offset=offset)
     if error:
@@ -3058,8 +3080,8 @@ def api_global_search():
     query         = request.args.get("q", "").strip()
     search_type   = request.args.get("type", "all")
     status_filter = request.args.get("status")
-    limit         = min(int(request.args.get("limit", 50)), 100)
-    offset        = int(request.args.get("offset", 0))
+    limit         = min(_int_arg("limit", 50), 100)
+    offset        = _int_arg("offset", 0, hi=10_000_000)
     results, total, error = global_search(
         query, search_type=search_type,
         status_filter=status_filter, limit=limit, offset=offset)
@@ -3093,8 +3115,8 @@ def api_admin_lenders():
     elif request.args.get("has_reddit") == "0":
         has_reddit = False
     q      = request.args.get("q", "").strip() or None
-    limit  = min(int(request.args.get("limit", 100)), 200)
-    offset = int(request.args.get("offset", 0))
+    limit  = min(_int_arg("limit", 100), 200)
+    offset = _int_arg("offset", 0, hi=10_000_000)
     rows, total, error = list_lenders(
         verified_filter=verified_filter, has_reddit=has_reddit,
         q=q, limit=limit, offset=offset)
@@ -3324,8 +3346,8 @@ def api_admin_feedback_list():
     from services import get_feedback_list
     status   = request.args.get("status") or None
     category = request.args.get("category") or None
-    limit    = min(int(request.args.get("limit", 100)), 500)
-    offset   = int(request.args.get("offset", 0))
+    limit    = min(_int_arg("limit", 100), 500)
+    offset   = _int_arg("offset", 0, hi=10_000_000)
     items, total, error = get_feedback_list(status=status, category=category,
                                             limit=limit, offset=offset)
     if error:
@@ -3398,7 +3420,7 @@ def audit_user_timeline(username):
 @require_mod_api
 def api_user_timeline(username):
     from services import get_user_activity_timeline
-    limit  = min(int(request.args.get("limit", 100)), 500)
+    limit  = min(_int_arg("limit", 100), 500)
     events, error = get_user_activity_timeline(username, limit=limit)
     if error:
         return _json({"error": error}, 500)
@@ -3413,7 +3435,7 @@ def api_user_timeline(username):
 @require_admin_api
 def api_admin_analytics():
     from services import get_analytics_summary
-    days = min(int(request.args.get("days", 30)), 365)
+    days = min(_int_arg("days", 30), 365)
     summary, error = get_analytics_summary(days)
     if error:
         return _json({"error": error}, 500)
@@ -3465,7 +3487,7 @@ def community_health_page():
 def api_community_health():
     from services import get_community_health
     try:
-        period = int(request.args.get("period", 30))
+        period = _int_arg("period", 30)
     except (TypeError, ValueError):
         period = 30
     period = period if period in (7, 30, 90) else 30
@@ -3494,8 +3516,8 @@ def api_lender_management():
     from services import get_lender_management_list
     q        = request.args.get("q", "").strip() or None
     verified = request.args.get("verified") or None
-    limit    = min(int(request.args.get("limit", 100)), 500)
-    offset   = int(request.args.get("offset", 0))
+    limit    = min(_int_arg("limit", 100), 500)
+    offset   = _int_arg("offset", 0, hi=10_000_000)
     items, total, error = get_lender_management_list(
         q=q, verified_filter=verified, limit=limit, offset=offset)
     if error:
@@ -3522,8 +3544,8 @@ def api_borrower_activity():
     from services import get_borrower_activity_list
     q            = request.args.get("q", "").strip() or None
     has_disputes = request.args.get("disputes") == "1"
-    limit        = min(int(request.args.get("limit", 100)), 500)
-    offset       = int(request.args.get("offset", 0))
+    limit        = min(_int_arg("limit", 100), 500)
+    offset       = _int_arg("offset", 0, hi=10_000_000)
     items, total, error = get_borrower_activity_list(
         q=q, has_disputes=has_disputes, limit=limit, offset=offset)
     if error:
@@ -3753,8 +3775,8 @@ def api_notification_queue():
     status    = request.args.get("status")
     channel   = request.args.get("channel")
     recipient = request.args.get("recipient")
-    limit     = min(int(request.args.get("limit",  100)), 500)
-    offset    = int(request.args.get("offset", 0))
+    limit     = min(_int_arg("limit", 100), 500)
+    offset    = _int_arg("offset", 0, hi=10_000_000)
     rows, total, error = get_notification_queue(
         status=status, channel=channel, recipient=recipient,
         limit=limit, offset=offset)
@@ -3880,8 +3902,8 @@ def api_list_loan_requests():
     date_to   = request.args.get("date_to")
     amount_min = request.args.get("amount_min", type=float)
     amount_max = request.args.get("amount_max", type=float)
-    limit  = min(int(request.args.get("limit",  200)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit  = min(_int_arg("limit", 200), 500)
+    offset = _int_arg("offset", 0, hi=10_000_000)
     rows, total, error = get_loan_request_queue(
         status=status, borrower=borrower,
         date_from=date_from, date_to=date_to,
@@ -3896,8 +3918,8 @@ def api_list_loan_requests():
 @require_auth
 def api_my_loan_requests():
     from services import get_loan_requests_for_borrower
-    limit  = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit  = min(_int_arg("limit", 100), 500)
+    offset = _int_arg("offset", 0, hi=10_000_000)
     rows, total, error = get_loan_requests_for_borrower(
         session["username"], limit=limit, offset=offset)
     if error:
@@ -4029,8 +4051,8 @@ def api_search_loan_requests():
     status     = request.args.get("status")
     amount_min = request.args.get("amount_min", type=float)
     amount_max = request.args.get("amount_max", type=float)
-    limit      = min(int(request.args.get("limit", 50)), 200)
-    offset     = int(request.args.get("offset", 0))
+    limit      = min(_int_arg("limit", 50), 200)
+    offset     = _int_arg("offset", 0, hi=10_000_000)
     results, total, error = search_loan_requests(
         q=q, status=status,
         amount_min=amount_min, amount_max=amount_max,
@@ -4242,7 +4264,7 @@ def api_reddit_sync_pending():
     """What a sync pass would do right now. Read-only: never sends to Reddit."""
     import reddit_sync
     summary, error = reddit_sync.run_once(
-        limit=min(int(request.args.get("limit", 25) or 25), 100), live=False)
+        limit=min(_int_arg("limit", 25), 100), live=False)
     if error:
         return _json({"error": error}, 500)
     return _json(summary)

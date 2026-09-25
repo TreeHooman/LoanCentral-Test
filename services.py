@@ -638,6 +638,27 @@ def update_reddit_action_status(action_id: int, status: str, actor: str = None, 
 # Loan Services
 # ---------------------------------------------------------------------------
 
+#: The largest single loan or payment anyone can record. Loans on the sub are
+#: hundreds of dollars; this only stops typos and junk (a $10^15 "loan" would
+#: wreck volume stats and the numeric columns).
+MAX_LOAN_AMOUNT = Decimal("1000000")
+
+
+def _same_person(a, b):
+    """True when two names belong to one account (dashboard name and linked
+    Reddit name count as the same person). Stops self-loans, which would farm
+    rank, however the two names are written."""
+    a, b = normalize_username(a or ""), normalize_username(b or "")
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    try:
+        return b in set(account_aliases(a)) or a in set(account_aliases(b))
+    except Exception:
+        return False
+
+
 def web_url_or_blank(url):
     """Stored thread links are shown as clickable links, so only http(s)
     addresses are kept. Anything else with a scheme (javascript:, data:, ...)
@@ -670,9 +691,11 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
     """
     if amount <= 0:
         return None, "Loan amount must be greater than zero."
+    if amount > MAX_LOAN_AMOUNT:
+        return None, f"Loan amount can't be more than {MAX_LOAN_AMOUNT:,.0f}."
     thread_url = web_url_or_blank(thread_url)
 
-    if lender == borrower:
+    if _same_person(lender, borrower):
         return None, "Lender and borrower cannot be the same person."
 
     conn = _get_db()
@@ -710,7 +733,7 @@ def create_loan(lender: str, borrower: str, amount: Decimal, currency: str, thre
             reddit_post_id, reddit_comment_id = claimed[4], claimed[5]
             if metadata.get("expires") and metadata["expires"] < datetime.now().date().isoformat():
                 return None, "This request has expired."
-            if amount <= 0 or lender == borrower:
+            if amount <= 0 or _same_person(lender, borrower):
                 return None, "Invalid request amount or borrower."
 
         # Block exact duplicate confirmations (same lender, borrower, amount, currency, thread)
@@ -880,6 +903,8 @@ def mark_repaid(loan_id: str, amount_paid: Decimal, currency: str, actor: str, a
     """
     if amount_paid <= 0:
         return None, "Payment amount must be greater than zero."
+    if amount_paid > MAX_LOAN_AMOUNT:
+        return None, f"Payment can't be more than {MAX_LOAN_AMOUNT:,.0f}."
 
     conn = _get_db()
     if not conn:

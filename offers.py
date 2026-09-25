@@ -39,10 +39,14 @@ def create_offer(lender, borrower, amount, currency, thread_url):
     currency = (currency or "").upper()
     if not lender or not borrower:
         return None, "Missing lender or borrower."
-    if lender == borrower:
+    from services import _same_person
+    if _same_person(lender, borrower):
         return None, "You cannot lend to yourself."
     if amount <= 0:
         return None, "Loan amount must be greater than zero."
+    from services import MAX_LOAN_AMOUNT
+    if amount > MAX_LOAN_AMOUNT:
+        return None, f"Loan amount can't be more than {MAX_LOAN_AMOUNT:,.0f}."
     conn = _db()
     if not conn:
         return None, "Database connection failed."

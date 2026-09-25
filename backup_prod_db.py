@@ -73,7 +73,8 @@ def run_backup():
 
     env = os.environ.copy()
     env["PGPASSWORD"] = DB_PASS
-    env["PGSSLMODE"]  = "require"
+    # Remote databases (Neon) always over SSL; a local rehearsal DB has none.
+    env["PGSSLMODE"]  = "prefer" if DB_HOST in ("localhost", "127.0.0.1", "::1") else "require"
 
     cmd = [
         pg_dump,
