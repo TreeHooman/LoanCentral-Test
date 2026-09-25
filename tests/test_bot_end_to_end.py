@@ -61,6 +61,7 @@ class BotEndToEndTests(RealDBTestCase):
         # A fresh cooldown table per test: the dispatcher rate-limits repeated
         # commands per user, which would otherwise leak between tests.
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.make_user("lender", role="lender", verified_lender=True)
         self.make_user("borrower", role="borrower")
 
@@ -157,6 +158,7 @@ class BotEndToEndTests(RealDBTestCase):
         _, loan_id, _ = self._fund("f6")
         self.command(f"$paid_with_id {loan_id} 150 USD", "lender")
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.command(f"$unpaid {loan_id}", "lender")
         status = self.query("SELECT status FROM loans WHERE loan_id = %s", (loan_id,))[0][0]
         self.assertEqual(status, "repaid")
@@ -225,6 +227,7 @@ class BotQueueDrainTests(RealDBTestCase):
         import main
         self.main = main
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
 
     def run_drain(self, env_value):
         import os
@@ -278,6 +281,7 @@ class BangPrefixTests(RealDBTestCase):
         import main
         self.main = main
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.make_user("lender", role="lender", verified_lender=True)
         self.make_user("borrower", role="borrower")
 
@@ -294,6 +298,7 @@ class BangPrefixTests(RealDBTestCase):
             "SELECT l.loan_id FROM loans l JOIN loan_requests r ON r.funded_loan_id = l.id "
             "WHERE r.request_id = %s", (request_id,))[0][0]
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.command(f"!paid_with_id {loan_id} 150 USD", "lender")
         status = self.query("SELECT status FROM loans WHERE loan_id = %s", (loan_id,))[0][0]
         self.assertEqual(status, "repaid")

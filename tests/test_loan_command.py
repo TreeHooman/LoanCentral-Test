@@ -41,6 +41,7 @@ class LoanOfferTests(RealDBTestCase):
 
     def say(self, body, author, submission=None, flair=None):
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         comment = _Comment(body, author, submission or self.post, flair=flair)
         self.main.command_manager.process_comment(comment)
         return comment

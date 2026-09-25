@@ -57,6 +57,7 @@ class RepaidOnRedditTests(RealDBTestCase):
         import main
         self.main = main
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.make_user("lender", role="lender", verified_lender=True)
         self.make_user("borrower", role="borrower")
         self.reddit = FakeReddit()
@@ -75,6 +76,7 @@ class RepaidOnRedditTests(RealDBTestCase):
 
     def command(self, body):
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         comment = FakeCommandComment(body, "lender")
         self.main.command_manager.process_comment(comment)
         return comment
@@ -138,6 +140,7 @@ class RepaidOnRedditTests(RealDBTestCase):
         post = FakePost("abc123", "[REQ] ($100)")
         for body, author in (("$loan 100 USD u/borrower", "lender"), ("$confirm", "borrower")):
             self.main.command_manager.recent_commands.clear()
+            self.main.command_manager.user_command_times.clear()
             comment = FakeCommandComment(body, author)
             comment.submission = post
             self.main.command_manager.process_comment(comment)

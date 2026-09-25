@@ -192,6 +192,11 @@ class CommandManager:
         self.commands = {}
         self.recent_commands = {}
         self.cooldown_seconds = int(os.getenv("BOT_COMMAND_COOLDOWN_SECONDS", "15"))
+        # Flood cap: commands per person per minute. Different commands each
+        # cost Reddit API calls and a reply, so one account posting !stats
+        # u/a, u/b, u/c... non-stop would hold up the bot for everyone.
+        self.per_user_per_minute = int(os.getenv("BOT_USER_COMMANDS_PER_MINUTE", "10"))
+        self.user_command_times = {}
         self.load_commands()
 
     def _is_rate_limited(self, username, trigger, text=""):
@@ -199,9 +204,19 @@ class CommandManager:
         within the cooldown: a double post. A different command (another
         loan's payment, say) always goes through; dropping it silently lost
         real payments recorded back to back."""
+        now = time.time()
+        if self.per_user_per_minute > 0:
+            recent = [t for t in self.user_command_times.get(username.lower(), []) if now - t < 60]
+            if len(recent) >= self.per_user_per_minute:
+                self.user_command_times[username.lower()] = recent
+                return True
+            recent.append(now)
+            self.user_command_times[username.lower()] = recent
+            if len(self.user_command_times) > 5000:
+                self.user_command_times = {u: ts for u, ts in self.user_command_times.items()
+                                           if ts and now - ts[-1] < 60}
         if self.cooldown_seconds <= 0:
             return False
-        now = time.time()
         key = (username.lower(), trigger, " ".join((text or "").lower().split()))
         last = self.recent_commands.get(key, 0)
         if now - last < self.cooldown_seconds:

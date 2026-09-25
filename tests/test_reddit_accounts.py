@@ -46,6 +46,7 @@ class RedditAccountTests(RealDBTestCase):
         import main
         self.main = main
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         self.env = patch.dict(os.environ, GOOGLE_ENV)
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -57,6 +58,7 @@ class RedditAccountTests(RealDBTestCase):
 
     def dollar_login(self, name, body="$login", **kw):
         self.main.command_manager.recent_commands.clear()
+        self.main.command_manager.user_command_times.clear()
         author = _Author(name, dm_error=kw.pop("dm_error", None))
         comment = _Comment(body, author, **kw)
         self.main.command_manager.process_comment(comment)

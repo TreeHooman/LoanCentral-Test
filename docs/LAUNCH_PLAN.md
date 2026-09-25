@@ -42,6 +42,54 @@ night: if something goes wrong you want the next day free.)
 3. Pick the launch date and time.
 4. Post the heads-up 7 days before, brief the mods 3 days before, and post the reminder 1 day before.
 
+## Reddit rules and API limits (checked 2026-09-25)
+
+**What the code already does**
+- Every Reddit request goes through one limiter: 80 per minute locally (Reddit
+  allows 100 per minute per app, averaged over 10 minutes), and it also reads
+  Reddit's own "requests left" counter and pauses before it runs out. The
+  bot and the website share the same app, and both read that counter.
+- The bot refuses to start with a placeholder user agent (Reddit throttles
+  or blocks those).
+- The bot touches the database only when a command or [REQ] post comes in, so
+  Neon can sleep between; the website's /ping (UptimeRobot) never touches it.
+- From [REQ] posts only the amount, currency, payment method and dates are
+  kept, not the post text or location.
+- New 2026-09-25: at most 10 bot commands per person per minute
+  (`BOT_USER_COMMANDS_PER_MINUTE`), on top of ignoring exact double posts, so
+  one account spamming `!stats u/...` can't hold up the bot for everyone.
+
+**To do (owner), before launch**
+1. **Register u/loancentral as an app with Reddit to get the [App] label.**
+   Since 31 March 2026 Reddit tags approved automated accounts with [App] and
+   may make unregistered accounts that behave like bots prove they're human,
+   which would stop the bot. Apply through r/redditdev / Reddit's developer
+   profile.
+2. **Check the bot's API app is approved under the Responsible Builder
+   Policy** (every app now needs approval; non-commercial moderator bots are
+   free under 100 requests/min). Look at reddit.com/prefs/apps with the bot
+   account; if Reddit has asked for a developer registration, complete it.
+   LoanCentral is free and non-commercial: never sell or share Reddit data.
+3. **Keep u/loancentral a moderator** of r/loancentral. Mods skip the
+   subreddit's comment rate limits, which is what lets the bot answer every
+   post and command without "you're doing that too much".
+
+**Things to watch in the first week**
+- **!login rush at launch.** Every `!login` sends a Reddit message. If Reddit
+  says "doing that too much", the bot waits up to 5 minutes and retries, and
+  commands queue up behind it. Expected to be brief; the supervisor only steps
+  in after 15 minutes of silence.
+- **Neon compute** (100 CU-hours/month on the free plan, suspends when used
+  up). Estimate for this sub's activity: roughly 40-70 per month. Check the
+  Neon dashboard on day 3 and day 7; if it's heading past ~80, move the sync
+  worker from every 30 min to hourly, or upgrade Neon.
+- **Render free plan**: 750 hours/month covers one always-on service (~730).
+  Don't add a second free service to the same workspace.
+- **Deleted posts/accounts**: Reddit asks apps to drop content users delete.
+  LoanCentral keeps loan records (names, amounts, dates, thread links), not
+  post text, which the Privacy Policy covers. If someone asks to be removed,
+  handle it by email/modmail.
+
 ## The shape of it
 
 | When | On Reddit | In the code / systems |

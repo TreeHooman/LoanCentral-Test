@@ -71,7 +71,9 @@ class CooldownOnlyStopsDoublePostsTests(RealDBTestCase):
         import main
         self.manager = main.command_manager
         self.manager.recent_commands.clear()
+        self.manager.user_command_times.clear()
         self.addCleanup(self.manager.recent_commands.clear)
+        self.addCleanup(self.manager.user_command_times.clear)
 
     def test_different_commands_both_go_through(self):
         self.assertFalse(self.manager._is_rate_limited("lender", "$paid_with_id", "$paid_with_id 111 20 usd"))
@@ -80,6 +82,15 @@ class CooldownOnlyStopsDoublePostsTests(RealDBTestCase):
     def test_the_same_command_again_is_a_double_post(self):
         self.assertFalse(self.manager._is_rate_limited("lender", "$paid_with_id", "$paid_with_id 111 20 usd"))
         self.assertTrue(self.manager._is_rate_limited("Lender", "$paid_with_id", "$paid_with_id  111 20 USD"))
+
+    def test_one_person_flooding_different_commands_is_capped(self):
+        cap = self.manager.per_user_per_minute
+        results = [self.manager._is_rate_limited("spammer", "$stats", f"$stats u/user{i}")
+                   for i in range(cap + 5)]
+        self.assertEqual(results[:cap], [False] * cap)
+        self.assertTrue(all(results[cap:]))
+        # Someone else is unaffected.
+        self.assertFalse(self.manager._is_rate_limited("lender", "$stats", "$stats u/x"))
 
     def test_it_expires(self):
         self.manager._is_rate_limited("lender", "$fund", "$fund req-1")
