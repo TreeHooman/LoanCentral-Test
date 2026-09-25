@@ -317,7 +317,7 @@ class LoginWithoutGoogleTests(RealDBTestCase):
         with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "x", "GOOGLE_CLIENT_SECRET": "y"}):
             html = self.client.get("/login").get_data(as_text=True)
         self.assertIn('<details class="key-login" >', html)
-        self.assertIn("Have a lender key?", html)
+        self.assertIn("Sign in with a key instead", html)
 
 
 class WebsiteTests(RealDBTestCase):
