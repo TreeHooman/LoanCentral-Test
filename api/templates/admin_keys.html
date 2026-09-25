@@ -111,7 +111,7 @@
           <td data-label="Username" class="username"><a class="profile-link" href="/dashboard/users/${encodeURIComponent(k.username)}">${escapeHtml(k.username)}</a></td>
           <td data-label="Reddit" style="font-size:13px">
             ${k.reddit_username ? 'u/' + escapeHtml(k.reddit_username) : '<span style="color:var(--muted)">not linked</span>'}
-            <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h);margin-left:4px" data-user="${escapeHtml(k.username)}" data-reddit="${escapeHtml(k.reddit_username || '')}"
+            <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h);margin-left:4px" data-user="${escapeHtml(k.username)}" data-reddit="${escapeHtml(k.reddit_username || '')}"
               onclick="openLinkModal(this.dataset.user, this.dataset.reddit)">${k.reddit_username ? 'Change' : 'Link'}</button>
           </td>
           <td data-label="Label" style="color:var(--muted);font-size:13px">${escapeHtml(k.label || '—')}</td>
@@ -123,7 +123,7 @@
             ${k.active
               ? `<button class="btn-action btn-unpaid" onclick="revokeKey(${k.id},'${escapeHtml(k.username)}')">Revoke</button>`
               : '<span style="color:var(--muted);font-size:12px">Revoked ${fmtDate(k.revoked_at)}</span>'}
-            <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h)" onclick="copyLoginUrl('${escapeHtml(k.username)}')">Copy URL</button>
+            <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h)" onclick="copyLoginUrl('${escapeHtml(k.username)}')">Copy URL</button>
           </td>
         </tr>`).join('');
     } catch(e) {

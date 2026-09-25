@@ -9,6 +9,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LoanCentral{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon-64.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
     html, body { max-width: 100%; overflow-x: hidden; }
@@ -46,8 +49,8 @@
     .flashes { padding: 0 24px; margin-top: 12px; }
     .flash { padding: 10px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
     .flash.error   { background: rgba(231,76,60,0.1);  border: 1px solid rgba(231,76,60,0.3);  color: var(--red); }
-    .flash.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
-    .flash.info    { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--accent-h); }
+    .flash.success { background: rgba(47,219,94,0.1); border: 1px solid rgba(47,219,94,0.3); color: var(--green); }
+    .flash.info    { background: rgba(47,219,94,0.1); border: 1px solid rgba(47,219,94,0.3); color: var(--accent-h); }
     .session-warning { display: none; margin: 12px 24px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(243,156,18,0.3); background: rgba(243,156,18,0.09); color: var(--text2); font-size: 13px; line-height: 1.4; }
     .session-warning strong { color: var(--orange); }
 
@@ -89,7 +92,7 @@
     .mini-stat { background: rgba(255,255,255,0.025); border: 1px solid var(--border); border-radius: 6px; padding: 10px; min-height: 62px; }
     .mini-label { color: var(--muted); font-size: 12px; }
     .mini-value { color: var(--text); font-size: 18px; font-weight: 700; margin-top: 4px; }
-    .callout { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+    .callout { background: rgba(47,219,94,0.1); border: 1px solid rgba(47,219,94,0.25); border-radius: 8px; padding: 12px 14px; color: var(--text2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
     .callout strong { color: var(--text); }
     .profile-link { color: var(--text); text-decoration: none; font-weight: 600; }
     .profile-link:hover { color: var(--accent-h); }
@@ -113,7 +116,7 @@
     .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
     .badge-confirmed        { background: rgba(122,167,232,0.14); color: var(--blue); }
     .badge-partially_repaid { background: rgba(241,196,15,0.15); color: var(--yellow); }
-    .badge-repaid           { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge-repaid           { background: rgba(47,219,94,0.15); color: var(--green); }
     .badge-unpaid           { background: rgba(231,76,60,0.15);  color: var(--red); }
     .badge-refunded         { background: rgba(136,145,170,0.15); color: var(--muted); }
     .badge-disputed         { background: rgba(243,156,18,0.2);  color: var(--orange); }
@@ -131,8 +134,8 @@
     .btn-unpaid  { background: rgba(231,76,60,0.2);  color: var(--red); }
     .btn-ban     { background: rgba(231,76,60,0.85); color: #fff; }
     .btn-refund  { background: rgba(136,145,170,0.2); color: var(--muted); }
-    .btn-paid    { background: rgba(34,197,94,0.2); color: var(--green); }
-    .btn-extension { background: rgba(34,197,94,0.18); color: var(--accent-h); }
+    .btn-paid    { background: rgba(47,219,94,0.2); color: var(--green); }
+    .btn-extension { background: rgba(47,219,94,0.18); color: var(--accent-h); }
 
     /* MODAL */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
@@ -150,7 +153,7 @@
     .modal-error { color: var(--red); font-size: 12px; margin-bottom: 8px; display: none; }
     .flow-steps { display: grid; gap: 8px; margin: 0 0 14px; }
     .flow-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.025); }
-    .flow-step-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(34,197,94,0.18); color: var(--accent-h); font-weight: 800; font-size: 12px; }
+    .flow-step-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(47,219,94,0.18); color: var(--accent-h); font-weight: 800; font-size: 12px; }
     .flow-step-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 2px; }
     .flow-step-copy { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .req-tips { margin: 0 0 14px; padding: 11px 12px; border: 1px solid rgba(243,156,18,0.25); border-radius: 8px; background: rgba(243,156,18,0.07); }
@@ -186,12 +189,12 @@
 
     /* FEEDBACK CATEGORY & STATUS BADGES */
     .badge-fb-bug             { background: rgba(231,76,60,0.15);  color: var(--red); }
-    .badge-fb-suggestion      { background: rgba(34,197,94,0.18); color: var(--accent-h); }
-    .badge-fb-feature_request { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge-fb-suggestion      { background: rgba(47,219,94,0.18); color: var(--accent-h); }
+    .badge-fb-feature_request { background: rgba(47,219,94,0.15); color: var(--green); }
     .badge-fb-other           { background: rgba(136,145,170,0.15); color: var(--muted); }
-    .badge-fbstatus-open      { background: rgba(34,197,94,0.18); color: var(--accent-h); }
+    .badge-fbstatus-open      { background: rgba(47,219,94,0.18); color: var(--accent-h); }
     .badge-fbstatus-reviewed  { background: rgba(241,196,15,0.15);  color: var(--yellow); }
-    .badge-fbstatus-completed { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge-fbstatus-completed { background: rgba(47,219,94,0.15); color: var(--green); }
     .badge-fbstatus-duplicate { background: rgba(136,145,170,0.15); color: var(--muted); }
 
     /* NOTES & ATTACHMENTS */
@@ -396,12 +399,12 @@
         word-break: break-word;
       }
       table.mobile-cards tr:not(.mobile-more-row) td:first-child {
-        background: rgba(34,197,94,0.055);
+        background: rgba(47,219,94,0.055);
       }
       table.mobile-cards td.mobile-card-head {
         display: block;
         padding: 9px 10px;
-        background: rgba(34,197,94,0.07) !important;
+        background: rgba(47,219,94,0.07) !important;
         position: relative;
       }
       table.mobile-cards td.mobile-card-head::before {
@@ -505,9 +508,9 @@
         min-height: 34px;
         min-width: 72px;
         padding: 7px 10px;
-        border: 1px solid rgba(34,197,94,0.35);
+        border: 1px solid rgba(47,219,94,0.35);
         border-radius: 6px;
-        background: rgba(34,197,94,0.08);
+        background: rgba(47,219,94,0.08);
         font-size: 12px;
         font-weight: 700;
         text-decoration: none;
@@ -657,7 +660,7 @@
 <body>
 
 <nav>
-  <a class="nav-brand" href="{{ url_for('home') }}"><span class="brand-mark">LC</span>LoanCentral</a>
+  <a class="nav-brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='img/logo-mark.png') }}" alt=""><span class="brand-name">Loan<span class="brand-accent">Central</span></span></a>
   {% if role in ['mod', 'admin'] %}
   {# The everyday pages. Everything else lives under More, so nothing is lost. #}
   <div class="nav-main">
@@ -753,7 +756,7 @@
     <div style="margin-top:4px;margin-bottom:2px;font-size:12px;color:var(--muted)">Payment timing</div>
     <div style="display:flex;gap:8px;margin-bottom:12px" id="payTimingBtns">
       <button type="button" class="btn-timing active" data-timing="early"   onclick="setPayTiming('early')"   style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">⚡ Early</button>
-      <button type="button" class="btn-timing active" data-timing="on_time" onclick="setPayTiming('on_time')" style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent-h);background:rgba(34,197,94,0.15);color:var(--accent-h);cursor:pointer;font-weight:700">✓ On Time</button>
+      <button type="button" class="btn-timing active" data-timing="on_time" onclick="setPayTiming('on_time')" style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--accent-h);background:rgba(47,219,94,0.15);color:var(--accent-h);cursor:pointer;font-weight:700">✓ On Time</button>
       <button type="button" class="btn-timing"        data-timing="late"    onclick="setPayTiming('late')"    style="flex:1;padding:6px 0;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">⏱ Late</button>
     </div>
     <div class="modal-actions">
@@ -826,7 +829,7 @@
       </div>
     </div>
 
-    <div id="nlAutoFillBanner" style="display:none;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
+    <div id="nlAutoFillBanner" style="display:none;background:rgba(47,219,94,0.1);border:1px solid rgba(47,219,94,0.3);color:var(--green);padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px">
       ✓ Auto-filled from <span id="nlBannerReqId"></span> — review and confirm below
     </div>
 
@@ -942,7 +945,7 @@
     document.getElementById('payTiming').value = val;
     document.querySelectorAll('#payTimingBtns button').forEach(b => {
       const active = b.dataset.timing === val;
-      const colors = { early: ['var(--green)', 'rgba(34,197,94,0.15)'], on_time: ['var(--accent-h)', 'rgba(34,197,94,0.15)'], late: ['var(--orange)', 'rgba(243,156,18,0.15)'] };
+      const colors = { early: ['var(--green)', 'rgba(47,219,94,0.15)'], on_time: ['var(--accent-h)', 'rgba(47,219,94,0.15)'], late: ['var(--orange)', 'rgba(243,156,18,0.15)'] };
       const [col, bg] = colors[b.dataset.timing] || ['var(--text)', 'var(--surface)'];
       b.style.borderColor = active ? col : 'var(--border)';
       b.style.background  = active ? bg  : 'var(--surface)';
@@ -1454,7 +1457,7 @@
     if (!wrap) return;
     wrap.style.display = 'block';
     wrap.innerHTML = items.map(a => `
-      <div id="ann-${a.id}" style="display:flex;align-items:flex-start;gap:10px;background:rgba(34,197,94,0.09);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:10px 14px;margin-bottom:8px">
+      <div id="ann-${a.id}" style="display:flex;align-items:flex-start;gap:10px;background:rgba(47,219,94,0.09);border:1px solid rgba(47,219,94,0.25);border-radius:8px;padding:10px 14px;margin-bottom:8px">
         ${a.pinned ? '<span style="font-size:14px;flex-shrink:0">📌</span>' : ''}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:var(--text)">${escapeHtml(a.title)}</div>

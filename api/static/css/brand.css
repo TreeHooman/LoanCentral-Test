@@ -17,11 +17,11 @@
   --border-h: #34503a;
 
   /* Brand green */
-  --accent: #22c55e;
-  --accent-h: #34d46c;
+  --accent: #2fdb5e;
+  --accent-h: #5ee383;
   --accent-ink: #04140a;          /* text on a green background */
-  --accent-soft: rgba(34, 197, 94, 0.12);
-  --accent-line: rgba(34, 197, 94, 0.35);
+  --accent-soft: rgba(47, 219, 94, 0.12);
+  --accent-line: rgba(47, 219, 94, 0.35);
 
   /* Text */
   --text: #ecefec;
@@ -29,7 +29,7 @@
   --muted: #7c867c;
 
   /* Status (used sparingly: state, not decoration) */
-  --green: #22c55e;
+  --green: #2fdb5e;
   --red: #ef5350;
   --orange: #f0a030;
   --yellow: #e8c547;
@@ -51,10 +51,15 @@ code, kbd, .mono { font-family: var(--mono); }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* The mark used next to the name in every header */
+/* The logo mark next to the name in every header, and "Central" in the
+   logo's green (img/logo-mark.png, cut from the logo file). */
 .brand-mark {
-  width: 26px; height: 26px; border-radius: 7px;
-  background: var(--accent); color: var(--accent-ink);
-  display: inline-grid; place-items: center;
-  font-size: 13px; font-weight: 700; letter-spacing: -0.5px; flex: none;
+  width: 28px; height: 28px; flex: none;
+  display: inline-block; vertical-align: middle; object-fit: contain;
 }
+/* As in the logo: a heavy "Loan" drawn as a white outline, "Central" solid green. */
+.brand-name {
+  font-weight: 900; letter-spacing: -0.02em;
+  color: transparent; -webkit-text-stroke: 1px #fff;
+}
+.brand-accent { color: var(--accent); -webkit-text-stroke: 0; }

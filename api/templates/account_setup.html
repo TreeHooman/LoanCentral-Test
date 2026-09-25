@@ -6,6 +6,9 @@
   <meta name="referrer" content="no-referrer" />
   <title>Create your account — LoanCentral</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon-64.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -28,7 +31,7 @@
 </head>
 <body>
 <div class="container">
-  <div class="logo"><a href="/" style="display:inline-flex;align-items:center;gap:10px"><span class="brand-mark">LC</span>LoanCentral</a></div>
+  <div class="logo"><a href="/" style="display:inline-flex;align-items:center;gap:10px"><img class="brand-mark" src="{{ url_for('static', filename='img/logo-mark.png') }}" alt=""><span class="brand-name">Loan<span class="brand-accent">Central</span></span></a></div>
   <div class="card">
     {% if error %}
       <h1>This link can't be used</h1>

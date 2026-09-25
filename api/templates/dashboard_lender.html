@@ -6,7 +6,7 @@
   <div>
     <div class="section-title" style="font-size:20px">Lender Dashboard
       {% if verified_lender %}
-      <span style="display:inline-block;margin-left:8px;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,0.15);color:var(--green);vertical-align:middle;letter-spacing:.3px">✓ Verified Lender</span>
+      <span style="display:inline-block;margin-left:8px;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(47,219,94,0.15);color:var(--green);vertical-align:middle;letter-spacing:.3px">✓ Verified Lender</span>
       {% endif %}
     </div>
     <div style="color:var(--muted);font-size:13px;margin-top:4px">u/{{ username }}</div>
@@ -171,7 +171,7 @@
   .due-alert-sub { color:var(--muted); font-size:12px; margin-top:4px; }
   .due-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
   .due-alert-item { border:1px solid var(--border); border-radius:8px; padding:12px; background:rgba(255,255,255,0.025); color:var(--text); text-align:left; cursor:pointer; font:inherit; }
-  .due-alert-item:hover { border-color:rgba(34,197,94,0.42); transform:translateY(-1px); }
+  .due-alert-item:hover { border-color:rgba(47,219,94,0.42); transform:translateY(-1px); }
   .due-alert-item.urgent { border-color:rgba(231,76,60,0.38); background:rgba(231,76,60,0.08); }
   .due-alert-item.soon { border-color:rgba(243,156,18,0.35); background:rgba(243,156,18,0.08); }
   .due-alert-top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
@@ -334,7 +334,7 @@
       const dueText = due || fmtDate(loan.date_created);
       const noteHtml = loan.notes
         ? `<span class="notes-preview" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')" title="${note}">${note}</span>`
-        : `<button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
+        : `<button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--muted)" onclick="openLoanDetail('${id}',getLoanNote('${id}'),'')">Note</button>`;
       return `<tr class="${overdue ? 'row-overdue' : dueSoon ? 'row-due-soon' : ''}">
         <td data-label="Select"><input type="checkbox" class="loan-select" value="${escapeHtml(id)}" ${canPay ? '' : 'disabled'} /></td>
         <td class="mobile-card-head" onclick="toggleMobileCard(event,this)" onkeydown="toggleMobileCard(event,this)" role="button" tabindex="0">
@@ -368,8 +368,8 @@
               <div class="mobile-card-detail-item"><div class="mobile-card-detail-label">Thread</div><div class="mobile-card-detail-value">${thread || '—'}</div></div>
             </div>
             <div class="mobile-card-extra-actions">
-              <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
-              <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
+              <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
+              <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
               ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : '<span></span>'}
             </div>
           </div>
@@ -389,9 +389,9 @@
         <td data-label="Rate %">${loan.interest_rate != null ? escapeHtml(String(loan.interest_rate)) + '%' : '<span style="color:var(--muted)">—</span>'}</td>
         <td data-label="Notes">${noteHtml}</td>
         <td data-label="Actions"><div class="actions">
-          <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
+          <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h)" onclick="openFilesModal('${id}')">Files</button>
           <button class="btn-action btn-extension" title="Edit repayment date" onclick="openExtensionModal('${id}','${fmtRaw(repayAmount)}','${dateInput(loan.repay_date)}')">Edit Due</button>
-          <button class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
+          <button class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h)" onclick="copyLoanSummary('${id}')">Copy</button>
           ${canPay ? `<button class="btn-action btn-paid" onclick="openPayModal('${id}','${ME}','${escapeHtml(loan.currency)}')">Paid</button>` : ''}
           ${canUnpaid ? `<button class="btn-action btn-unpaid" onclick="openUnpaidModal('${id}','${ME}')">Unpaid</button>` : ''}
           ${canRefund ? `<button class="btn-action btn-refund" onclick="openRefundModal('${id}','${ME}')">Refund</button>` : ''}
@@ -753,7 +753,7 @@
         <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
           <span style="flex:1;font-size:13px;word-break:break-all">${escapeHtml(f.original_name)}</span>
           <span style="color:var(--muted);font-size:11px;white-space:nowrap">${(f.file_size/1024).toFixed(1)} KB</span>
-          <a class="btn-action" style="background:rgba(34,197,94,0.1);color:var(--accent-h);text-decoration:none" href="${escapeAttr(f.url)}" target="_blank" download>Download</a>
+          <a class="btn-action" style="background:rgba(47,219,94,0.1);color:var(--accent-h);text-decoration:none" href="${escapeAttr(f.url)}" target="_blank" download>Download</a>
         </div>`).join('');
     } catch(e) {
       el.innerHTML = `<span style="color:var(--red);font-size:13px">Error: ${escapeHtml(e.message)}</span>`;

@@ -6,6 +6,9 @@
   <title>LoanCentral</title>
   <meta name="description" content="Loan records for r/{{ subreddit or 'loancentral' }}." />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon-64.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { -webkit-text-size-adjust: 100%; }
@@ -101,7 +104,7 @@
 {%- endmacro %}
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="/"><span class="brand-mark">LC</span>LoanCentral</a>
+    <a class="brand" href="/"><img class="brand-mark" src="{{ url_for('static', filename='img/logo-mark.png') }}" alt=""><span class="brand-name">Loan<span class="brand-accent">Central</span></span></a>
     <a class="btn btn-ghost" href="{{ sub_url }}" target="_blank" rel="noopener" aria-label="r/{{ sub }} on Reddit">{{ reddit_icon() }}<span class="label">r/{{ sub }}</span></a>
     {% if signed_in %}
       <a class="btn btn-primary" href="{{ url_for('home') }}">Dashboard</a>

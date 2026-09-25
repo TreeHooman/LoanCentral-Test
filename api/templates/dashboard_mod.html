@@ -846,8 +846,8 @@
             <button class="btn-action btn-paid" onclick="quickRole('${escapeHtml(r.username)}','lender')">→ Lender</button>
             <button class="btn-action btn-unpaid" onclick="quickRole('${escapeHtml(r.username)}','borrower')">→ Borrower</button>
             <button class="btn-action" style="background:rgba(241,196,15,0.15);color:var(--yellow)" onclick="quickRole('${escapeHtml(r.username)}','mod')">→ Mod</button>
-            <button class="btn-action" style="background:rgba(34,197,94,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
-            ${r.contact_email ? `<button class="btn-action" style="background:rgba(34,197,94,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
+            <button class="btn-action" style="background:rgba(47,219,94,0.12);color:var(--green)" onclick="openContactModal('${escapeHtml(r.username)}','${escapeHtml(r.contact_email||'')}','${escapeHtml(r.contact_phone||'')}')">Contact</button>
+            ${r.contact_email ? `<button class="btn-action" style="background:rgba(47,219,94,0.12);color:var(--accent-h)" onclick="sendMagicLink('${escapeHtml(r.username)}')">📧 Send Link</button>` : ''}
             <button class="btn-action" style="background:rgba(255,69,0,0.1);color:#ff6b35" onclick="openRedditLinkModal('${escapeHtml(r.username)}','${escapeHtml(r.reddit_username||'')}')">🔗 Reddit</button>
           </div></td>
         </tr>`).join('') : '<tr><td colspan="7" class="table-placeholder">No roles configured.</td></tr>';
@@ -905,7 +905,7 @@
 
   function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#96;'); }
 
-  function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(34,197,94,0.2)', borrower: 'rgba(34,197,94,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
+  function roleBg(r) { return { admin: 'rgba(231,76,60,0.15)', mod: 'rgba(241,196,15,0.15)', lender: 'rgba(47,219,94,0.2)', borrower: 'rgba(47,219,94,0.15)' }[r] || 'rgba(136,145,170,0.15)'; }
   function roleColor(r) { return { admin: 'var(--red)', mod: 'var(--yellow)', lender: 'var(--accent-h)', borrower: 'var(--green)' }[r] || 'var(--muted)'; }
 
   async function loadAnnouncements() {

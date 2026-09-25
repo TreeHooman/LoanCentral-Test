@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LoanCentral — Login</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/brand.css') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon-64.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -27,8 +30,8 @@
     .feature { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text2); }
     .feature-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
     .fi-mod    { background: rgba(241,196,15,0.15); }
-    .fi-lender { background: rgba(34,197,94,0.2); }
-    .fi-borrow { background: rgba(34,197,94,0.15); }
+    .fi-lender { background: rgba(47,219,94,0.2); }
+    .fi-borrow { background: rgba(47,219,94,0.15); }
     .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
     .flash.error { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); color: var(--red); }
     .not-configured { background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); color: var(--yellow); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
@@ -55,7 +58,7 @@
 <body>
 <div class="container">
   <div class="logo">
-    <h1><a href="/"><span class="brand-mark">LC</span>LoanCentral</a></h1>
+    <h1><a href="/"><img class="brand-mark" src="{{ url_for('static', filename='img/logo-mark.png') }}" alt=""><span class="brand-name">Loan<span class="brand-accent">Central</span></span></a></h1>
     <p>Peer-to-peer loan tracking dashboard</p>
   </div>
 
@@ -115,14 +118,14 @@
     <summary>{% if google_ready %}Have a lender key?{% else %}Sign in with your lender key{% endif %}</summary>
     <form id="keyForm" onsubmit="submitKey(event)" style="display:flex;flex-direction:column;gap:10px">
       <div style="position:relative">
-        <input type="password" id="keyInput" placeholder="Lender key (LC-...)"
+        <input type="password" id="keyInput" placeholder="Lender key"
           style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 64px 11px 14px;color:var(--text);font-size:14px;outline:none;width:100%"
           autocomplete="off" spellcheck="false" />
         <button type="button" id="keyToggle" onclick="toggleKey()" aria-controls="keyInput" aria-pressed="false"
           style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;padding:6px 8px">Show</button>
       </div>
       <button type="submit" id="keySubmit"
-        style="width:100%;padding:11px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.35);border-radius:8px;color:var(--accent-h);font-size:14px;font-weight:600;cursor:pointer">
+        style="width:100%;padding:11px;background:rgba(47,219,94,0.15);border:1px solid rgba(47,219,94,0.35);border-radius:8px;color:var(--accent-h);font-size:14px;font-weight:600;cursor:pointer">
         Login with Key
       </button>
       <div id="keyError" style="display:none;color:var(--red);font-size:12px;text-align:center"></div>
