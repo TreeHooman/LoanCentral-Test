@@ -246,10 +246,16 @@ Then grant **Legacy Lender** to the founders, the same three:
 **embarrassed-throat42, left-associate3911, logistix1**. Admin > Lenders > open
 each one > Grant Legacy Lender.
 
-The June records also hold one loan each under **embarassed-throat42** and
-**embarrassedthroat-42** (typos of your name). To count them toward your record:
-`python scripts/rename_reddit_user.py embarassed-throat42 embarrassed-throat42 --apply`
-(and the same for `embarrassedthroat-42`), after step 3 and before this step.
+**Required: merge the misspellings of your name.** The records hold loans under
+**embarassed-throat42** and **embarrassedthroat-42** (typos). The real name is
+**embarrassed-throat42 (two r's)**. Run these after step 3 and before the role
+commands above (preview first without `--apply`; the latest data on the hosted
+PC may have more rows than the June copy):
+
+```
+python scripts/rename_reddit_user.py embarassed-throat42 embarrassed-throat42 --apply
+python scripts/rename_reddit_user.py embarrassedthroat-42 embarrassed-throat42 --apply
+```
 
 Sign in to the dashboard at `/login` with **Login with Key** and the key you
 just typed (or, once you have run `!login`, with Google). From the admin area you can then issue

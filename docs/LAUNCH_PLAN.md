@@ -10,6 +10,27 @@ night: if something goes wrong you want the next day free.)
 
 ---
 
+## Owner's notes for launch day (2026-09-25)
+
+- **The newest database is on the hosted PC** (the bot computer). It must be
+  brought over and loaded into Neon *before* anything goes live (checklist
+  steps 2-3). The June copy in `data/imports/` is only for rehearsals.
+- **Merge the misspellings of the owner's name** into **embarrassed-throat42
+  (two r's)**: `embarassed-throat42` and `embarrassedthroat-42`. Required
+  (checklist step 5).
+- Mods: **u/left-associate3911**, **u/logistix1**; owner is admin. Legacy
+  Lender: the same three.
+- Post and pin **draft G** (the permanent "How LoanCentral works" guide).
+- Restyle the subreddit (banner, colours, icon, sidebar widgets) with Claude
+  guiding over screen share / screenshots.
+
+### Still to do before launch day
+
+1. Test Google sign-in once on loancentral.net.
+2. Do the flair test: set your flair to `Verified Lender · Gold`, check it sticks, then set it back.
+3. Pick the launch date and time.
+4. Post the heads-up 7 days before, brief the mods 3 days before, and post the reminder 1 day before.
+
 ## The shape of it
 
 | When | On Reddit | In the code / systems |
@@ -112,6 +133,7 @@ just starting the old bot again.
 3. Add **draft D** as the first comment on it, and **distinguish + sticky** that
    comment.
 4. Paste **draft F** into the sidebar and the wiki's commands page.
+5. Post **draft G** (the permanent how-to guide), sticky it in slot 1, and link it from the sidebar.
 
 ---
 
@@ -264,6 +286,93 @@ Replace `[date]` / `[time]` before posting. Times: say the timezone.
 >
 > Problems with a loan: modmail or loancentral08@gmail.com.
 > LoanCentral keeps records only. It doesn't lend, hold or send money.
+
+### Draft G: "How LoanCentral works" guide (pin permanently)
+
+Draft C announces 2.0 and comes down after a week or two. This one stays
+pinned for good: it's where new people learn how the sub and the bot work.
+Post it from the mod account, sticky it (slot 1), and link it in the sidebar.
+
+> **Title:** How LoanCentral works: borrowing, lending and the bot (start here)
+>
+> LoanCentral keeps a public record of every loan made here. The bot,
+> u/loancentral, writes each loan down and tracks it until it's repaid.
+> **LoanCentral doesn't lend, hold or send money.** Lenders and borrowers deal
+> with each other directly; we keep the record.
+>
+> Every command works with `!` or `$`.
+>
+> ---
+>
+> **Your account (everyone)**
+>
+> 1. Comment `!login` on any post here.
+> 2. The bot sends you a link in your Reddit messages (it works once, for 30 minutes).
+> 3. Connect your Google account. From then on, sign in at **https://loancentral.net** with Google.
+>
+> Lost your Google account? Comment `!login` again and connect a new one.
+>
+> ---
+>
+> **Borrowing**
+>
+> 1. Make a post whose title starts with **[REQ]**, for example:
+>    `[REQ] ($150) (Toronto, ON, Canada) (Repay $180) (06/19) (PayPal)`
+> 2. The bot replies with your loan history and a request code like **REQ-4F2K9Q**.
+> 3. When a lender funds you, the bot records it and your post is marked **FUNDED**.
+>    If the lender offers with `!loan` instead, reply **`!confirm`** once you've received the money.
+> 4. See what you owe and when it's due at loancentral.net.
+>
+> ---
+>
+> **Lending** (needs the **Verified Lender** flair)
+>
+> To lend here, your Reddit account must meet the sub's requirements, including
+> **at least 500 karma**. Ask the mods about the Verified Lender flair.
+>
+> - `!fund REQ-XXXX`: fund a request (the amount and currency come from the request)
+> - `!loan 100 USD u/name`: offer a loan without a request code; the borrower replies `!confirm`
+> - `!paid_with_id ID 50 USD`: record a repayment (the loan ID is in the bot's reply)
+> - `!unpaid ID`: mark a loan unpaid
+> - `!refunded ID`: cancel a loan
+>
+> Everything you record here also shows on your lender dashboard, and anything
+> you record on the dashboard shows here as FUNDED / REPAID within seconds.
+>
+> ---
+>
+> **Checking someone out (everyone)**
+>
+> - `!logi u/name`: a lender's record and rank
+> - `!stats u/name`: a Reddit account's age and activity
+> - `!help`: every command
+>
+> ---
+>
+> **Ranks**
+>
+> Ranks grow with repaid loans.
+>
+> | Rank | Lender (repaid loans) | Borrower (repaid loans) |
+> |---|---|---|
+> | Iron | 1 | 1 |
+> | Bronze | 25 | 5 |
+> | Silver | 50 | 10 |
+> | Gold | 100 | 20 |
+> | Platinum | 200 | 40 |
+> | Diamond | 500 | 75 |
+>
+> Lenders' flair shows their rank (for example "Verified Lender · Gold").
+> **Legacy** marks our founding lenders.
+>
+> ---
+>
+> **Problems**
+>
+> A loan on your record is wrong, or you need a mod: send **modmail**, or email
+> **loancentral08@gmail.com** with the loan ID.
+>
+> [Terms](https://loancentral.net/terms) · [Privacy](https://loancentral.net/privacy)
 
 ---
 
