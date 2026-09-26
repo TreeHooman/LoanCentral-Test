@@ -51,7 +51,7 @@ class ListLendersTests(unittest.TestCase):
             from services import list_lenders
             list_lenders(verified_filter="verified")
         sql = cur.execute.call_args_list[0][0][0]
-        self.assertIn("ur.verified_lender = TRUE", sql)
+        self.assertIn("x.verified_lender = TRUE", sql)
 
     def test_revoked_filter_in_sql(self):
         conn, cur = _make_conn(rows=[], fetchone_val=(0,))
