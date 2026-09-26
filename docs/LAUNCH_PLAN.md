@@ -59,30 +59,43 @@ night: if something goes wrong you want the next day free.)
   (`BOT_USER_COMMANDS_PER_MINUTE`), on top of ignoring exact double posts, so
   one account spamming `!stats u/...` can't hold up the bot for everyone.
 
-**To do (owner), before launch**
-1. **Register u/loancentral as an app with Reddit to get the [App] label.**
-   Since 31 March 2026 Reddit tags approved automated accounts with [App] and
-   may make unregistered accounts that behave like bots prove they're human,
-   which would stop the bot. Apply through r/redditdev / Reddit's developer
-   profile.
-2. **Check the bot's API app is approved under the Responsible Builder
-   Policy** (every app now needs approval; non-commercial moderator bots are
-   free under 100 requests/min). Look at reddit.com/prefs/apps with the bot
-   account; if Reddit has asked for a developer registration, complete it.
-   LoanCentral is free and non-commercial: never sell or share Reddit data.
-3. **Keep u/loancentral a moderator** of r/loancentral. Mods skip the
-   subreddit's comment rate limits, which is what lets the bot answer every
-   post and command without "you're doing that too much".
+**Owner's account checks** (done 2026-09-25: u/loancentral already has the
+**[App]** label and is a **mod**.)
+
+**API app approval (Responsible Builder Policy).** Since late 2025 every *new*
+Reddit API app needs Reddit's approval first, and the self-service page for
+creating apps no longer works for new developers (people report the request
+form is buggy and replies take weeks). **Apps and keys that already existed
+were grandfathered and keep working.** The bot's app is an existing one: the
+old bot runs on it today. So:
+1. **Don't delete, recreate or "regenerate the secret" of the bot's app** at
+   reddit.com/prefs/apps. A new app would need approval we may not get in time.
+2. **Use that one app everywhere**: the bot computer and Render
+   (`REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`) share it. Don't make a second
+   one for the website.
+3. **Quick check** (2 minutes, logged in as u/loancentral): open
+   reddit.com/prefs/apps and confirm the app is listed and its client ID is
+   the same as in the bot computer's `.env`. If Reddit shows any notice there
+   asking you to register or accept terms, do it.
+4. Stay within the free use: free, non-commercial, under 100 requests a
+   minute, and never sell or share Reddit data.
 
 **Things to watch in the first week**
-- **!login rush at launch.** Every `!login` sends a Reddit message. If Reddit
-  says "doing that too much", the bot waits up to 5 minutes and retries, and
-  commands queue up behind it. Expected to be brief; the supervisor only steps
-  in after 15 minutes of silence.
+- **!login rush at launch.** Each `!login` makes the bot send one Reddit
+  private message. Reddit caps how fast an account can send messages. If many
+  people sign up at once and the bot hits that cap, Reddit says "try again in
+  N minutes". If N is short (up to 5 minutes), the bot waits and then sends it,
+  but **every other command waits behind it** during that pause. If N is longer,
+  the bot replies in the thread: "Reddit is limiting how many messages I can
+  send, comment `!login` again in about 10 minutes" (fixed 2026-09-25; before,
+  it wrongly told them to check their message settings). Loans and payments are
+  never affected: those don't send messages. Nobody needs to `!login` on launch day
+  itself: the bot keeps working without an account, so the launch post can
+  say "set up your dashboard any time this week".
 - **Neon compute** (100 CU-hours/month on the free plan, suspends when used
   up). Estimate for this sub's activity: roughly 40-70 per month. Check the
-  Neon dashboard on day 3 and day 7; if it's heading past ~80, move the sync
-  worker from every 30 min to hourly, or upgrade Neon.
+  Neon dashboard on day 3 and day 7; if it's heading past ~80, run the sync
+  worker every 2 hours instead of hourly, or upgrade Neon.
 - **Render free plan**: 750 hours/month covers one always-on service (~730).
   Don't add a second free service to the same workspace.
 - **Deleted posts/accounts**: Reddit asks apps to drop content users delete.

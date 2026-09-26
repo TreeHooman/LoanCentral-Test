@@ -39,6 +39,15 @@ def _dm_body(reddit_name, token):
     )
 
 
+def _is_reddit_rate_limit(exc):
+    """True when Reddit refused because the bot is sending too much
+    ("RATELIMIT" / HTTP 429), as opposed to the person's message settings."""
+    for item in getattr(exc, "items", None) or []:
+        if getattr(item, "error_type", "") == "RATELIMIT":
+            return True
+    return type(exc).__name__ == "TooManyRequests" or "RATELIMIT" in str(exc).upper()
+
+
 def process_login_command(comment):
     from accounts import create_setup_link
 
@@ -67,6 +76,16 @@ def process_login_command(comment):
         comment.author.message(subject="Your LoanCentral link", message=_dm_body(reddit_name, token))
         logger.info(f"$login: setup link sent to u/{reddit_name}")
     except Exception as exc:
+        if _is_reddit_rate_limit(exc):
+            # Reddit is limiting how many messages the bot may send right now
+            # (a rush of $login at launch). Not the person's settings.
+            logger.warning(f"$login: Reddit rate-limited the DM to u/{reddit_name}: {exc}")
+            comment.reply(with_dashboard_link(
+                f"u/{reddit_name}, lots of people are signing up right now and Reddit is "
+                "limiting how many messages I can send. Comment `!login` again in about "
+                "10 minutes and your link will come through."
+            ))
+            return
         # Typically the person only accepts messages from people they follow.
         logger.warning(f"$login: could not DM u/{reddit_name}: {exc}")
         comment.reply(with_dashboard_link(

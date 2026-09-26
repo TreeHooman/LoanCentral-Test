@@ -318,24 +318,25 @@ Then mark any test loans **Refunded** so they don't count in anyone's history.
 ### 8. Decide how Reddit updates keep flowing
 
 Nothing is posted to Reddit unless `reddit_sync_worker.py --live` runs. Either
-run it by hand now and then, or schedule it every **30 minutes** on the bot
+run it by hand now and then, or schedule it every **60 minutes** on the bot
 computer. In a Command Prompt, from the 2.0 folder (the path is filled in by
 `%CD%`):
 
 ```
-schtasks /Create /TN "LoanCentral Reddit Sync" /SC MINUTE /MO 30 /F /TR "\"python\" \"%CD%\scripts\reddit_sync_worker.py\" --live"
-eddit_sync_worker.py\" --live"
+schtasks /Create /TN "LoanCentral Reddit Sync" /SC MINUTE /MO 60 /F /TR "\"python\" \"%CD%\scripts\reddit_sync_worker.py\" --live"
 ```
 
 Check it with `schtasks /Query /TN "LoanCentral Reddit Sync"`, and stop it with
 `schtasks /Change /TN "LoanCentral Reddit Sync" /DISABLE`.
 
-**Why 30 and not 5:** Neon's free plan gives 100 compute-hours a month and
+**Why hourly and not every 5 minutes:** Neon's free plan gives 100 compute-hours a month and
 sleeps after 5 idle minutes. Every run wakes it, so a 5-minute schedule keeps it
 awake around the clock (~180 hours) and Neon **suspends the database for the rest
 of the month** when the allowance runs out, taking the bot and dashboard down.
-Every 30 minutes costs about 30 hours. Funded flair and comments can lag by up
-to 30 minutes; the loan itself is recorded instantly. Run the worker by hand
+Every 30 minutes costs about 30 hours; every 60 minutes about 15. With the
+instant updates below switched on, this schedule is only a backstop for updates
+that failed, so hourly is enough (decided 2026-09-25). Without them, funded
+flair and comments can lag by up to an hour; the loan itself is recorded instantly. Run the worker by hand
 when you want an update out sooner.
 
 With `REDDIT_SYNC_IN_BOT=true` (step C), updates from Reddit commands such as
@@ -348,7 +349,7 @@ hold the bot account's login (the same values as the bot computer's `.env`).
 The website then posts the FUNDED / REPAID update right after the loan is saved,
 while the database is awake anyway, so it costs no extra Neon compute. Do this
 only **after** the real data is loaded (step 6): before that, the dashboard
-holds test loans tied to real Reddit threads. Keep the 30-minute schedule as a
+holds test loans tied to real Reddit threads. Keep the hourly schedule as a
 backstop for anything that fails.
 
 Only one live pass can run at a time, on any machine: a second one (a manual

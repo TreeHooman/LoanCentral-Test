@@ -102,6 +102,13 @@ class RedditAccountTests(RealDBTestCase):
         self.assertEqual(len(comment.replies), 1)
         self.assertIn("couldn't send you a private message", comment.replies[0])
 
+    def test_reddit_throttling_the_dm_says_so_instead_of_blaming_their_settings(self):
+        _, comment = self.dollar_login(
+            "Rush", dm_error=RuntimeError("RATELIMIT: 'Looks like you've been doing that a lot.'"))
+        self.assertEqual(len(comment.replies), 1)
+        self.assertIn("limiting how many messages", comment.replies[0])
+        self.assertNotIn("Settings", comment.replies[0])
+
     def test_login_is_rate_limited_per_account(self):
         sent = sum(len(self.dollar_login("Spammed")[0].dms) for _ in range(5))
         self.assertEqual(sent, 3)
