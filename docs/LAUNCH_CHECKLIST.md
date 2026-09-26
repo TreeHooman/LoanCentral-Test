@@ -242,6 +242,19 @@ Mods (decided 2026-09-25): **u/left-associate3911** and **u/logistix1**, plus yo
 as admin. All three are lenders too (`--lender`), so their lender commands and
 dashboard work whatever their flair says.
 
+Then give **everyone who has ever lent** a lender dashboard and a login key.
+Roles set above are kept (a mod stays a mod); nobody is verified by this, and
+anyone who already has a key (you, after `--set-admin-key`) is skipped. Preview
+first, then add `--apply`. The keys go into the CSV file only, never on screen:
+
+```
+python scripts/bootstrap_roles.py --all-lenders --mod left-associate3911 --mod logistix1 --lender-keys-file lender_keys.csv
+python scripts/bootstrap_roles.py --all-lenders --mod left-associate3911 --mod logistix1 --lender-keys-file lender_keys.csv --apply
+```
+
+Give each lender **only their own** key (Reddit DM from you), then delete
+`lender_keys.csv`. A key signs in as that lender; don't share the file.
+
 Then grant **Legacy Lender** to the founders, the same three:
 **embarrassed-throat42, left-associate3911, logistix1**. Admin > Lenders > open
 each one > Grant Legacy Lender.

@@ -56,3 +56,20 @@ class AdminLenderDirectoryTests(RealDBTestCase):
         self.assertEqual(res.status_code, 200)
         names = [r["username"] for r in res.get_json()["lenders"]]
         self.assertIn("left-associate3911", names)
+
+    def test_management_page_api_lists_them(self):
+        # Admin > Lenders opens /admin/lenders/management, a separate list
+        # that used to require role='lender' and so showed nobody.
+        self.make_user("boss", role="admin")
+        self.login("boss", role="admin")
+        self.make_user("left-associate3911", role="mod")
+        self.add_loan("L-1", "left-associate3911")
+        self.add_loan("L-2", "logistix1", "confirmed")
+        res = self.client.get("/api/admin/lenders/management")
+        self.assertEqual(res.status_code, 200)
+        rows = {r["username"]: r for r in res.get_json()["lenders"]}
+        self.assertEqual(set(rows), {"left-associate3911", "logistix1"})
+        self.assertEqual(rows["logistix1"]["loan_count"], 1)
+        self.assertEqual(rows["logistix1"]["active_loans"], 1)
+        res = self.client.get("/api/admin/lenders/management?verified=unverified&q=logi")
+        self.assertEqual([r["username"] for r in res.get_json()["lenders"]], ["logistix1"])

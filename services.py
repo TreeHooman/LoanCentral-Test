@@ -3892,12 +3892,61 @@ def global_search(query: str, search_type: str = "all",
 # ADMIN: LENDER DIRECTORY + EXPANDED PROFILES (Sprint 6)
 # =============================================================================
 
+# Everyone who lends: every account, plus every loan lender name no account
+# claims (the old bot's lenders often never signed in to the dashboard). Loan
+# counts match either of an account's names (dashboard username or Reddit
+# handle). Use as `FROM {_LENDER_DIRECTORY_SQL} x`.
+_LENDER_DIRECTORY_SQL = """(
+    SELECT p.username, p.role, p.reddit_username, p.verified_lender,
+           p.verified_lender_at, p.verified_lender_by, p.last_login, p.created_at,
+           COALESCE(SUM(ls.total_loans), 0)    AS total_loans,
+           COALESCE(SUM(ls.active_loans), 0)   AS active_loans,
+           COALESCE(SUM(ls.repaid_loans), 0)   AS repaid_loans,
+           COALESCE(SUM(ls.unpaid_loans), 0)   AS unpaid_loans,
+           COALESCE(SUM(ls.disputed_loans), 0) AS disputed_loans,
+           COALESCE(SUM(ls.total_funded), 0)   AS total_funded
+    FROM (
+        SELECT username, role, reddit_username, verified_lender,
+               verified_lender_at, verified_lender_by, last_login, created_at
+        FROM user_roles
+        UNION ALL
+        SELECT s.lender, NULL, NULL, FALSE, NULL, NULL, NULL, NULL
+        FROM (SELECT DISTINCT lower(lender) AS lender FROM loans
+              WHERE lender IS NOT NULL AND lender <> '') s
+        WHERE NOT EXISTS (
+            SELECT 1 FROM user_roles u
+            WHERE lower(u.username) = s.lender
+               OR lower(u.reddit_username) = s.lender)
+    ) p
+    LEFT JOIN (
+        SELECT lower(lender) AS lender,
+               COUNT(*) AS total_loans,
+               COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
+               COUNT(*) FILTER (WHERE status = 'repaid')   AS repaid_loans,
+               COUNT(*) FILTER (WHERE status = 'unpaid')   AS unpaid_loans,
+               COUNT(*) FILTER (WHERE status = 'disputed') AS disputed_loans,
+               COALESCE(SUM(amount), 0) AS total_funded
+        FROM loans GROUP BY lower(lender)
+    ) ls ON ls.lender = lower(p.username)
+         OR ls.lender = lower(p.reddit_username)
+    GROUP BY p.username, p.role, p.reddit_username, p.verified_lender,
+             p.verified_lender_at, p.verified_lender_by, p.last_login, p.created_at
+)"""
+
+
+def _iso_or_none(v):
+    """Timestamps come back as text from SQLite once they pass through a subquery."""
+    if not v:
+        return None
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
 def list_lenders(verified_filter: str = None, has_reddit: bool = None,
                  q: str = None, limit: int = 200, offset: int = 0):
     """
     Admin lender directory. Includes users with role 'lender', verified
     lenders, verification applicants, and anyone who has funded a loan.
-    verified_filter: 'verified' | 'unverified' | 'revoked' | None
+    verified_filter: 'verified' | 'unverified' | 'revoked' | 'not_verified' | None
     Returns (rows, total, error). Never exposes verification private notes.
     """
     conn = _get_db()
@@ -3905,10 +3954,6 @@ def list_lenders(verified_filter: str = None, has_reddit: bool = None,
         return [], 0, "Database connection failed"
     try:
         cur = conn.cursor()
-        # Lenders from the old bot's history often have no dashboard account
-        # yet, so the directory is every account PLUS every loan lender name
-        # that no account claims. Loans are matched on either of an account's
-        # names (dashboard username or Reddit handle).
         clauses = ["""(
             x.role = 'lender'
             OR x.verified_lender = TRUE
@@ -3924,6 +3969,8 @@ def list_lenders(verified_filter: str = None, has_reddit: bool = None,
             clauses.append("(x.verified_lender IS NOT TRUE AND x.verified_lender_at IS NULL)")
         elif verified_filter == "revoked":
             clauses.append("(x.verified_lender IS NOT TRUE AND x.verified_lender_at IS NOT NULL)")
+        elif verified_filter == "not_verified":
+            clauses.append("x.verified_lender IS NOT TRUE")
         if has_reddit is True:
             clauses.append("x.reddit_username IS NOT NULL")
         elif has_reddit is False:
@@ -3933,45 +3980,7 @@ def list_lenders(verified_filter: str = None, has_reddit: bool = None,
             like = f"%{q.strip().lower()}%"
             params += [like, like]
         where = "WHERE " + " AND ".join(clauses)
-        base = f"""
-            FROM (
-                SELECT p.username, p.role, p.reddit_username, p.verified_lender,
-                       p.verified_lender_at, p.verified_lender_by, p.last_login,
-                       COALESCE(SUM(ls.total_loans), 0)    AS total_loans,
-                       COALESCE(SUM(ls.active_loans), 0)   AS active_loans,
-                       COALESCE(SUM(ls.repaid_loans), 0)   AS repaid_loans,
-                       COALESCE(SUM(ls.unpaid_loans), 0)   AS unpaid_loans,
-                       COALESCE(SUM(ls.disputed_loans), 0) AS disputed_loans,
-                       COALESCE(SUM(ls.total_funded), 0)   AS total_funded
-                FROM (
-                    SELECT username, role, reddit_username, verified_lender,
-                           verified_lender_at, verified_lender_by, last_login
-                    FROM user_roles
-                    UNION ALL
-                    SELECT s.lender, NULL, NULL, FALSE, NULL, NULL, NULL
-                    FROM (SELECT DISTINCT lower(lender) AS lender FROM loans
-                          WHERE lender IS NOT NULL AND lender <> '') s
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM user_roles u
-                        WHERE lower(u.username) = s.lender
-                           OR lower(u.reddit_username) = s.lender)
-                ) p
-                LEFT JOIN (
-                    SELECT lower(lender) AS lender,
-                           COUNT(*) AS total_loans,
-                           COUNT(*) FILTER (WHERE status IN ('confirmed','partially_repaid')) AS active_loans,
-                           COUNT(*) FILTER (WHERE status = 'repaid')   AS repaid_loans,
-                           COUNT(*) FILTER (WHERE status = 'unpaid')   AS unpaid_loans,
-                           COUNT(*) FILTER (WHERE status = 'disputed') AS disputed_loans,
-                           COALESCE(SUM(amount), 0) AS total_funded
-                    FROM loans GROUP BY lower(lender)
-                ) ls ON ls.lender = lower(p.username)
-                     OR ls.lender = lower(p.reddit_username)
-                GROUP BY p.username, p.role, p.reddit_username, p.verified_lender,
-                         p.verified_lender_at, p.verified_lender_by, p.last_login
-            ) x
-            {where}
-        """
+        base = f"FROM {_LENDER_DIRECTORY_SQL} x {where}"
         cur.execute(f"SELECT COUNT(*) {base}", params)
         total = cur.fetchone()[0]
         cur.execute(f"""
@@ -3990,10 +3999,8 @@ def list_lenders(verified_filter: str = None, has_reddit: bool = None,
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         for r in rows:
             r["verified_lender"] = bool(r["verified_lender"])
-            # SQLite returns these as text once they pass through the subquery.
             for k in ("verified_lender_at", "last_login"):
-                v = r[k]
-                r[k] = (v.isoformat() if hasattr(v, "isoformat") else str(v)) if v else None
+                r[k] = _iso_or_none(r[k])
             r["total_funded"] = float(r["total_funded"]) if r["total_funded"] else 0.0
             for k in ("total_loans", "active_loans", "repaid_loans",
                       "unpaid_loans", "disputed_loans"):
@@ -4904,7 +4911,9 @@ def get_community_health(period_days: int = 30):
 def get_lender_management_list(q: str = None, verified_filter: str = None,
                                 limit: int = 100, offset: int = 0):
     """
-    Return lenders with activity data for the management dashboard.
+    Return lenders with activity data for the management dashboard: anyone
+    with the lender role, a verified lender, or anyone who has funded a loan
+    (including lenders with no dashboard account).
     Returns (list, total, error).
     """
     conn = _get_db()
@@ -4912,42 +4921,38 @@ def get_lender_management_list(q: str = None, verified_filter: str = None,
         return [], 0, "Database connection failed"
     try:
         cur = conn.cursor()
-        conditions = ["role = 'lender'"]
+        conditions = ["(x.role = 'lender' OR x.verified_lender = TRUE OR x.total_loans > 0)"]
         params = []
         if q:
-            conditions.append("(username ILIKE %s OR reddit_username ILIKE %s)")
-            params.extend([f"%{q}%", f"%{q}%"])
+            conditions.append("(lower(x.username) LIKE %s OR lower(COALESCE(x.reddit_username,'')) LIKE %s)")
+            like = f"%{q.strip().lower()}%"
+            params.extend([like, like])
         if verified_filter == "verified":
-            conditions.append("verified_lender = TRUE")
+            conditions.append("x.verified_lender = TRUE")
         elif verified_filter == "unverified":
-            conditions.append("verified_lender = FALSE")
-        where = "WHERE " + " AND ".join(conditions)
+            conditions.append("x.verified_lender IS NOT TRUE")
+        base = f"FROM {_LENDER_DIRECTORY_SQL} x WHERE " + " AND ".join(conditions)
 
-        cur.execute(f"SELECT COUNT(*) FROM user_roles {where}", params)
+        cur.execute(f"SELECT COUNT(*) {base}", params)
         total = cur.fetchone()[0]
 
         cur.execute(f"""
-            SELECT ur.username, ur.verified_lender, ur.verified_lender_at,
-                   ur.last_login, ur.created_at, ur.reddit_username,
-                   COUNT(l.loan_id) AS loan_count,
-                   COUNT(l.loan_id) FILTER (WHERE l.status IN ('confirmed','partially_repaid')) AS active_loans,
-                   COUNT(l.loan_id) FILTER (WHERE l.status = 'unpaid') AS unpaid_loans
-            FROM user_roles ur
-            LEFT JOIN loans l ON l.lender = ur.username
-            {where}
-            GROUP BY ur.username, ur.verified_lender, ur.verified_lender_at,
-                     ur.last_login, ur.created_at, ur.reddit_username
-            ORDER BY ur.last_login DESC NULLS LAST
+            SELECT x.username, x.verified_lender, x.verified_lender_at,
+                   x.last_login, x.created_at, x.reddit_username,
+                   x.total_loans, x.active_loans, x.unpaid_loans
+            {base}
+            ORDER BY x.last_login DESC NULLS LAST, x.total_loans DESC, x.username
             LIMIT %s OFFSET %s
         """, params + [limit, offset])
-        rows = cur.fetchall()
         cols = ["username", "verified_lender", "verified_lender_at", "last_login",
                 "created_at", "reddit_username", "loan_count", "active_loans", "unpaid_loans"]
-        result = [dict(zip(cols, r)) for r in rows]
+        result = [dict(zip(cols, r)) for r in cur.fetchall()]
         for item in result:
+            item["verified_lender"] = bool(item["verified_lender"])
             for k in ("verified_lender_at", "last_login", "created_at"):
-                if item[k]:
-                    item[k] = item[k].isoformat()
+                item[k] = _iso_or_none(item[k])
+            for k in ("loan_count", "active_loans", "unpaid_loans"):
+                item[k] = int(item[k] or 0)
         return result, total, None
     except Exception as e:
         logger.error(f"get_lender_management_list error: {e}", exc_info=True)

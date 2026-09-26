@@ -21,6 +21,10 @@ audited exactly as if an admin had made it on the dashboard.
     # many lenders: one Reddit username per line
     python scripts/bootstrap_roles.py --lenders-file verified.txt --apply
 
+    # a dashboard for everyone who has ever lent (role lender, NOT verified),
+    # plus a login key each, written to a CSV file (never printed)
+    python scripts/bootstrap_roles.py --all-lenders --apply --lender-keys-file lender_keys.csv
+
 The admin login key is printed ONCE. Copy it somewhere safe; it cannot be
 shown again (only its hash is stored). Further keys and lender verification
 can then be managed from the dashboard.
@@ -81,6 +85,29 @@ def list_lenders():
     print(f"\n{len(rows)} distinct lender(s) in the loan history.")
 
 
+def loan_lender_names():
+    """Every distinct lender name in the loan history that is a valid username."""
+    from services import _get_db
+    conn = _get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT lower(lender) FROM loans WHERE lender IS NOT NULL")
+        names = sorted({clean(r[0]) for r in cur.fetchall() or [] if r[0]})
+    finally:
+        cur.close()
+        conn.close()
+    bad = [n for n in names if not USERNAME.match(n)]
+    if bad:
+        print("Skipping lender names that aren't valid usernames: " + ", ".join(bad))
+    return [n for n in names if USERNAME.match(n)]
+
+
+def has_active_key(name):
+    from services import list_lender_keys
+    rows, _ = list_lender_keys(username=name)
+    return any(r.get("active") for r in rows or [])
+
+
 def current_roles(names):
     from services import get_user_role, get_verified_lender_status
     state = {}
@@ -98,6 +125,12 @@ def main():
     parser.add_argument("--mod", action="append", default=[], help="make this user a moderator")
     parser.add_argument("--lender", action="append", default=[], help="mark as verified lender")
     parser.add_argument("--lenders-file", help="file of usernames to verify, one per line")
+    parser.add_argument("--all-lenders", action="store_true",
+                        help="give everyone in the loan history a lender dashboard "
+                             "(role lender; does not verify them)")
+    parser.add_argument("--lender-keys-file",
+                        help="with --apply: issue a login key to each lender (from --all-lenders "
+                             "and --lender) that has none, and write them to this CSV file")
     parser.add_argument("--list-lenders", action="store_true",
                         help="show everyone who has lent, then exit")
     parser.add_argument("--apply", action="store_true", help="make the changes (default: preview)")
@@ -117,11 +150,17 @@ def main():
     admins = read_names(args.admin, None)
     mods = [n for n in read_names(args.mod, None) if n not in admins]
     lenders = read_names(args.lender, args.lenders_file)
-    if not (admins or mods or lenders):
+    all_lenders = loan_lender_names() if args.all_lenders else []
+    if not (admins or mods or lenders or all_lenders):
         parser.print_help()
         return 2
+    keys_path = Path(args.lender_keys_file) if args.lender_keys_file else None
+    if keys_path and keys_path.exists():
+        print(f"Refusing: {keys_path} already exists. Pick a new file so no keys are overwritten.")
+        return 2
 
-    everyone = sorted(set(admins) | set(mods) | set(lenders))
+    everyone = sorted(set(admins) | set(mods) | set(lenders) | set(all_lenders))
+    key_holders = sorted(set(lenders) | set(all_lenders))
     # A copied example once created a real admin called "yourredditname" —
     # which anyone registering that Reddit name could then have claimed.
     placeholders = [n for n in everyone
@@ -132,15 +171,28 @@ def main():
         return 2
     before = current_roles(everyone)
 
+    def target_role(name, role):
+        if name in admins:
+            return "admin"
+        if name in mods:
+            return "mod"
+        # Everyone else who lends gets a lender dashboard; an existing
+        # admin/mod/lender role is never lowered.
+        if name in all_lenders and role in (None, "borrower"):
+            return "lender"
+        return None
+
     print("Planned changes:")
     for name in everyone:
         role, verified = before[name]
-        target = "admin" if name in admins else "mod" if name in mods else (role or "lender")
+        target = target_role(name, role)
         marks = []
-        if target != role:
+        if target and target != role:
             marks.append(f"role {role or '(none)'} -> {target}")
         if name in lenders and not verified:
             marks.append("verified lender: no -> yes")
+        if keys_path and name in key_holders:
+            marks.append("login key: " + ("has one already" if has_active_key(name) else "new"))
         print(f"  u/{name:26s} {'; '.join(marks) or 'no change'}")
 
     if not args.apply:
@@ -152,7 +204,7 @@ def main():
     failures = 0
     for name in everyone:
         role, verified = before[name]
-        target = "admin" if name in admins else "mod" if name in mods else None
+        target = target_role(name, role)
         if target and target != role:
             ok, error = set_user_role(name, target, actor=ACTOR, actor_role="admin")
             if error:
@@ -204,6 +256,25 @@ def main():
                 continue
             print(f"\n  Login key for u/{name} — shown ONCE, copy it now:\n\n      {key}\n")
             print("  Sign in at /login with 'Login with Key'.")
+
+    if keys_path:
+        import csv
+        issued = 0
+        with keys_path.open("x", newline="", encoding="utf-8") as fh:
+            out = csv.writer(fh)
+            out.writerow(["reddit_username", "login_key"])
+            for name in key_holders:
+                if has_active_key(name):
+                    continue
+                key, error = create_lender_key(name, ACTOR, label="launch lender key")
+                if error:
+                    print(f"  FAILED to issue a key for u/{name}: {error}")
+                    failures += 1
+                    continue
+                out.writerow([name, key])
+                issued += 1
+        print(f"\n  {issued} login key(s) written to {keys_path}. They can't be shown again;")
+        print("  give each lender only their own key, then delete the file.")
 
     return 1 if failures else 0
 
