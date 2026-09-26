@@ -80,6 +80,27 @@ old bot runs on it today. So:
 4. Stay within the free use: free, non-commercial, under 100 requests a
    minute, and never sell or share Reddit data.
 
+**Swapping in the 2.0 code doesn't trigger any Reddit check.** Reddit never sees
+the code, only the requests: which app (client ID/secret), which account, the
+user agent, and how often. So on launch day:
+- Copy the old bot's `.env` Reddit values as they are (`REDDIT_CLIENT_ID`,
+  `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD`, and
+  `REDDIT_USER_AGENT` if it's in the proper form, e.g.
+  `windows:loancentral:1.0 (by /u/loancentral)`; the bot refuses a placeholder).
+- Only one bot at a time: stop the old one first (the new one also refuses to
+  start a second copy of itself).
+- Activity goes up a little (`!login` messages, instant FUNDED/REPAID flair);
+  still far under 100/min, and the bot caps itself at 80.
+- When Render gets the bot's login for instant updates, Reddit may email
+  u/loancentral about a sign-in from a new place: expected. **If u/loancentral
+  has two-factor sign-in on, tell Claude before launch**: that kind of login
+  can't type a code.
+
+**Admin > Lenders shows only test lenders before launch.** The live database
+holds the July test data (7 loans, 2 test lenders). The real lenders come with
+the hosted PC's database on launch day; on the June copy the directory lists
+all 15 (entrepreneurprior334, left-associate3911, quiet_string97, logistix1...).
+
 **Things to watch in the first week**
 - **!login rush at launch.** Each `!login` makes the bot send one Reddit
   private message. Reddit caps how fast an account can send messages. If many
